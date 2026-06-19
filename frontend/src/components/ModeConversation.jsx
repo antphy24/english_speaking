@@ -93,6 +93,11 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
   };
 
   const processAudio = async (blob) => {
+    if (blob.size < 2000) {
+      setErrorMessage("Recording was too short. Please speak clearly for at least 2 seconds.");
+      setStatus('error');
+      return;
+    }
     setStatus('transcribing');
     try {
       // 1. Send audio blob to /transcribe with the correct file extension based on mimeType

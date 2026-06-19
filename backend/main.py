@@ -165,6 +165,8 @@ async def transcribe(file: UploadFile = File(...)):
     """
     try:
         content = await file.read()
+        if len(content) < 2000:
+            raise ValueError("Audio recording is too short or empty. Please speak clearly for at least 2 seconds.")
         filename = file.filename or "recording.webm"
         
         # Call Groq Whisper utility

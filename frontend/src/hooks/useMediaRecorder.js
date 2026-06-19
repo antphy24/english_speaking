@@ -58,7 +58,7 @@ export function useMediaRecorder() {
         }
       };
 
-      mediaRecorder.start(500); // chunk every 500ms
+      mediaRecorder.start(); // Start recording as a single continuous file
       setIsRecording(true);
       setRecordingTime(0);
 

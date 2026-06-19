@@ -83,6 +83,11 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
   }, [audioBlob]);
 
   const processAudio = async (blob) => {
+    if (blob.size < 2000) {
+      setErrorMessage("Recording was too short. Please hold down the button and speak clearly.");
+      setStatus('error');
+      return;
+    }
     setStatus('transcribing');
     try {
       // 1. Send audio blob to /transcribe with the correct file extension based on mimeType
@@ -225,10 +230,9 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
             {/* Hold-to-record Button Area */}
             <div className="flex flex-col items-center justify-center space-y-3 pt-2">
               <button
-                onMouseDown={startRecording}
-                onMouseUp={stopRecording}
-                onTouchStart={startRecording}
-                onTouchEnd={stopRecording}
+                onPointerDown={startRecording}
+                onPointerUp={stopRecording}
+                onPointerLeave={() => { if (isRecording) stopRecording(); }}
                 className={`relative w-20 h-20 rounded-full flex items-center justify-center transition-all duration-350 select-none ${
                   isRecording 
                     ? 'bg-red-500 text-white animate-record-pulse'
