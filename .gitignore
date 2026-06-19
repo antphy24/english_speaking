@@ -1,0 +1,27 @@
+# Python virtual environment
+venv/
+.venv/
+env/
+call/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Node.js dependencies
+node_modules/
+dist/
+dist-ssr/
+
+# Environment files (sensitive)
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env
+
+# OS/Editor configs
+.vscode/
+.idea/
+.DS_Store
+*.log
