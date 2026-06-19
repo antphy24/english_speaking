@@ -44,7 +44,10 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
   const [errorMessage, setErrorMessage] = useState('');
   const [transcript, setTranscript] = useState('');
   const [evaluation, setEvaluation] = useState(null);
-  
+
+  const pointerDownTimeRef = useRef(0);
+  const [isToggleRecording, setIsToggleRecording] = useState(false);
+
   // Custom Recording Hook
   const {
     isRecording,
@@ -55,6 +58,39 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
     stopRecording,
     clearAudio
   } = useMediaRecorder();
+
+  const handlePointerDown = (e) => {
+    e.preventDefault();
+    pointerDownTimeRef.current = Date.now();
+    if (!isRecording) {
+      startRecording();
+      setIsToggleRecording(false);
+    }
+  };
+
+  const handlePointerUp = (e) => {
+    e.preventDefault();
+    const duration = Date.now() - pointerDownTimeRef.current;
+    if (duration < 300) {
+      // It's a short tap!
+      if (isToggleRecording) {
+        stopRecording();
+        setIsToggleRecording(false);
+      } else {
+        setIsToggleRecording(true);
+      }
+    } else {
+      // It's a long hold! Stop recording on release
+      stopRecording();
+      setIsToggleRecording(false);
+    }
+  };
+
+  const handlePointerLeave = () => {
+    if (isRecording && !isToggleRecording) {
+      stopRecording();
+    }
+  };
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState(''); // '' | 'success' | 'error'
@@ -144,6 +180,7 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
     setTranscript('');
     setEvaluation(null);
     setSaveStatus('');
+    setIsToggleRecording(false);
     setStatus('idle');
   };
 
@@ -210,7 +247,7 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
           </div>
 
           {/* Reading Arena */}
-          <div className="md:col-span-3 flex flex-col justify-between glass-panel rounded-2xl p-6 border-slate-800 space-y-6">
+          <div className="md:col-span-3 flex flex-col justify-between glass-panel rounded-2xl p-6 pb-28 md:pb-6 border-slate-800 space-y-6">
             <div className="flex justify-between items-center">
               <span className="text-xs font-medium text-purple-400 tracking-widest uppercase">Target Text</span>
               <button 
@@ -227,27 +264,33 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
               {selectedParagraph.text}
             </p>
 
-            {/* Hold-to-record Button Area */}
-            <div className="flex flex-col items-center justify-center space-y-3 pt-2">
+            {/* Adaptive Recording Controls (Inline on Desktop, Sticky Bottom Bar on Mobile) */}
+            <div className="
+              flex flex-col items-center justify-center space-y-3 pt-2
+              md:relative md:bg-transparent md:border-0 md:p-0 md:shadow-none md:flex-col md:space-y-3 md:gap-0
+              max-md:fixed max-md:bottom-0 max-md:left-0 max-md:right-0 max-md:bg-[#070b13]/95 max-md:backdrop-blur-md max-md:border-t max-md:border-slate-900 max-md:p-4 max-md:pb-6 max-md:shadow-[0_-10px_30px_rgba(0,0,0,0.5)] max-md:z-40 max-md:flex-row-reverse max-md:justify-between max-md:space-y-0 max-md:px-6
+            ">
               <button
-                onPointerDown={startRecording}
-                onPointerUp={stopRecording}
-                onPointerLeave={() => { if (isRecording) stopRecording(); }}
-                className={`relative w-20 h-20 rounded-full flex items-center justify-center transition-all duration-350 select-none ${
+                onPointerDown={handlePointerDown}
+                onPointerUp={handlePointerUp}
+                onPointerLeave={handlePointerLeave}
+                className={`relative w-16 h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center transition-all duration-350 select-none shrink-0 ${
                   isRecording 
                     ? 'bg-red-500 text-white animate-record-pulse'
                     : 'bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-600/30 active:scale-95'
                 }`}
               >
-                <Mic className="w-8 h-8" />
+                <Mic className="w-6 h-6 md:w-8 md:h-8" />
               </button>
               
-              <div className="text-center">
+              <div className="text-left md:text-center max-md:flex-1">
                 <span className="block text-sm font-semibold text-slate-300">
-                  {isRecording ? `Recording... ${recordingTime}s` : 'Hold to Record'}
+                  {isRecording ? `Recording... ${recordingTime}s` : 'Read Aloud'}
                 </span>
-                <span className="text-xs text-slate-500">
-                  {isRecording ? 'Release to submit' : 'Press and hold down to read'}
+                <span className="text-xs text-slate-500 block mt-0.5 max-w-[200px] md:max-w-none">
+                  {isRecording 
+                    ? (isToggleRecording ? 'Tap button to stop' : 'Release to submit') 
+                    : 'Tap to toggle or hold to record'}
                 </span>
               </div>
             </div>
