@@ -175,6 +175,36 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
     }
   };
 
+  const handleRetryGrading = async () => {
+    if (!transcript) return;
+    setStatus('grading');
+    setErrorMessage('');
+    try {
+      const gradeRes = await fetchWithRetry(`${apiBase}/grade`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'read_aloud',
+          transcript: transcript,
+          source_text: selectedParagraph.text
+        })
+      });
+
+      if (!gradeRes.ok) {
+        const errMsg = await parseError(gradeRes, 'Failed to evaluate reading.');
+        throw new Error(errMsg);
+      }
+
+      const gradeData = await gradeRes.json();
+      setEvaluation(gradeData);
+      setStatus('graded');
+    } catch (err) {
+      console.error(err);
+      setErrorMessage(err.message || 'An error occurred during speech evaluation.');
+      setStatus('error');
+    }
+  };
+
   const handleRestart = () => {
     clearAudio();
     setTranscript('');
@@ -338,12 +368,30 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
             <h4 className="text-lg font-bold text-white">Recording Failed</h4>
             <p className="text-sm text-rose-300">{errorMessage}</p>
           </div>
-          <button 
-            onClick={handleRestart}
-            className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-semibold transition"
-          >
-            Try Again
-          </button>
+          <div className="flex flex-wrap justify-center gap-3">
+            {audioBlob && transcript && (
+              <button 
+                onClick={handleRetryGrading}
+                className="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+              >
+                Retry Evaluation
+              </button>
+            )}
+            {audioBlob && (
+              <button 
+                onClick={() => processAudio(audioBlob)}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+              >
+                {transcript ? 'Retry Full Upload' : 'Retry Upload'}
+              </button>
+            )}
+            <button 
+              onClick={handleRestart}
+              className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+            >
+              {audioBlob ? 'Record Again' : 'Try Again'}
+            </button>
+          </div>
         </div>
       )}
       

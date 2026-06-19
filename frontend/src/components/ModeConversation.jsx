@@ -11,6 +11,7 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
   const [errorMessage, setErrorMessage] = useState('');
   const [evaluation, setEvaluation] = useState(null);
   const [ttsEnabled, setTtsEnabled] = useState(true);
+  const [errorType, setErrorType] = useState(null); // null | 'turn' | 'grading'
   
   // Custom Recording Hook
   const {
@@ -148,6 +149,7 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
     } catch (err) {
       console.error(err);
       setErrorMessage(err.message || 'An error occurred during dialogue.');
+      setErrorType('turn');
       setStatus('error');
     }
   };
@@ -201,6 +203,7 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
     } catch (err) {
       console.error(err);
       setErrorMessage(err.message || 'An error occurred during evaluation.');
+      setErrorType('grading');
       setStatus('error');
     }
   };
@@ -209,6 +212,7 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
     setMessages([]);
     setEvaluation(null);
     setSaveStatus('');
+    setErrorType(null);
     setStatus('idle');
   };
 
@@ -410,15 +414,53 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
             <AlertTriangle className="w-6 h-6" />
           </div>
           <div className="space-y-1">
-            <h4 className="text-lg font-bold text-white">Connection Error</h4>
+            <h4 className="text-lg font-bold text-white">
+              {errorType === 'grading' ? 'Evaluation Failed' : 'Dialogue Interrupted'}
+            </h4>
             <p className="text-sm text-rose-300">{errorMessage}</p>
           </div>
-          <button 
-            onClick={handleRestart}
-            className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-semibold transition"
-          >
-            Reset Chat
-          </button>
+          <div className="flex flex-wrap justify-center gap-3">
+            {errorType === 'grading' && (
+              <>
+                <button 
+                  onClick={handleEndConversation}
+                  className="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+                >
+                  Retry Evaluation
+                </button>
+                <button 
+                  onClick={() => { setStatus('idle'); setErrorType(null); }}
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+                >
+                  Return to Chat
+                </button>
+              </>
+            )}
+            {errorType === 'turn' && (
+              <>
+                {audioBlob && (
+                  <button 
+                    onClick={() => processAudio(audioBlob)}
+                    className="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+                  >
+                    Retry Sending Message
+                  </button>
+                )}
+                <button 
+                  onClick={() => { setStatus('idle'); setErrorType(null); clearAudio(); }}
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+                >
+                  Record Message Again
+                </button>
+              </>
+            )}
+            <button 
+              onClick={handleRestart}
+              className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+            >
+              Reset Entire Chat
+            </button>
+          </div>
         </div>
       )}
 
