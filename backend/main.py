@@ -240,7 +240,7 @@ async def chat_reply(request: ChatReplyRequest):
 if __name__ == "__main__":
     import uvicorn
     import os
-    port = int(os.environ.get("PORT", 8000))
+    port = int(os.environ.get("PORT", 7860 if os.environ.get("SPACE_ID") else 8000))
     # Disable reload in production (when PORT is specified or running in Hugging Face Spaces)
     reload = False if (os.environ.get("PORT") or os.environ.get("SPACE_ID")) else True
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=reload)
