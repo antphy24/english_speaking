@@ -19,10 +19,14 @@ export function useTeacherData() {
 
   // Forms state
   const [newClassName, setNewClassName] = useState('');
+  const [newClassCode, setNewClassCode] = useState('');
+  const [newGradeLevel, setNewGradeLevel] = useState('General');
   const [bulkStudentsText, setBulkStudentsText] = useState('');
   
   // Custom materials form state
   const [selectedClassMaterial, setSelectedClassMaterial] = useState(null);
+  const [materialCreationMode, setMaterialCreationMode] = useState('class'); // 'class' or 'global'
+  const [globalGradeLevel, setGlobalGradeLevel] = useState('General');
   const [materialMode, setMaterialMode] = useState('read_aloud');
   const [materialTitle, setMaterialTitle] = useState('');
   const [materialContent, setMaterialContent] = useState('');
@@ -125,11 +129,22 @@ export function useTeacherData() {
         }
 
         // 4. Fetch Custom Materials
-        const { data: materialsData, error: materialsErr } = await supabase
+        // Load materials for classes + if admin, all global materials (where class_id is null)
+        let materialQuery = supabase
           .from('custom_materials')
           .select('*, class:classes(class_name)')
-          .in('class_id', classIds)
           .order('created_at', { ascending: false });
+        
+        if (profile.is_admin) {
+          // Admin sees everything assigned to their classes AND global materials
+          const idString = classIds.join(',');
+          materialQuery = materialQuery.or(`class_id.in.(${idString}),class_id.is.null`);
+        } else {
+          // Regular teachers only see their own classes materials
+          materialQuery = materialQuery.in('class_id', classIds);
+        }
+
+        const { data: materialsData, error: materialsErr } = await materialQuery;
           
         if (materialsErr) throw materialsErr;
         setCustomMaterials(materialsData || []);
@@ -160,40 +175,32 @@ export function useTeacherData() {
     }
   };
 
-  // Generate unique 6-character class code
-  const generateClassCode = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let code = '';
-    for (let i = 0; i < 6; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return code;
-  };
-
   // Create a new class
   const handleCreateClass = async (e) => {
     e.preventDefault();
-    if (!newClassName.trim()) return;
+    if (!newClassName.trim() || !newClassCode.trim()) return;
     
     setActionError('');
     setActionSuccess('');
     
-    const classCode = generateClassCode();
     try {
       const { data, error } = await supabase
         .from('classes')
         .insert({
           teacher_id: teacher.id,
           class_name: newClassName.trim(),
-          class_code: classCode
+          class_code: newClassCode.trim(),
+          grade_level: newGradeLevel
         })
         .select()
         .single();
         
       if (error) throw error;
       
-      setActionSuccess(`Class "${newClassName.trim()}" created successfully! Code: ${classCode}`);
+      setActionSuccess(`Class "${newClassName.trim()}" created successfully! Code: ${newClassCode.trim()} (${newGradeLevel})`);
       setNewClassName('');
+      setNewClassCode('');
+      setNewGradeLevel('General');
       setClassesList(prev => [data, ...prev]);
       setSelectedClass(prev => prev || data);
       setSelectedClassMaterial(prev => prev || data);
@@ -303,7 +310,7 @@ export function useTeacherData() {
   // Custom materials creation
   const handleCreateMaterial = async (e) => {
     e.preventDefault();
-    if (!selectedClassMaterial) {
+    if (materialCreationMode === 'class' && !selectedClassMaterial) {
       setActionError('Please select a class first.');
       return;
     }
@@ -321,11 +328,14 @@ export function useTeacherData() {
     setActionError('');
     setActionSuccess('');
 
+    const isGlobal = teacher?.is_admin && materialCreationMode === 'global';
+
     try {
       const { data, error } = await supabase
         .from('custom_materials')
         .insert({
-          class_id: selectedClassMaterial.id,
+          class_id: isGlobal ? null : selectedClassMaterial.id,
+          grade_level: isGlobal ? globalGradeLevel : selectedClassMaterial.grade_level,
           mode: materialMode,
           title: titleVal,
           content: materialContent.trim()
@@ -335,7 +345,11 @@ export function useTeacherData() {
 
       if (error) throw error;
 
-      setActionSuccess(`Custom material added successfully for class "${selectedClassMaterial.class_name}"!`);
+      if (isGlobal) {
+        setActionSuccess(`Global default material added successfully for grade "${globalGradeLevel}"!`);
+      } else {
+        setActionSuccess(`Custom material added successfully for class "${selectedClassMaterial.class_name}"!`);
+      }
       setMaterialTitle('');
       setMaterialContent('');
       setCustomMaterials(prev => [data, ...prev]);
@@ -447,10 +461,18 @@ export function useTeacherData() {
     // Forms
     newClassName,
     setNewClassName,
+    newClassCode,
+    setNewClassCode,
+    newGradeLevel,
+    setNewGradeLevel,
     bulkStudentsText,
     setBulkStudentsText,
     selectedClassMaterial,
     setSelectedClassMaterial,
+    materialCreationMode,
+    setMaterialCreationMode,
+    globalGradeLevel,
+    setGlobalGradeLevel,
     materialMode,
     setMaterialMode,
     materialTitle,

@@ -126,7 +126,7 @@ def health_check():
 
 async def _enroll_student(client, student, classId, classCode, headers):
     sanitized_school_id = "".join(c for c in student.schoolId if c.isalnum())
-    email = f"student_{sanitized_school_id}@{classCode}.hrefspeak.com".lower()
+    email = f"student_{sanitized_school_id}@{classCode}.HreFSpeak.com".lower()
     
     # Generate random 6 character password
     chars = string.ascii_letters + string.digits

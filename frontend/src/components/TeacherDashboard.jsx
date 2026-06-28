@@ -85,7 +85,7 @@ export function TeacherDashboard() {
               <Plus className="w-5 h-5" />
             </div>
             <span className="text-lg font-extrabold text-white">
-              href<span className="text-indigo-500 font-medium">Speak</span>
+              HreF<span className="text-indigo-500 font-medium">Speak</span>
             </span>
           </div>
 
@@ -192,6 +192,8 @@ export function TeacherDashboard() {
                 allStudents={data.allStudents}
                 newClassName={data.newClassName}
                 setNewClassName={data.setNewClassName}
+                newClassCode={data.newClassCode}
+                setNewClassCode={data.setNewClassCode}
                 handleCreateClass={data.handleCreateClass}
                 bulkStudentsText={data.bulkStudentsText}
                 setBulkStudentsText={data.setBulkStudentsText}
@@ -206,9 +208,14 @@ export function TeacherDashboard() {
 
             {activeTab === 'materials' && (
               <MaterialsTab
+                teacher={data.teacher}
                 classesList={data.classesList}
                 selectedClassMaterial={data.selectedClassMaterial}
                 setSelectedClassMaterial={data.setSelectedClassMaterial}
+                materialCreationMode={data.materialCreationMode}
+                setMaterialCreationMode={data.setMaterialCreationMode}
+                globalGradeLevel={data.globalGradeLevel}
+                setGlobalGradeLevel={data.setGlobalGradeLevel}
                 materialMode={data.materialMode}
                 setMaterialMode={data.setMaterialMode}
                 materialTitle={data.materialTitle}

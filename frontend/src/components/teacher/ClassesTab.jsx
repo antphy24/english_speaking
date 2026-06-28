@@ -8,6 +8,10 @@ export function ClassesTab({
   allStudents,
   newClassName,
   setNewClassName,
+  newClassCode,
+  setNewClassCode,
+  newGradeLevel,
+  setNewGradeLevel,
   handleCreateClass,
   bulkStudentsText,
   setBulkStudentsText,
@@ -26,20 +30,48 @@ export function ClassesTab({
         <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
           <h3 className="font-bold text-base text-white">Create New Classroom</h3>
           <form onSubmit={handleCreateClass} className="space-y-3">
-            <input
-              type="text"
-              required
-              value={newClassName}
-              onChange={e => setNewClassName(e.target.value)}
-              placeholder="e.g. Grade 10 English A"
-              className="w-full px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-sm font-medium"
-            />
+            <div>
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Class Name</label>
+              <input
+                type="text"
+                required
+                value={newClassName}
+                onChange={e => setNewClassName(e.target.value)}
+                placeholder="e.g. Grade 10 English A"
+                className="w-full px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-sm font-medium"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Class Code</label>
+              <input
+                type="text"
+                required
+                value={newClassCode}
+                onChange={e => setNewClassCode(e.target.value)}
+                placeholder="e.g. G10ENGA"
+                className="w-full px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-sm font-medium"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Grade Level</label>
+              <select
+                required
+                value={newGradeLevel}
+                onChange={e => setNewGradeLevel(e.target.value)}
+                className="w-full px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-sm font-medium"
+              >
+                <option value="General">General</option>
+                <option value="Grade 10">Grade 10</option>
+                <option value="Grade 11">Grade 11</option>
+                <option value="Grade 12">Grade 12</option>
+              </select>
+            </div>
             <button
               type="submit"
               className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center justify-center space-x-1 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>Create Class Code</span>
+              <span>Create Class</span>
             </button>
           </form>
         </div>
@@ -69,7 +101,7 @@ export function ClassesTab({
                   <div>
                     <span className="font-bold text-sm block">{item.class_name}</span>
                     <span className="text-[10px] opacity-80 block font-mono mt-0.5">
-                      Code: <strong className="text-indigo-400 font-bold tracking-widest">{item.class_code}</strong>
+                      Code: <strong className="text-indigo-400 font-bold tracking-widest">{item.class_code}</strong> | Grade: <strong className="text-indigo-400 font-bold">{item.grade_level || 'General'}</strong>
                     </span>
                   </div>
                   <div className="flex items-center space-x-1">
@@ -93,7 +125,7 @@ export function ClassesTab({
               <span className="text-[10px] text-indigo-400 uppercase tracking-widest font-bold">Enroll Students In</span>
               <h3 className="text-xl font-bold text-white mt-0.5">{selectedClass.class_name}</h3>
               <p className="text-[11px] text-slate-500 mt-1 font-mono">
-                Class Code: <span className="text-indigo-400 font-bold bg-slate-950 border border-slate-900 px-2 py-0.5 rounded tracking-widest text-xs">{selectedClass.class_code}</span>
+                Class Code: <span className="text-indigo-400 font-bold bg-slate-950 border border-slate-900 px-2 py-0.5 rounded tracking-widest text-xs">{selectedClass.class_code}</span> | Grade: <span className="text-indigo-400 font-bold bg-slate-950 border border-slate-900 px-2 py-0.5 rounded tracking-widest text-xs">{selectedClass.grade_level || 'General'}</span>
               </p>
             </div>
 
@@ -112,7 +144,7 @@ export function ClassesTab({
                   className="w-full px-4 py-3 bg-slate-900/60 border border-slate-800 rounded-xl text-white placeholder-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-xs font-mono leading-relaxed"
                 />
                 <p className="text-[10px] text-slate-500 italic">
-                  Enter one student per line. Password will default to their School ID. Emails will generate as student_[SchoolID]@[ClassCode].hrefspeak.com.
+                  Enter one student per line. Password will default to their School ID. Emails will generate as student_[SchoolID]@[ClassCode].HreFSpeak.com.
                 </p>
               </div>
 
@@ -164,7 +196,7 @@ export function ClassesTab({
                         <tr key={student.id} className="hover:bg-slate-900/20">
                           <td className="py-2 px-4 font-bold text-white">{student.full_name}</td>
                           <td className="py-2 px-4 font-mono">{student.school_id}</td>
-                          <td className="py-2 px-4 font-mono text-slate-500">{`student_${student.school_id.replace(/[^a-zA-Z0-9]/g, '')}@${selectedClass.class_code}.hrefspeak.com`.toLowerCase()}</td>
+                          <td className="py-2 px-4 font-mono text-slate-500">{`student_${student.school_id.replace(/[^a-zA-Z0-9]/g, '')}@${selectedClass.class_code}.HreFSpeak.com`.toLowerCase()}</td>
                           <td className="py-2 px-4 text-center">
                             {student.requires_password_change ? (
                               <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-[4px] text-[9px] font-semibold">New</span>

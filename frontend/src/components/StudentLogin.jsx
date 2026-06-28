@@ -74,9 +74,9 @@ export function StudentLogin() {
     setLoggingIn(true);
     setError('');
     
-    // Construct dummy email: student_[school_id]@[class_code].hrefspeak.com (with school_id sanitized)
+    // Construct dummy email: student_[school_id]@[class_code].HreFSpeak.com (with school_id sanitized)
     const sanitizedSchoolId = selectedStudent.school_id.replace(/[^a-zA-Z0-9]/g, '');
-    const dummyEmail = `student_${sanitizedSchoolId}@${classCode}.hrefspeak.com`.toLowerCase();
+    const dummyEmail = `student_${sanitizedSchoolId}@${classCode}.HreFSpeak.com`.toLowerCase();
     
     try {
       const { data, error: loginError } = await supabase.auth.signInWithPassword({

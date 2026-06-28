@@ -2,9 +2,14 @@ import React from 'react';
 import { Trash2 } from 'lucide-react';
 
 export function MaterialsTab({
+  teacher,
   classesList,
   selectedClassMaterial,
   setSelectedClassMaterial,
+  materialCreationMode,
+  setMaterialCreationMode,
+  globalGradeLevel,
+  setGlobalGradeLevel,
   materialMode,
   setMaterialMode,
   materialTitle,
@@ -24,19 +29,64 @@ export function MaterialsTab({
         <h3 className="font-bold text-base text-white">Add Class Material</h3>
         
         <form onSubmit={handleCreateMaterial} className="space-y-4">
-          {/* Class Dropdown */}
-          <div className="space-y-1 text-left">
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Target Classroom</label>
-            <select
-              value={selectedClassMaterial?.id || ''}
-              onChange={e => setSelectedClassMaterial(classesList.find(c => c.id === e.target.value))}
-              className="w-full px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-indigo-500 transition text-xs"
-            >
-              {classesList.map(c => (
-                <option key={c.id} value={c.id}>{c.class_name}</option>
-              ))}
-            </select>
-          </div>
+          {/* Admin Mode Toggle */}
+          {teacher?.is_admin && (
+            <div className="space-y-1 text-left">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Target Type</label>
+              <div className="flex space-x-4">
+                <label className="flex items-center space-x-2 text-xs">
+                  <input
+                    type="radio"
+                    value="class"
+                    checked={materialCreationMode === 'class'}
+                    onChange={() => setMaterialCreationMode('class')}
+                    className="text-indigo-500 bg-slate-900 border-slate-800"
+                  />
+                  <span>Custom Class Material</span>
+                </label>
+                <label className="flex items-center space-x-2 text-xs">
+                  <input
+                    type="radio"
+                    value="global"
+                    checked={materialCreationMode === 'global'}
+                    onChange={() => setMaterialCreationMode('global')}
+                    className="text-indigo-500 bg-slate-900 border-slate-800"
+                  />
+                  <span>Global Default Material</span>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {/* Class or Grade Dropdown */}
+          {materialCreationMode === 'class' ? (
+            <div className="space-y-1 text-left">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Target Classroom</label>
+              <select
+                value={selectedClassMaterial?.id || ''}
+                onChange={e => setSelectedClassMaterial(classesList.find(c => c.id === e.target.value))}
+                className="w-full px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-indigo-500 transition text-xs"
+              >
+                {classesList.map(c => (
+                  <option key={c.id} value={c.id}>{c.class_name} (Grade: {c.grade_level || 'General'})</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="space-y-1 text-left">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Target Grade Level</label>
+              <select
+                value={globalGradeLevel}
+                onChange={e => setGlobalGradeLevel(e.target.value)}
+                className="w-full px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-indigo-500 transition text-xs"
+              >
+                <option value="General">General</option>
+                <option value="Grade 10">Grade 10</option>
+                <option value="Grade 11">Grade 11</option>
+                <option value="Grade 12">Grade 12</option>
+              </select>
+            </div>
+          )}
 
           {/* Mode selection dropdown */}
           <div className="space-y-1 text-left">
@@ -118,7 +168,11 @@ export function MaterialsTab({
                     {material.mode === 'read_aloud' && <span className="px-2 py-0.5 bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Read Aloud</span>}
                     {material.mode === 'qa' && <span className="px-2 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Q&A Mock</span>}
                     {material.mode === 'conversation' && <span className="px-2 py-0.5 bg-pink-500/10 text-pink-400 border border-pink-500/20 rounded text-[9px] font-bold uppercase tracking-wider">AI Dialogue</span>}
-                    <span className="text-[10px] text-slate-500 font-mono">({material.class?.class_name})</span>
+                    {material.class_id === null ? (
+                      <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">Global: {material.grade_level}</span>
+                    ) : (
+                      <span className="text-[10px] text-slate-500 font-mono">({material.class?.class_name})</span>
+                    )}
                   </div>
                   <h4 className="font-bold text-white text-sm truncate">{material.title}</h4>
                   <p className="text-xs text-slate-400 line-clamp-3 leading-relaxed whitespace-pre-wrap">{material.content}</p>

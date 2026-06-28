@@ -97,7 +97,7 @@ export function AdminDashboard() {
             </div>
             <div>
               <h1 className="font-bold text-lg leading-tight tracking-tight">Admin Portal</h1>
-              <p className="text-[10px] text-fuchsia-400 font-mono tracking-wider uppercase">hrefSpeak System</p>
+              <p className="text-[10px] text-fuchsia-400 font-mono tracking-wider uppercase">HreFSpeak System</p>
             </div>
           </div>
           

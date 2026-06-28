@@ -1,6 +1,6 @@
-# hrefSpeak - Automated English Speaking Assessment Platform
+# HreFSpeak - Automated English Speaking Assessment Platform
 
-hrefSpeak is an AI-powered speaking practice and evaluation platform designed for students. It offers three interactive modes to practice and test English proficiency, with real-time logs saved to a shared Google Sheet leaderboard.
+HreFSpeak is an AI-powered speaking practice and evaluation platform designed for students. It offers three interactive modes to practice and test English proficiency, with real-time logs saved to a shared Google Sheet leaderboard.
 
 ---
 

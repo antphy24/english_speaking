@@ -58,7 +58,7 @@ export function PracticeArea() {
         const { data: materialsData, error: materialsErr } = await supabase
           .from('custom_materials')
           .select('*')
-          .eq('class_id', profile.class_id);
+          .or(`class_id.eq.${profile.class_id},and(class_id.is.null,grade_level.eq.${profile.class?.grade_level || 'General'})`);
         
         if (!materialsErr && materialsData) {
           setCustomMaterials(materialsData);
@@ -232,7 +232,7 @@ export function PracticeArea() {
         {/* Footer / Sign out */}
         <div className="mt-6 border-t border-slate-900 pt-4 flex flex-col space-y-4">
           <div className="text-[10px] text-slate-600 font-mono">
-            <p>© 2026 hrefSpeak AI</p>
+            <p>© 2026 HreFSpeak AI</p>
             <p className="mt-1">LMS Dashboard Mode</p>
           </div>
           <button
