@@ -135,7 +135,7 @@ export function useTeacherData() {
           .select('*, class:classes(class_name)')
           .order('created_at', { ascending: false });
         
-        if (profile.is_admin) {
+        if (teacher.is_admin) {
           // Admin sees everything assigned to their classes AND global materials
           const idString = classIds.join(',');
           materialQuery = materialQuery.or(`class_id.in.(${idString}),class_id.is.null`);
