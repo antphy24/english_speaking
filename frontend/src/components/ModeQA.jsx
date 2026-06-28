@@ -65,17 +65,26 @@ export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = []
     }
   }, [recordingError]);
 
+  const handleSaveToLeaderboardRef = useRef(handleSaveToLeaderboard);
+  const processAudioRef = useRef(null);
+
+  processAudioRef.current = processAudio;
+
+  useEffect(() => {
+    handleSaveToLeaderboardRef.current = handleSaveToLeaderboard;
+  });
+
   // Auto-save score when grading completes
   useEffect(() => {
     if (status === 'graded' && evaluation) {
-      handleSaveToLeaderboard();
+      handleSaveToLeaderboardRef.current();
     }
   }, [status, evaluation]);
 
   // Handle when audio is recorded
   useEffect(() => {
-    if (audioBlob) {
-      processAudio(audioBlob);
+    if (audioBlob && processAudioRef.current) {
+      processAudioRef.current(audioBlob);
     }
   }, [audioBlob]);
 

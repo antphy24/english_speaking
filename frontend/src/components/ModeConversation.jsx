@@ -36,17 +36,27 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
     }
   }, [recordingError]);
 
+  const handleSaveToLeaderboardRef = useRef(null);
+  const processAudioRef = useRef(null);
+  const hasGreetedRef = useRef(false);
+
+  processAudioRef.current = processAudio;
+
+  useEffect(() => {
+    handleSaveToLeaderboardRef.current = handleSaveToLeaderboard;
+  });
+
   // Auto-save score when grading completes
   useEffect(() => {
     if (status === 'graded' && evaluation) {
-      handleSaveToLeaderboard();
+      handleSaveToLeaderboardRef.current?.();
     }
   }, [status, evaluation]);
 
   // Handle when audio is recorded
   useEffect(() => {
-    if (audioBlob) {
-      processAudio(audioBlob);
+    if (audioBlob && processAudioRef.current) {
+      processAudioRef.current(audioBlob);
     }
   }, [audioBlob]);
 
@@ -57,7 +67,8 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
 
   // Start conversation with a greeting from the AI tutor
   useEffect(() => {
-    if (messages.length === 0) {
+    if (messages.length === 0 && !hasGreetedRef.current) {
+      hasGreetedRef.current = true;
       const customGreetingText = customGreetings && customGreetings.length > 0 ? customGreetings[0].content : null;
       const greeting = customGreetingText || `Hello ${studentName}! I am your AI English conversation partner. What is a topic you would like to chat about today? Or we can talk about your hobbies!`;
       setMessages([{ role: 'assistant', content: greeting }]);
@@ -66,7 +77,7 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
         speakText(greeting);
       }, 500);
     }
-  }, [studentName, customGreetings]);
+  }, [studentName, customGreetings, messages.length]);
 
   // Helper to read text aloud via Web Speech API
   const speakText = (text) => {

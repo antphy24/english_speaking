@@ -38,6 +38,23 @@ export function TeacherLogin() {
         });
         
         if (signUpError) throw signUpError;
+
+        // Insert into teachers table explicitly so their profile exists for the admin to approve
+        if (data?.user) {
+          const { error: insertError } = await supabase
+            .from('teachers')
+            .insert({
+              id: data.user.id,
+              full_name: fullName.trim(),
+              status: 'pending',
+              is_admin: false
+            });
+            
+          if (insertError) {
+            console.error('Failed to create teacher profile:', insertError);
+            throw new Error('Account created, but failed to create teacher profile.');
+          }
+        }
         
         setSuccess('Registration successful! Please log in.');
         setIsSignUp(false);
@@ -60,6 +77,16 @@ export function TeacherLogin() {
         if (profileError || !teacherProfile) {
           await supabase.auth.signOut();
           throw new Error('This account is not registered as a teacher.');
+        }
+
+        if (teacherProfile.status === 'pending') {
+          await supabase.auth.signOut();
+          throw new Error('Your account is pending admin approval. Please wait for an administrator to review your registration.');
+        }
+        
+        if (teacherProfile.status === 'rejected') {
+          await supabase.auth.signOut();
+          throw new Error('Your registration request was rejected by an administrator.');
         }
 
         navigate('/teacher/dashboard');

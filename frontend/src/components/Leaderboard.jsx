@@ -3,7 +3,7 @@ import { supabase } from '../utils/supabaseClient';
 import { Award, BookOpen, HelpCircle, MessageSquare, RefreshCw, Calendar, User } from 'lucide-react';
 import Spinner from './UI/Spinner';
 
-export function Leaderboard() {
+export function Leaderboard({ student }) {
   const [activeSource, setActiveSource] = useState('global'); // 'global' (class rankings) | 'local' (own history)
   const [activeModeTab, setActiveModeTab] = useState('read_aloud'); // 'read_aloud' | 'qa' | 'conversation'
   
@@ -11,54 +11,42 @@ export function Leaderboard() {
   const [classRankings, setClassRankings] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [studentProfile, setStudentProfile] = useState(null);
 
   // Load student profile & local history
   useEffect(() => {
     const fetchStudentData = async () => {
+      if (!student) return;
       setIsLoading(true);
       setErrorMsg('');
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        // Get student's class_id
-        const { data: profile, error: profileErr } = await supabase
-          .from('students')
-          .select('*, class:classes(class_name)')
-          .eq('id', user.id)
-          .single();
-          
-        if (profileErr) throw profileErr;
-        setStudentProfile(profile);
-
         // Fetch student's own assessments (session history)
         const { data: historyData, error: historyErr } = await supabase
           .from('assessments')
           .select('*')
-          .eq('student_id', user.id)
+          .eq('student_id', student.id)
           .order('created_at', { ascending: false });
           
         if (historyErr) throw historyErr;
         setLocalHistory(historyData);
         
         // Fetch class rankings
-        if (profile.class_id) {
+        if (student.class_id) {
           // 1. Get all students in this class
           const { data: classStudents, error: studentsErr } = await supabase
             .from('students')
             .select('id, full_name')
-            .eq('class_id', profile.class_id);
+            .eq('class_id', student.class_id);
             
           if (studentsErr) throw studentsErr;
           const studentIds = classStudents.map(s => s.id);
           
           if (studentIds.length > 0) {
-            // 2. Get assessments of these students
+            // 2. Get assessments of these students filtered by mode
             const { data: classAssessments, error: assessErr } = await supabase
               .from('assessments')
               .select('*, student:students(full_name)')
-              .in('student_id', studentIds);
+              .in('student_id', studentIds)
+              .eq('mode', activeModeTab);
               
             if (assessErr) throw assessErr;
             setClassRankings(classAssessments);
@@ -73,7 +61,7 @@ export function Leaderboard() {
     };
     
     fetchStudentData();
-  }, []);
+  }, [student, activeModeTab]);
 
   const getModeIcon = (mode) => {
     switch (mode) {
@@ -106,6 +94,7 @@ export function Leaderboard() {
 
   // Process leaderboard sorting based on mode tab
   const getSortedRankings = (mode) => {
+    // Mode filtering is already done in supabase query but we keep this as a safeguard
     return classRankings
       .filter(item => item.mode === mode)
       .sort((a, b) => b.score - a.score);
@@ -141,7 +130,7 @@ export function Leaderboard() {
             <h4 className="font-bold text-white text-base">Classroom Synced Online</h4>
           </div>
           <p className="text-xs text-emerald-200/80 leading-relaxed max-w-xl">
-            Logged scorecards are shared with your class, <strong>{studentProfile?.class?.class_name || 'Classroom'}</strong>. You can view your peer rankings or track your progress below.
+            Logged scorecards are shared with your class, <strong>{student?.class?.class_name || 'Classroom'}</strong>. You can view your peer rankings or track your progress below.
           </p>
         </div>
       </div>

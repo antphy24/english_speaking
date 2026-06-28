@@ -299,7 +299,7 @@ export function PracticeArea() {
             />
           )}
           {activeTab === 'leaderboard' && (
-            <Leaderboard />
+            <Leaderboard student={student} />
           )}
         </div>
       </main>
