@@ -4,8 +4,9 @@ import { supabase } from '../utils/supabaseClient';
 import ModeReadAloud from './ModeReadAloud';
 import ModeQA from './ModeQA';
 import ModeConversation from './ModeConversation';
+import ModeDebate from './ModeDebate';
 import Leaderboard from './Leaderboard';
-import { BookOpen, HelpCircle, MessageSquare, Award, UserCheck, LogOut, Sparkles } from 'lucide-react';
+import { BookOpen, HelpCircle, MessageSquare, Award, UserCheck, LogOut, Sparkles, Gavel } from 'lucide-react';
 import Spinner from './UI/Spinner';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
@@ -15,7 +16,7 @@ export function PracticeArea() {
 
   const [student, setStudent] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
-  const [activeTab, setActiveTab] = useState('read_aloud'); // 'read_aloud' | 'qa' | 'conversation' | 'leaderboard'
+  const [activeTab, setActiveTab] = useState('read_aloud'); // 'read_aloud' | 'qa' | 'conversation' | 'debate' | 'leaderboard'
   const [customMaterials, setCustomMaterials] = useState([]);
 
   // Verification state for scores saving
@@ -92,6 +93,8 @@ export function PracticeArea() {
       let rawScore = 0;
       if (mode === 'read_aloud') {
         rawScore = scoreData.accuracy_score;
+      } else if (mode === 'debate') {
+        rawScore = scoreData.finalScore; // pre-calculated 100-point scale in frontend component
       } else {
         const subScores = mode === 'qa'
           ? [scoreData.fluency, scoreData.lexical_resource, scoreData.grammatical_range, scoreData.pronunciation]
@@ -210,6 +213,21 @@ export function PracticeArea() {
               <span>3. AI Conversation</span>
             </button>
 
+            <button
+              onClick={() => {
+                setActiveTab('debate');
+                setSaveStatus('');
+              }}
+              className={`flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition-all duration-200 ${
+                activeTab === 'debate'
+                  ? 'bg-purple-600/15 border border-purple-500/20 text-white font-extrabold'
+                  : 'border border-transparent text-slate-400 hover:bg-slate-900/40 hover:text-slate-200'
+              }`}
+            >
+              <Gavel className="w-4 h-4" />
+              <span>4. Debate Mode</span>
+            </button>
+
             <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mt-4 mb-2 px-1">Analytics</span>
             
             <button
@@ -255,12 +273,14 @@ export function PracticeArea() {
               {activeTab === 'read_aloud' && 'Read Aloud Practice'}
               {activeTab === 'qa' && 'IELTS Q&A Assessment'}
               {activeTab === 'conversation' && 'AI Conversation Partner'}
+              {activeTab === 'debate' && 'Debate Adjudication'}
               {activeTab === 'leaderboard' && 'Leaderboard Logs'}
             </h2>
             <p className="text-xs text-slate-400 mt-1">
               {activeTab === 'read_aloud' && 'Read the paragraph aloud. Whisper evaluates your accuracy.'}
               {activeTab === 'qa' && 'Express your thoughts on the prompt. Gemini evaluates against IELTS standards.'}
               {activeTab === 'conversation' && 'Hold a conversation with Llama-3. Whisper and Gemini evaluate dialogue performance.'}
+              {activeTab === 'debate' && 'Practice case building and speech delivery. Gemini acts as a strict debate adjudicator.'}
               {activeTab === 'leaderboard' && 'Logs and scores saved in the Supabase classroom database.'}
             </p>
           </div>
@@ -296,6 +316,16 @@ export function PracticeArea() {
               isSaving={isSaving}
               saveStatus={saveStatus}
               customGreetings={customMaterials.filter(m => m.mode === 'conversation')}
+            />
+          )}
+          {activeTab === 'debate' && (
+            <ModeDebate 
+              studentName={student.full_name} 
+              apiBase={API_BASE} 
+              onSaveScore={handleSaveScore}
+              isSaving={isSaving}
+              saveStatus={saveStatus}
+              customMotions={customMaterials.filter(m => m.mode === 'debate')}
             />
           )}
           {activeTab === 'leaderboard' && (

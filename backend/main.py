@@ -20,7 +20,8 @@ from utils.ai import (
     get_llama_chat_reply,
     evaluate_read_aloud,
     evaluate_qa,
-    evaluate_conversation
+    evaluate_conversation,
+    evaluate_debate
 )
 
 load_dotenv()
@@ -54,11 +55,14 @@ app.add_middleware(
 # --- API Schemas ---
 
 class GradeRequest(BaseModel):
-    mode: str  # "read_aloud" | "qa" | "conversation"
+    mode: str  # "read_aloud" | "qa" | "conversation" | "debate"
     transcript: Optional[str] = None
     source_text: Optional[str] = None      # Required for read_aloud
     question: Optional[str] = None         # Required for qa
     messages: Optional[List[dict]] = None  # Required for conversation
+    motion: Optional[str] = None           # Required for debate
+    role: Optional[str] = None             # Required for debate
+
 
 class ChatReplyRequest(BaseModel):
     messages: List[dict]
@@ -264,6 +268,15 @@ async def grade(request: Request, grade_data: GradeRequest):
                     detail="conversation mode requires a list of 'messages'"
                 )
             result = await asyncio.to_thread(evaluate_conversation, grade_data.messages)
+            return result.model_dump()
+            
+        elif grade_data.mode == "debate":
+            if not grade_data.motion or not grade_data.role or not grade_data.transcript:
+                raise HTTPException(
+                    status_code=400,
+                    detail="debate mode requires 'motion', 'role', and 'transcript'"
+                )
+            result = await asyncio.to_thread(evaluate_debate, grade_data.motion, grade_data.role, grade_data.transcript)
             return result.model_dump()
             
         else:

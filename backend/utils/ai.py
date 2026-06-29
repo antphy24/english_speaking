@@ -57,6 +57,16 @@ class ConversationEvaluation(BaseModel):
     interactive_communication: int = Field(..., description="IELTS Speaking Band score (1 to 9) for Interactive Communication")
     feedback: str = Field(..., description="Detailed feedback on the entire conversation history, identifying strengths and weaknesses")
 
+class DebateEvaluation(BaseModel):
+    matter_score: int = Field(..., description="Score 1-10 for Substance & Argumentation (Matter)")
+    manner_score: int = Field(..., description="Score 1-10 for Rhetoric & Delivery (Manner)")
+    method_score: int = Field(..., description="Score 1-10 for Structure & Responsiveness (Method)")
+    matter_feedback: str = Field(..., description="Detailed feedback on argumentation, logic, and evidence (Matter)")
+    manner_feedback: str = Field(..., description="Detailed feedback on pronunciation, vocabulary, grammar, and delivery (Manner)")
+    method_feedback: str = Field(..., description="Detailed feedback on structure, time management, and responsiveness (Method)")
+    overall_feedback: str = Field(..., description="Overall summary highlighting main strengths and actionable improvements")
+
+
 
 # --- Service Functions ---
 
@@ -195,3 +205,41 @@ def evaluate_conversation(messages: List[dict]) -> ConversationEvaluation:
         )
     )
     return ConversationEvaluation.model_validate_json(response.text)
+
+def evaluate_debate(motion: str, role: str, student_transcript: str) -> DebateEvaluation:
+    """
+    Evaluate debate performance using Gemini 2.5 Flash structured output with strict grading.
+    """
+    client = get_gemini_client()
+    
+    prompt = (
+        f"Act as a strict and professional Debate Adjudicator. Evaluate the speaker's performance.\n\n"
+        f"Motion: \"{motion}\"\n"
+        f"Role: \"{role}\"\n"
+        f"Candidate's Speech Transcript: \"{student_transcript}\"\n\n"
+        f"Evaluate the speech using the following strict standard debate rubric. DO NOT be generous. Penalize heavily for missing structure, lack of depth, and filler words.\n\n"
+        f"1. Substance & Argumentation (Matter) — Rate 1 to 10\n"
+        f"   - 8–10: Argumen memiliki struktur AEL (Assertion, Explanation, Link-back) atau AREEI yang sangat jelas. Respons langsung menjawab akar mosi, menggunakan analogi/bukti relevan, dan menjelaskan impact mendalam.\n"
+        f"   - 5–7: Argumen jelas dan masuk akal, tetapi struktur penjelasan kurang mendalam/melompat-lompat. Bukti terlalu umum atau kurang kuat kaitannya.\n"
+        f"   - 1–4: Hanya menyampaikan pernyataan tanpa penjelasan logis. Argumen tidak relevan atau melenceng.\n\n"
+        f"2. Rhetoric & Delivery (Manner) — Rate 1 to 10\n"
+        f"   - 8–10: Pengucapan sangat jelas. Intonasi dan penekanan dinamis. Kosakata bervariasi, grammar sangat minim kesalahan, filler words (uhm, ah, like) sangat sedikit.\n"
+        f"   - 5–7: Berbicara lancar tapi intonasi cenderung datar. Beberapa kesalahan grammar dasar. Beberapa filler words muncul saat berpikir.\n"
+        f"   - 1–4: Terlalu banyak jeda lama atau didominasi filler words. Pengucapan sulit dipahami atau struktur kalimat sangat berantakan.\n\n"
+        f"3. Structure & Responsiveness (Method) — Rate 1 to 10\n"
+        f"   - 8–10: Alur pidato sangat sistematis (pengantar, poin argumen, kesimpulan). Penggunaan waktu efisien.\n"
+        f"   - 5–7: Struktur ada, tetapi transisi terasa kasar/mendadak. Manajemen waktu kurang pas.\n"
+        f"   - 1–4: Pidato tidak terstruktur, melompat tanpa arah jelas. Tidak ada signposting.\n\n"
+        f"Provide the scores (1-10) and detailed, rigorous feedback for Matter, Manner, and Method. Be critical and strict."
+    )
+    
+    response = client.models.generate_content(
+        model='gemini-2.5-flash',
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=DebateEvaluation,
+            temperature=0.1
+        )
+    )
+    return DebateEvaluation.model_validate_json(response.text)
