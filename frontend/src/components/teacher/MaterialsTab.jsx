@@ -103,11 +103,12 @@ export function MaterialsTab({
               <option value="read_aloud">1. Read Aloud</option>
               <option value="qa">2. Q&A Mock Prompt</option>
               <option value="conversation">3. AI Conversation greeting</option>
+              <option value="debate">4. Debate Motion</option>
             </select>
           </div>
 
           {/* Title input (Hidden for Conversation mode) */}
-          {materialMode !== 'conversation' && (
+          {materialMode !== 'conversation' && materialMode !== 'debate' && (
             <div className="space-y-1 text-left animate-fadeIn">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Material Title</label>
               <input
@@ -127,6 +128,7 @@ export function MaterialsTab({
               {materialMode === 'read_aloud' && 'Paragraph Text (to read aloud)'}
               {materialMode === 'qa' && 'IELTS Cue Card Prompt'}
               {materialMode === 'conversation' && 'AI Tutor Greeting & Context'}
+              {materialMode === 'debate' && 'Debate Motion Statement'}
             </label>
             <textarea
               required
@@ -138,6 +140,8 @@ export function MaterialsTab({
                   ? "Paste the text you want the student to read aloud..." 
                   : materialMode === 'qa'
                   ? "Describe a memorable journey you went on. You should say where, when, and explain why it made a strong impression..."
+                  : materialMode === 'debate'
+                  ? "This House would ban the use of AI in educational assessments."
                   : "Hello! Today let's discuss your hobbies. What is something you enjoy doing in your free time?"
               }
               className="w-full px-4 py-3 bg-slate-900 border border-slate-800 rounded-xl text-white placeholder-slate-755 focus:outline-none focus:border-indigo-500 transition text-xs font-medium leading-relaxed"
@@ -168,6 +172,7 @@ export function MaterialsTab({
                     {material.mode === 'read_aloud' && <span className="px-2 py-0.5 bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Read Aloud</span>}
                     {material.mode === 'qa' && <span className="px-2 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Q&A Mock</span>}
                     {material.mode === 'conversation' && <span className="px-2 py-0.5 bg-pink-500/10 text-pink-400 border border-pink-500/20 rounded text-[9px] font-bold uppercase tracking-wider">AI Dialogue</span>}
+                    {material.mode === 'debate' && <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Debate</span>}
                     {material.class_id === null ? (
                       <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">Global: {material.grade_level}</span>
                     ) : (

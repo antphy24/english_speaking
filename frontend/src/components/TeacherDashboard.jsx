@@ -24,7 +24,22 @@ const formatScoreDetails = (mode, scoreData) => {
       </div>
     );
   }
-  // IELTS evaluation
+
+  if (mode === 'debate') {
+    const finalScore = scoreData.finalScore ?? scoreData.matter_score ?? 0;
+    return (
+      <div className="flex flex-col">
+        <span className="font-bold text-white text-xs">{Math.round(finalScore)}/100 Debate</span>
+        {scoreData.matter_score !== undefined && (
+          <span className="text-[10px] text-slate-500">
+            M: {scoreData.matter_score} | M: {scoreData.manner_score} | M: {scoreData.method_score}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  // QA and Conversation evaluation (0-100 scale)
   const subScores = mode === 'qa' 
     ? [scoreData.fluency, scoreData.lexical_resource, scoreData.grammatical_range, scoreData.pronunciation]
     : [scoreData.fluency_and_coherence, scoreData.lexical_resource, scoreData.grammatical_range, scoreData.pronunciation, scoreData.interactive_communication];
@@ -33,11 +48,11 @@ const formatScoreDetails = (mode, scoreData) => {
   if (validScores.length === 0) return <span className="text-slate-500 font-mono text-xs">-</span>;
   
   const rawAvg = validScores.reduce((a, b) => a + b, 0) / validScores.length;
-  const band = Math.round(rawAvg * 2) / 2;
+  const scoreOutOf100 = Math.round(rawAvg);
   
   return (
     <div className="flex flex-col">
-      <span className="font-bold text-white text-xs">IELTS Band {band.toFixed(1)}</span>
+      <span className="font-bold text-white text-xs">{scoreOutOf100}/100 Score</span>
       <span className="text-[10px] text-slate-500">
         {mode === 'qa' ? 'Q&A Mock' : 'Dialogue Practice'}
       </span>

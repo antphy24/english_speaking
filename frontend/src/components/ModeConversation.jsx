@@ -40,10 +40,9 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
   const processAudioRef = useRef(null);
   const hasGreetedRef = useRef(false);
 
-  processAudioRef.current = processAudio;
-
   useEffect(() => {
     handleSaveToLeaderboardRef.current = handleSaveToLeaderboard;
+    processAudioRef.current = processAudio;
   });
 
   // Auto-save score when grading completes

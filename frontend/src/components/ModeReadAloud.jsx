@@ -103,13 +103,12 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
     }
   }, [recordingError]);
 
-  const handleSaveToLeaderboardRef = useRef(handleSaveToLeaderboard);
+  const handleSaveToLeaderboardRef = useRef(null);
   const processAudioRef = useRef(null);
   
-  processAudioRef.current = processAudio;
-
   useEffect(() => {
     handleSaveToLeaderboardRef.current = handleSaveToLeaderboard;
+    processAudioRef.current = processAudio;
   });
 
   // Auto-save score when grading completes

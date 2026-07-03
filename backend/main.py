@@ -132,10 +132,11 @@ async def _enroll_student(client, student, classId, classCode, headers):
     sanitized_school_id = "".join(c for c in student.schoolId if c.isalnum())
     email = f"student_{sanitized_school_id}@{classCode}.HreFSpeak.com".lower()
     
-    # Generate random 6 character password
-    chars = string.ascii_letters + string.digits
-    password = "".join(secrets.choice(chars) for _ in range(6))
-    
+    # Password defaults to School ID, padded to 6 chars if needed
+    password = student.schoolId
+    if len(password) < 6:
+        password = password.ljust(6, '0')
+        
     payload = {
         "email": email,
         "password": password,
@@ -294,7 +295,7 @@ async def grade(request: Request, grade_data: GradeRequest):
 @limiter.limit("15/minute")
 async def chat_reply(request: Request, chat_data: ChatReplyRequest):
     """
-    Generates a brief response to continue the conversation, using Groq Llama-3.3-70B.
+    Generates a brief response to continue the conversation, using Groq Qwen3.6-27B.
     """
     try:
         reply = await asyncio.to_thread(get_llama_chat_reply, chat_data.messages)

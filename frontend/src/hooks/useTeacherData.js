@@ -409,8 +409,10 @@ export function useTeacherData() {
       let scoreStr = "";
       if (record.mode === 'read_aloud') {
         scoreStr = `${record.score}% Accuracy`;
+      } else if (record.mode === 'debate') {
+        scoreStr = `${Math.round(record.score)}/100 Debate`;
       } else {
-        scoreStr = `Band ${record.score.toFixed(1)}`;
+        scoreStr = `${Math.round(record.score)}/100 Score`;
       }
       
       const escapeCSV = (val) => `"${String(val ?? '').replace(/"/g, '""')}"`;

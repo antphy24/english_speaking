@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../utils/supabaseClient';
-import { Award, BookOpen, HelpCircle, MessageSquare, RefreshCw, Calendar, User } from 'lucide-react';
+import { Award, BookOpen, HelpCircle, MessageSquare, Gavel, RefreshCw, Calendar, User } from 'lucide-react';
 import Spinner from './UI/Spinner';
 
 export function Leaderboard({ student }) {
@@ -71,6 +71,8 @@ export function Leaderboard({ student }) {
         return <HelpCircle className="w-4 h-4 text-indigo-400" />;
       case 'conversation':
         return <MessageSquare className="w-4 h-4 text-pink-400" />;
+      case 'debate':
+        return <Gavel className="w-4 h-4 text-amber-400" />;
       default:
         return <Award className="w-4 h-4 text-slate-400" />;
     }
@@ -81,6 +83,7 @@ export function Leaderboard({ student }) {
       case 'read_aloud': return 'Read Aloud';
       case 'qa': return 'Q&A IELTS Mock';
       case 'conversation': return 'Dialogue Practice';
+      case 'debate': return 'Debate Practice';
       default: return mode;
     }
   };
@@ -111,9 +114,21 @@ export function Leaderboard({ student }) {
         </div>
       );
     }
+    if (mode === 'debate') {
+      return (
+        <div className="flex flex-col">
+          <span className="text-white font-bold text-sm">{Math.round(score)}/100 Debate</span>
+          {feedback?.matter_score !== undefined && (
+            <span className="text-[10px] text-slate-400">
+              Matter: {feedback.matter_score} | Manner: {feedback.manner_score} | Method: {feedback.method_score}
+            </span>
+          )}
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col">
-        <span className="text-white font-bold text-sm">IELTS Band {score.toFixed(1)}</span>
+        <span className="text-white font-bold text-sm">{Math.round(score)}/100 Score</span>
         <span className="text-[10px] text-slate-400">Speaking Level</span>
       </div>
     );
@@ -173,7 +188,7 @@ export function Leaderboard({ student }) {
             {activeSource === 'global' && (
               <div>
                 <div className="flex border-b border-slate-850 bg-slate-900/20 px-6">
-                  {['read_aloud', 'qa', 'conversation'].map(mode => (
+                  {['read_aloud', 'qa', 'conversation', 'debate'].map(mode => (
                     <button
                       key={mode}
                       onClick={() => setActiveModeTab(mode)}

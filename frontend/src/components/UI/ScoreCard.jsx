@@ -4,18 +4,18 @@ import { Award, BookOpen, MessageSquare, AlertCircle, HelpCircle, CheckCircle, R
 export function ScoreCard({ mode, score, onRestart, isSaving, saveStatus, onSaveToLeaderboard }) {
   if (!score) return null;
 
-  // Helper to color-code IELTS band scores (1-9)
-  const getIeltsColor = (val) => {
-    if (val >= 7.5) return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
-    if (val >= 6.0) return 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20';
-    if (val >= 5.0) return 'text-amber-400 bg-amber-500/10 border-amber-500/20';
+  // Helper to color-code 0-100 scores
+  const getScoreColor = (val) => {
+    if (val >= 85) return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
+    if (val >= 70) return 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20';
+    if (val >= 50) return 'text-amber-400 bg-amber-500/10 border-amber-500/20';
     return 'text-rose-400 bg-rose-500/10 border-rose-500/20';
   };
 
-  const getIeltsBarColor = (val) => {
-    if (val >= 7.5) return 'bg-emerald-500';
-    if (val >= 6.0) return 'bg-indigo-500';
-    if (val >= 5.0) return 'bg-amber-500';
+  const getScoreBarColor = (val) => {
+    if (val >= 85) return 'bg-emerald-500';
+    if (val >= 70) return 'bg-indigo-500';
+    if (val >= 50) return 'bg-amber-500';
     return 'bg-rose-500';
   };
 
@@ -123,25 +123,25 @@ export function ScoreCard({ mode, score, onRestart, isSaving, saveStatus, onSave
       {(mode === 'qa' || mode === 'conversation') && (
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
           
-          {/* Average IELTS Band Badge */}
+          {/* Average Score Badge */}
           <div className="md:col-span-4 flex flex-col items-center justify-center p-6 bg-slate-900/50 rounded-xl border border-slate-800">
             <Award className="w-10 h-10 text-purple-400 mb-2" />
-            <span className="text-xs text-slate-400 uppercase tracking-widest font-semibold mb-1">Estimated Band</span>
+            <span className="text-xs text-slate-400 uppercase tracking-widest font-semibold mb-1">Overall Score</span>
             
             {(() => {
-              const bands = mode === 'qa' 
+              const scores = mode === 'qa' 
                 ? [score.fluency, score.lexical_resource, score.grammatical_range, score.pronunciation]
                 : [score.fluency_and_coherence, score.lexical_resource, score.grammatical_range, score.pronunciation, score.interactive_communication];
-              const avg = bands.reduce((a, b) => a + b, 0) / bands.length;
-              // Round to nearest half band
-              const roundedAvg = Math.round(avg * 2) / 2;
+              const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+              // Round to nearest integer
+              const roundedAvg = Math.round(avg);
               return (
-                <div className={`mt-2 px-5 py-2.5 rounded-2xl border text-4xl font-extrabold ${getIeltsColor(roundedAvg)}`}>
-                  {roundedAvg.toFixed(1)}
+                <div className={`mt-2 px-5 py-2.5 rounded-2xl border text-4xl font-extrabold ${getScoreColor(roundedAvg)}`}>
+                  {roundedAvg}
                 </div>
               );
             })()}
-            <span className="text-[10px] text-slate-500 mt-2">IELTS Speaking scale 1.0 - 9.0</span>
+            <span className="text-[10px] text-slate-500 mt-2">Scale 0 - 100</span>
           </div>
 
           {/* Breakdown sliders */}
@@ -159,12 +159,12 @@ export function ScoreCard({ mode, score, onRestart, isSaving, saveStatus, onSave
                   <div key={idx} className="space-y-1">
                     <div className="flex justify-between text-xs font-medium">
                       <span className="text-slate-400">{item.label}</span>
-                      <span className="text-white font-bold">{item.val}.0 / 9.0</span>
+                      <span className="text-white font-bold">{item.val} / 100</span>
                     </div>
                     <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
                       <div 
-                        className={`h-full rounded-full transition-all duration-1000 ${getIeltsBarColor(item.val)}`} 
-                        style={{ width: `${(item.val / 9) * 100}%` }}
+                        className={`h-full rounded-full transition-all duration-1000 ${getScoreBarColor(item.val)}`} 
+                        style={{ width: `${Math.max(0, Math.min(100, item.val))}%` }}
                       />
                     </div>
                   </div>
@@ -182,12 +182,12 @@ export function ScoreCard({ mode, score, onRestart, isSaving, saveStatus, onSave
                   <div key={idx} className="space-y-1">
                     <div className="flex justify-between text-xs font-medium">
                       <span className="text-slate-400">{item.label}</span>
-                      <span className="text-white font-bold">{item.val}.0 / 9.0</span>
+                      <span className="text-white font-bold">{item.val} / 100</span>
                     </div>
                     <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
                       <div 
-                        className={`h-full rounded-full transition-all duration-1000 ${getIeltsBarColor(item.val)}`} 
-                        style={{ width: `${(item.val / 9) * 100}%` }}
+                        className={`h-full rounded-full transition-all duration-1000 ${getScoreBarColor(item.val)}`} 
+                        style={{ width: `${Math.max(0, Math.min(100, item.val))}%` }}
                       />
                     </div>
                   </div>

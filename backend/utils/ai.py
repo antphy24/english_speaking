@@ -43,18 +43,18 @@ class ReadAloudEvaluation(BaseModel):
     feedback: str = Field(..., description="Detailed constructive feedback analyzing the student's read aloud performance")
 
 class QAEvaluation(BaseModel):
-    fluency: int = Field(..., description="IELTS Speaking Band score (1 to 9) for Fluency and Coherence")
-    lexical_resource: int = Field(..., description="IELTS Speaking Band score (1 to 9) for Lexical Resource")
-    grammatical_range: int = Field(..., description="IELTS Speaking Band score (1 to 9) for Grammatical Range and Accuracy")
-    pronunciation: int = Field(..., description="IELTS Speaking Band score (1 to 9) for Pronunciation")
-    feedback: str = Field(..., description="Detailed constructive feedback matching IELTS rubrics and suggestions for improvement")
+    fluency: int = Field(..., description="Score (0 to 100) for Fluency and Coherence")
+    lexical_resource: int = Field(..., description="Score (0 to 100) for Lexical Resource")
+    grammatical_range: int = Field(..., description="Score (0 to 100) for Grammatical Range and Accuracy")
+    pronunciation: int = Field(..., description="Score (0 to 100) for Pronunciation")
+    feedback: str = Field(..., description="Detailed constructive feedback and suggestions for improvement")
 
 class ConversationEvaluation(BaseModel):
-    fluency_and_coherence: int = Field(..., description="IELTS Speaking Band score (1 to 9) for Fluency and Coherence")
-    lexical_resource: int = Field(..., description="IELTS Speaking Band score (1 to 9) for Lexical Resource")
-    grammatical_range: int = Field(..., description="IELTS Speaking Band score (1 to 9) for Grammatical Range and Accuracy")
-    pronunciation: int = Field(..., description="IELTS Speaking Band score (1 to 9) for Pronunciation")
-    interactive_communication: int = Field(..., description="IELTS Speaking Band score (1 to 9) for Interactive Communication")
+    fluency_and_coherence: int = Field(..., description="Score (0 to 100) for Fluency and Coherence")
+    lexical_resource: int = Field(..., description="Score (0 to 100) for Lexical Resource")
+    grammatical_range: int = Field(..., description="Score (0 to 100) for Grammatical Range and Accuracy")
+    pronunciation: int = Field(..., description="Score (0 to 100) for Pronunciation")
+    interactive_communication: int = Field(..., description="Score (0 to 100) for Interactive Communication")
     feedback: str = Field(..., description="Detailed feedback on the entire conversation history, identifying strengths and weaknesses")
 
 class DebateEvaluation(BaseModel):
@@ -86,7 +86,7 @@ def transcribe_audio_bytes(audio_bytes: bytes, filename: str) -> str:
 
 def get_llama_chat_reply(messages: List[dict]) -> str:
     """
-    Generate next chatbot turn using Groq Llama-3.3-70B.
+    Generate next chatbot turn using Groq Qwen3.6-27B.
     """
     client = get_groq_client()
     system_prompt = (
@@ -103,7 +103,7 @@ def get_llama_chat_reply(messages: List[dict]) -> str:
         })
         
     completion = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model="qwen/qwen3.6-27b",
         messages=formatted_messages,
         temperature=0.7,
         max_tokens=150
@@ -150,11 +150,11 @@ def evaluate_qa(question: str, student_transcript: str) -> QAEvaluation:
         f"Act as an official IELTS Speaking examiner grading a candidate.\n\n"
         f"Question prompt: \"{question}\"\n"
         f"Candidate's response: \"{student_transcript}\"\n\n"
-        f"Evaluate the candidate's response using the IELTS assessment rubrics:\n"
-        f"- Fluency and Coherence (fluency score: 1 to 9)\n"
-        f"- Lexical Resource (vocabulary score: 1 to 9)\n"
-        f"- Grammatical Range and Accuracy (grammar score: 1 to 9)\n"
-        f"- Pronunciation (pronunciation score: 1 to 9)\n\n"
+        f"Evaluate the candidate's response and provide a score from 0 to 100 for each of the following criteria:\n"
+        f"- Fluency and Coherence (fluency score: 0 to 100)\n"
+        f"- Lexical Resource (vocabulary score: 0 to 100)\n"
+        f"- Grammatical Range and Accuracy (grammar score: 0 to 100)\n"
+        f"- Pronunciation (pronunciation score: 0 to 100)\n\n"
         f"Give the scores and provide detailed feedback on their strengths and weaknesses, "
         f"with recommendations to score higher."
     )
@@ -186,11 +186,11 @@ def evaluate_conversation(messages: List[dict]) -> ConversationEvaluation:
         f"Act as an official IELTS Speaking examiner. Evaluate the student's multi-turn conversational performance "
         f"with the AI Tutor based on the following transcript:\n\n"
         f"{formatted_transcript}\n"
-        f"Rate the student's performance from 1 to 9 on each of the following IELTS criteria:\n"
+        f"Rate the student's performance from 0 to 100 on each of the following criteria:\n"
         f"- Fluency and Coherence (fluency_and_coherence score)\n"
         f"- Lexical Resource (lexical_resource score)\n"
         f"- Grammatical Range and Accuracy (grammatical_range score)\n"
-        f"- Pronunciation (pronunciation score - note that since this is a text transcript, base this on phonetic signals, punctuation indicators, or assume a baseline grade of 6-7 if no clear errors, but evaluate based on general fluency cues)\n"
+        f"- Pronunciation (pronunciation score - note that since this is a text transcript, base this on phonetic signals, punctuation indicators, or assume a baseline grade if no clear errors, but evaluate based on general fluency cues)\n"
         f"- Interactive Communication (interactive_communication score - how well the student responds to the AI prompts, keeps the conversation going, and handles turn-taking)\n\n"
         f"Provide detailed constructive feedback highlighting their conversational ability and grammatical accuracy."
     )

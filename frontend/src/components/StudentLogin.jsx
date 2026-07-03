@@ -75,7 +75,8 @@ export function StudentLogin() {
     setError('');
     
     // Construct dummy email: student_[school_id]@[class_code].HreFSpeak.com (with school_id sanitized)
-    const sanitizedSchoolId = selectedStudent.school_id.replace(/[^a-zA-Z0-9]/g, '');
+    const rawSchoolId = (selectedStudent.school_id || selectedStudent.id || '').toString();
+    const sanitizedSchoolId = rawSchoolId.replace(/[^a-zA-Z0-9]/g, '');
     const dummyEmail = `student_${sanitizedSchoolId}@${classCode}.HreFSpeak.com`.toLowerCase();
     
     try {

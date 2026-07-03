@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useMediaRecorder } from '../hooks/useMediaRecorder';
 import ScoreCard from './UI/ScoreCard';
 import Spinner from './UI/Spinner';
@@ -65,13 +65,12 @@ export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = []
     }
   }, [recordingError]);
 
-  const handleSaveToLeaderboardRef = useRef(handleSaveToLeaderboard);
+  const handleSaveToLeaderboardRef = useRef(null);
   const processAudioRef = useRef(null);
-
-  processAudioRef.current = processAudio;
 
   useEffect(() => {
     handleSaveToLeaderboardRef.current = handleSaveToLeaderboard;
+    processAudioRef.current = processAudio;
   });
 
   // Auto-save score when grading completes

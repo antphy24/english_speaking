@@ -63,6 +63,7 @@ export function ScoresTab({
               <option value="read_aloud">Read Aloud</option>
               <option value="qa">Q&A Mock</option>
               <option value="conversation">AI Dialogue</option>
+              <option value="debate">Debate</option>
             </select>
           </div>
 
