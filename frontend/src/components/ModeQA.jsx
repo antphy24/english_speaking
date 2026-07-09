@@ -24,19 +24,22 @@ const QUESTIONS = [
 ];
 
 export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = [] }) {
-  const questionsList = customQuestions && customQuestions.length > 0
-    ? customQuestions.map((m, idx) => ({
-        id: m.id,
-        topic: m.title || `Custom Topic ${idx + 1}`,
-        prompt: m.content
-      }))
-    : QUESTIONS;
+  const customMapped = (customQuestions || []).map((m, idx) => ({
+    id: m.id,
+    topic: m.title || `Custom Topic ${idx + 1}`,
+    prompt: m.content
+  }));
+  
+  const questionsList = [...customMapped, ...QUESTIONS];
 
   const [selectedQuestion, setSelectedQuestion] = useState(questionsList[0]);
 
   useEffect(() => {
     if (questionsList.length > 0) {
-      setSelectedQuestion(questionsList[0]);
+      setSelectedQuestion(prev => {
+        const stillExists = questionsList.find(q => q.id === prev?.id);
+        return stillExists || questionsList[0];
+      });
     }
   }, [customQuestions]);
   const [status, setStatus] = useState('idle'); // 'idle' | 'recording' | 'transcribing' | 'grading' | 'graded' | 'error'
@@ -201,7 +204,7 @@ export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = []
     setIsSaving(true);
     setSaveStatus('');
     try {
-      await onSaveScore('qa', evaluation);
+      await onSaveScore('qa', { ...evaluation, material_title: selectedQuestion.topic });
       setSaveStatus('success');
     } catch (err) {
       setSaveStatus('error');

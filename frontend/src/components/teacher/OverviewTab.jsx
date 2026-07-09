@@ -1,11 +1,20 @@
 import React from 'react';
-import { Users, BookOpen } from 'lucide-react';
+import { Users, BookOpen, Clock } from 'lucide-react';
 
-export function OverviewTab({ classesList, allStudents, allAssessments, formatScoreDetails }) {
+function formatDuration(totalSeconds) {
+  if (!totalSeconds) return '0m';
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+export function OverviewTab({ classesList, allStudents, allAssessments, activityData, formatScoreDetails }) {
+  const totalPracticeTime = activityData ? activityData.reduce((acc, log) => acc + log.active_seconds, 0) : 0;
   return (
     <div className="space-y-8">
       {/* Stats cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="glass-panel p-6 rounded-2xl border border-slate-800 flex justify-between items-center">
           <div>
             <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Active Classes</span>
@@ -33,6 +42,16 @@ export function OverviewTab({ classesList, allStudents, allAssessments, formatSc
           </div>
           <div className="p-3 bg-pink-600/10 text-pink-400 border border-pink-500/20 rounded-2xl">
             <BookOpen className="w-6 h-6" />
+          </div>
+        </div>
+
+        <div className="glass-panel p-6 rounded-2xl border border-slate-800 flex justify-between items-center">
+          <div>
+            <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Practice Time</span>
+            <span className="text-3xl font-extrabold text-white mt-1 block">{formatDuration(totalPracticeTime)}</span>
+          </div>
+          <div className="p-3 bg-amber-600/10 text-amber-400 border border-amber-500/20 rounded-2xl">
+            <Clock className="w-6 h-6" />
           </div>
         </div>
       </div>

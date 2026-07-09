@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { supabase } from '../utils/supabaseClient';
+import { supabaseTeacher as supabase } from '../utils/supabaseClient';
 import { ShieldCheck, ShieldAlert, Check, UserPlus, LogIn } from 'lucide-react';
 
 export function TeacherLogin() {

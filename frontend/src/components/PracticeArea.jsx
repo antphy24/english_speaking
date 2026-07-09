@@ -8,11 +8,14 @@ import ModeDebate from './ModeDebate';
 import Leaderboard from './Leaderboard';
 import { BookOpen, HelpCircle, MessageSquare, Award, UserCheck, LogOut, Sparkles, Gavel } from 'lucide-react';
 import Spinner from './UI/Spinner';
+import { useConfirm } from './UI/ConfirmModal';
+import useActivityTracker from '../hooks/useActivityTracker';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
 export function PracticeArea() {
   const navigate = useNavigate();
+  const confirm = useConfirm();
 
   const [student, setStudent] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
@@ -22,6 +25,20 @@ export function PracticeArea() {
   // Verification state for scores saving
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState(''); // '' | 'saving' | 'success' | 'error'
+
+  const sessionStartTimeRef = React.useRef(Date.now());
+
+  // Activity Tracking
+  const { activeSeconds, idleSeconds, isActive } = useActivityTracker({
+    studentId: student?.id,
+    classId: student?.class_id,
+    activeMode: activeTab === 'leaderboard' ? null : activeTab
+  });
+
+  useEffect(() => {
+    // Reset assessment duration timer when mode changes
+    sessionStartTimeRef.current = Date.now();
+  }, [activeTab]);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -75,7 +92,13 @@ export function PracticeArea() {
   }, [navigate]);
 
   const handleSignOut = async () => {
-    if (window.confirm("Sign out of your practice session?")) {
+    const confirmed = await confirm({
+      title: 'Sign Out',
+      message: 'Sign out of your practice session?',
+      confirmLabel: 'Sign Out',
+      variant: 'logout',
+    });
+    if (confirmed) {
       await supabase.auth.signOut();
       navigate('/student/login');
     }
@@ -86,8 +109,7 @@ export function PracticeArea() {
     setIsSaving(true);
     setSaveStatus('saving');
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('No user session.');
+      if (!student || !student.id) throw new Error('No active student session.');
 
       // Map score value to integer
       let rawScore = 0;
@@ -105,22 +127,28 @@ export function PracticeArea() {
       }
 
       const roundedScore = Math.round(rawScore);
+      
+      const durationSeconds = Math.round((Date.now() - sessionStartTimeRef.current) / 1000);
 
       const { error } = await supabase
         .from('assessments')
         .insert({
-          student_id: user.id,
+          student_id: student.id,
           mode: mode,
           score: roundedScore,
-          feedback: scoreData // Full Gemini JSON structure
+          feedback: scoreData, // Full Gemini JSON structure
+          duration_seconds: durationSeconds
         });
 
       if (error) throw error;
       setSaveStatus('success');
+      
+      // Reset timer for next attempt
+      sessionStartTimeRef.current = Date.now();
     } catch (err) {
       console.error('Failed to log score to database:', err);
       setSaveStatus('error');
-      alert('Error saving assessment score. Please try again.');
+      alert(`Error saving assessment score. Details: ${err.message || JSON.stringify(err)}`);
     } finally {
       setIsSaving(false);
     }

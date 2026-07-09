@@ -6,11 +6,17 @@ import Spinner from './UI/Spinner';
 export function Leaderboard({ student }) {
   const [activeSource, setActiveSource] = useState('global'); // 'global' (class rankings) | 'local' (own history)
   const [activeModeTab, setActiveModeTab] = useState('read_aloud'); // 'read_aloud' | 'qa' | 'conversation'
+  const [activeMaterialFilter, setActiveMaterialFilter] = useState('all');
   
   const [localHistory, setLocalHistory] = useState([]);
   const [classRankings, setClassRankings] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Reset material filter when mode changes
+  useEffect(() => {
+    setActiveMaterialFilter('all');
+  }, [activeModeTab]);
 
   // Load student profile & local history
   useEffect(() => {
@@ -95,11 +101,23 @@ export function Leaderboard({ student }) {
     return <span className="text-xs font-bold text-slate-500 font-mono">#{index + 1}</span>;
   };
 
+  // Extract unique materials for the current mode
+  const uniqueMaterials = Array.from(new Set(
+    classRankings
+      .filter(item => item.mode === activeModeTab)
+      .map(item => item.feedback?.material_title || item.feedback?.motion || 'Default Material')
+      .filter(Boolean)
+  )).sort();
+
   // Process leaderboard sorting based on mode tab
   const getSortedRankings = (mode) => {
-    // Mode filtering is already done in supabase query but we keep this as a safeguard
     return classRankings
       .filter(item => item.mode === mode)
+      .filter(item => {
+        if (activeSource === 'local') return true; // Keep local history unfiltered by material unless desired
+        const materialTitle = item.feedback?.material_title || item.feedback?.motion || 'Default Material';
+        return activeMaterialFilter === 'all' || materialTitle === activeMaterialFilter;
+      })
       .sort((a, b) => b.score - a.score);
   };
 
@@ -187,21 +205,39 @@ export function Leaderboard({ student }) {
             {/* Global Class Rankings Tab */}
             {activeSource === 'global' && (
               <div>
-                <div className="flex border-b border-slate-850 bg-slate-900/20 px-6">
-                  {['read_aloud', 'qa', 'conversation', 'debate'].map(mode => (
-                    <button
-                      key={mode}
-                      onClick={() => setActiveModeTab(mode)}
-                      className={`flex items-center space-x-1.5 py-3.5 px-4 text-xs font-bold border-b-2 -mb-px transition ${
-                        activeModeTab === mode 
-                          ? 'border-purple-500 text-purple-400 font-extrabold' 
-                          : 'border-transparent text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      {getModeIcon(mode)}
-                      <span>{getModeLabel(mode)}</span>
-                    </button>
-                  ))}
+                <div className="flex flex-col sm:flex-row border-b border-slate-850 bg-slate-900/20 px-6 sm:items-center justify-between gap-4 py-2 sm:py-0">
+                  <div className="flex overflow-x-auto no-scrollbar">
+                    {['read_aloud', 'qa', 'conversation', 'debate'].map(mode => (
+                      <button
+                        key={mode}
+                        onClick={() => setActiveModeTab(mode)}
+                        className={`flex items-center space-x-1.5 py-3.5 px-4 text-xs font-bold border-b-2 -mb-px transition whitespace-nowrap ${
+                          activeModeTab === mode 
+                            ? 'border-purple-500 text-purple-400 font-extrabold' 
+                            : 'border-transparent text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {getModeIcon(mode)}
+                        <span>{getModeLabel(mode)}</span>
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {uniqueMaterials.length > 0 && (
+                    <div className="flex items-center space-x-2 py-2 sm:py-0">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Material:</span>
+                      <select
+                        value={activeMaterialFilter}
+                        onChange={(e) => setActiveMaterialFilter(e.target.value)}
+                        className="bg-slate-950 border border-slate-800 text-slate-300 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-purple-500 max-w-[200px] truncate"
+                      >
+                        <option value="all">All Materials</option>
+                        {uniqueMaterials.map(mat => (
+                          <option key={mat} value={mat}>{mat}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
 
                 {getSortedRankings(activeModeTab).length === 0 ? (
@@ -217,6 +253,7 @@ export function Leaderboard({ student }) {
                         <tr className="bg-slate-900/30 text-slate-400 text-[10px] font-semibold uppercase tracking-wider border-b border-slate-850">
                           <th className="py-3.5 px-6 w-16 text-center">Rank</th>
                           <th className="py-3.5 px-6">Student</th>
+                          <th className="py-3.5 px-6">Material</th>
                           <th className="py-3.5 px-6">Date</th>
                           <th className="py-3.5 px-6">Score</th>
                           <th className="py-3.5 px-6">Feedback Summary</th>
@@ -227,6 +264,9 @@ export function Leaderboard({ student }) {
                           <tr key={record.id} className="hover:bg-slate-900/40 transition">
                             <td className="py-4 px-6 text-center">{getRankBadge(index)}</td>
                             <td className="py-4 px-6 font-bold text-white">{record.student?.full_name}</td>
+                            <td className="py-4 px-6 text-slate-300 font-medium truncate max-w-[150px]" title={record.feedback?.material_title || record.feedback?.motion || 'Default Material'}>
+                              {record.feedback?.material_title || record.feedback?.motion || 'Default Material'}
+                            </td>
                             <td className="py-4 px-6 text-slate-400 font-mono text-[10px]">
                               {new Date(record.created_at).toLocaleString()}
                             </td>
@@ -261,6 +301,7 @@ export function Leaderboard({ student }) {
                         <tr className="bg-slate-900/30 text-slate-400 text-[10px] font-semibold uppercase tracking-wider border-b border-slate-850">
                           <th className="py-3 px-6">Date & Time</th>
                           <th className="py-3 px-6">Assessment Mode</th>
+                          <th className="py-3 px-6">Material</th>
                           <th className="py-3 px-6">Score</th>
                           <th className="py-3 px-6">Feedback Summary</th>
                         </tr>
@@ -276,6 +317,9 @@ export function Leaderboard({ student }) {
                                 {getModeIcon(record.mode)}
                                 <span>{getModeLabel(record.mode)}</span>
                               </div>
+                            </td>
+                            <td className="py-4 px-6 text-slate-300 font-medium truncate max-w-[150px]" title={record.feedback?.material_title || record.feedback?.motion || 'Default Material'}>
+                              {record.feedback?.material_title || record.feedback?.motion || 'Default Material'}
                             </td>
                             <td className="py-4 px-6">
                               {formatScoreDisplay(record.mode, record.score, record.feedback)}

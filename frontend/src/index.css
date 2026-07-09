@@ -98,3 +98,22 @@ body {
 .animate-fadeIn {
   animation: fadeIn 0.4s ease-out forwards;
 }
+
+/* Confirm modal animations */
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes cardSlideUp {
+  from { opacity: 0; transform: translateY(24px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.confirm-overlay {
+  animation: overlayFadeIn 0.2s ease-out forwards;
+}
+
+.confirm-card {
+  animation: cardSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}

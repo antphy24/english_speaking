@@ -9,6 +9,7 @@ import { OverviewTab } from './teacher/OverviewTab';
 import { ClassesTab } from './teacher/ClassesTab';
 import { MaterialsTab } from './teacher/MaterialsTab';
 import { ScoresTab } from './teacher/ScoresTab';
+import { ActivityTab } from './teacher/ActivityTab';
 
 // Helper score structures (Renders accuracy and IELTS details from JSON payload)
 const formatScoreDetails = (mode, scoreData) => {
@@ -77,6 +78,7 @@ export function TeacherDashboard() {
     classes: 'Classrooms & Enrollments',
     materials: 'Manage Practice Materials',
     scores: 'Assessments Score Ledger',
+    activity: 'Student Activity Monitor',
   };
 
   const TAB_DESCRIPTIONS = {
@@ -84,6 +86,7 @@ export function TeacherDashboard() {
     classes: 'Create classrooms, generate class keys, and add students in bulk.',
     materials: 'Add class-specific custom texts for Read Aloud, prompts for Q&A, or AI conversations.',
     scores: 'Deep-dive review of individual student speech assessments.',
+    activity: 'Track active practice time and monitor idle behavior.',
   };
 
   return (
@@ -120,6 +123,7 @@ export function TeacherDashboard() {
               { key: 'classes', icon: Users, label: 'Classes & Enrollment' },
               { key: 'materials', icon: BookOpen, label: 'Class Materials' },
               { key: 'scores', icon: Award, label: 'Assessment Records' },
+              { key: 'activity', icon: BarChart2, label: 'Activity Monitor' },
             ].map(({ key, icon: Icon, label }) => (
               <button
                 key={key}
@@ -213,6 +217,7 @@ export function TeacherDashboard() {
                 bulkStudentsText={data.bulkStudentsText}
                 setBulkStudentsText={data.setBulkStudentsText}
                 handleBulkEnroll={data.handleBulkEnroll}
+                handleUnenrollStudent={data.handleUnenrollStudent}
                 importing={data.importing}
                 importResults={data.importResults}
                 setActionSuccess={data.setActionSuccess}
@@ -247,6 +252,7 @@ export function TeacherDashboard() {
 
             {activeTab === 'scores' && (
               <ScoresTab
+                allAssessments={data.allAssessments}
                 classesList={data.classesList}
                 searchQuery={data.searchQuery}
                 setSearchQuery={data.setSearchQuery}
@@ -254,12 +260,24 @@ export function TeacherDashboard() {
                 setSelectedClassFilter={data.setSelectedClassFilter}
                 selectedModeFilter={data.selectedModeFilter}
                 setSelectedModeFilter={data.setSelectedModeFilter}
+                selectedMaterialFilter={data.selectedMaterialFilter}
+                setSelectedMaterialFilter={data.setSelectedMaterialFilter}
                 getFilteredAssessments={data.getFilteredAssessments}
                 handleDownloadCSV={data.handleDownloadCSV}
                 formatScoreDetails={formatScoreDetails}
                 currentPage={data.currentPage}
                 setCurrentPage={data.setCurrentPage}
                 itemsPerPage={data.itemsPerPage}
+              />
+            )}
+
+            {activeTab === 'activity' && (
+              <ActivityTab
+                classesList={data.classesList}
+                allStudents={data.allStudents}
+                activityData={data.activityData}
+                selectedActivityClass={data.selectedActivityClass}
+                setSelectedActivityClass={data.setSelectedActivityClass}
               />
             )}
           </div>

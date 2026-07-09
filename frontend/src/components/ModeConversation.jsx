@@ -2,10 +2,40 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useMediaRecorder } from '../hooks/useMediaRecorder';
 import ScoreCard from './UI/ScoreCard';
 import Spinner from './UI/Spinner';
+import { useConfirm } from './UI/ConfirmModal';
 import { Mic, MicOff, Info, Send, Volume2, VolumeX, User, Bot, AlertTriangle } from 'lucide-react';
 import { fetchWithRetry, parseError } from '../utils/api';
 
+const DEFAULT_GREETINGS = [
+  { id: 'def-1', title: "General Chat", content: "Hello {studentName}! I am your AI English conversation partner. What is a topic you would like to chat about today? Or we can talk about your hobbies!" },
+  { id: 'def-2', title: "Job Interview Practice", content: "Hello {studentName}! I will be acting as your hiring manager today. To start, please introduce yourself and tell me about your background." },
+  { id: 'def-3', title: "Travel & Tourism", content: "Hi {studentName}! Imagine we just met at a hostel in Tokyo. What brings you to Japan?" }
+];
+
 export function ModeConversation({ studentName, apiBase, onSaveScore, customGreetings = [] }) {
+  const confirm = useConfirm();
+  const [step, setStep] = useState('setup'); // setup -> chatting
+  const availableGreetings = [
+    ...(customGreetings || []).map((m, idx) => ({
+      id: m.id || `custom-${idx}`,
+      title: m.title || `Custom Topic ${idx + 1}`,
+      content: m.content
+    })),
+    ...DEFAULT_GREETINGS
+  ];
+  
+  const [selectedTopic, setSelectedTopic] = useState(availableGreetings[0]);
+
+  // Prevent reversion bug
+  useEffect(() => {
+    if (availableGreetings.length > 0) {
+      setSelectedTopic(prev => {
+        const stillExists = availableGreetings.find(g => g.id === prev?.id);
+        return stillExists || availableGreetings[0];
+      });
+    }
+  }, [customGreetings]);
+
   const [messages, setMessages] = useState([]);
   const [status, setStatus] = useState('idle'); // 'idle' | 'recording' | 'transcribing' | 'bot_replying' | 'grading' | 'graded' | 'error'
   const [errorMessage, setErrorMessage] = useState('');
@@ -66,17 +96,16 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
 
   // Start conversation with a greeting from the AI tutor
   useEffect(() => {
-    if (messages.length === 0 && !hasGreetedRef.current) {
+    if (step === 'chatting' && messages.length === 0 && !hasGreetedRef.current) {
       hasGreetedRef.current = true;
-      const customGreetingText = customGreetings && customGreetings.length > 0 ? customGreetings[0].content : null;
-      const greeting = customGreetingText || `Hello ${studentName}! I am your AI English conversation partner. What is a topic you would like to chat about today? Or we can talk about your hobbies!`;
-      setMessages([{ role: 'assistant', content: greeting }]);
+      const greetingText = selectedTopic.content.replace('{studentName}', studentName || 'there');
+      setMessages([{ role: 'assistant', content: greetingText }]);
       // Read aloud the greeting after a brief delay so voices can load
       setTimeout(() => {
-        speakText(greeting);
+        speakText(greetingText);
       }, 500);
     }
-  }, [studentName, customGreetings, messages.length]);
+  }, [step, selectedTopic, studentName, messages.length]);
 
   // Helper to read text aloud via Web Speech API
   const speakText = (text) => {
@@ -180,9 +209,13 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
     // Calculate student turns (messages with role 'user')
     const studentTurns = messages.filter(m => m.role === 'user').length;
     if (studentTurns < 3) {
-      const confirmEnd = window.confirm(
-        `You have only spoken ${studentTurns} times. We recommend 3-5 speaking turns for a high-quality IELTS evaluation. Are you sure you want to grade now?`
-      );
+      const confirmEnd = await confirm({
+        title: 'End Conversation Early?',
+        message: `You have only spoken ${studentTurns} time${studentTurns !== 1 ? 's' : ''}. We recommend 3–5 speaking turns for a high-quality IELTS evaluation. Grade now anyway?`,
+        confirmLabel: 'Grade Now',
+        cancelLabel: 'Keep Talking',
+        variant: 'warning',
+      });
       if (!confirmEnd) return;
     }
 
@@ -219,7 +252,9 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
   };
 
   const handleRestart = () => {
+    setStep('setup');
     setMessages([]);
+    hasGreetedRef.current = false;
     setEvaluation(null);
     setSaveStatus('');
     setErrorType(null);
@@ -231,7 +266,7 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
     setIsSaving(true);
     setSaveStatus('');
     try {
-      await onSaveScore('conversation', evaluation);
+      await onSaveScore('conversation', { ...evaluation, material_title: selectedTopic.title });
       setSaveStatus('success');
     } catch (err) {
       setSaveStatus('error');
@@ -241,6 +276,57 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
   };
 
   const studentTurnsCount = messages.filter(m => m.role === 'user').length;
+
+  // ---------------- Render Helpers ----------------
+  
+  if (step === 'setup') {
+    return (
+      <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl p-6 md:p-8 animate-fadeIn shadow-2xl">
+        <div className="flex items-center space-x-3 mb-6">
+          <div className="p-3 bg-indigo-500/10 text-indigo-400 rounded-xl border border-indigo-500/20">
+            <User className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-white">Conversation Setup</h3>
+            <p className="text-sm text-slate-400">Select a topic for your conversation practice.</p>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div>
+            <label className="block text-sm font-semibold text-slate-300 mb-2">Select Topic</label>
+            <select
+              value={selectedTopic.id}
+              onChange={(e) => {
+                const topic = availableGreetings.find(g => g.id.toString() === e.target.value);
+                if (topic) setSelectedTopic(topic);
+              }}
+              className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-xl p-3 focus:outline-none focus:border-indigo-500/50 transition-colors"
+            >
+              {availableGreetings.map((g) => (
+                <option key={g.id} value={g.id}>{g.title}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 text-sm text-slate-400">
+            <strong className="text-indigo-400">Tutor's Opening:</strong><br />
+            {selectedTopic.content.replace('{studentName}', studentName || 'there')}
+          </div>
+
+          <div className="pt-4">
+            <button
+              onClick={() => setStep('chatting')}
+              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3.5 px-4 rounded-xl transition-colors flex items-center justify-center space-x-2 shadow-lg shadow-indigo-900/20"
+            >
+              <span>Start Conversation</span>
+              <Send className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

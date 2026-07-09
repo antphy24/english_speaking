@@ -1,5 +1,5 @@
-import React from 'react';
-import { Trash2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Trash2, Edit2, X, Check } from 'lucide-react';
 
 export function MaterialsTab({
   teacher,
@@ -21,7 +21,26 @@ export function MaterialsTab({
   handleDeleteMaterial,
   setActionError,
   setActionSuccess,
+  handleUpdateMaterial,
 }) {
+  const [editingMaterialId, setEditingMaterialId] = useState(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editContent, setEditContent] = useState('');
+
+  const startEditMaterial = (material) => {
+    setEditTitle(material.title);
+    setEditContent(material.content);
+    setEditingMaterialId(material.id);
+  };
+
+  const saveEditMaterial = async (materialId) => {
+    await handleUpdateMaterial(materialId, {
+      title: editTitle,
+      content: editContent
+    });
+    setEditingMaterialId(null);
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-fadeIn">
       {/* Left col: Add Material */}
@@ -102,13 +121,13 @@ export function MaterialsTab({
             >
               <option value="read_aloud">1. Read Aloud</option>
               <option value="qa">2. Q&A Mock Prompt</option>
-              <option value="conversation">3. AI Conversation greeting</option>
+              <option value="conversation">3. AI Conversation</option>
               <option value="debate">4. Debate Motion</option>
             </select>
           </div>
 
-          {/* Title input (Hidden for Conversation mode) */}
-          {materialMode !== 'conversation' && materialMode !== 'debate' && (
+          {/* Title input (Hidden for Debate mode only) */}
+          {materialMode !== 'debate' && (
             <div className="space-y-1 text-left animate-fadeIn">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Material Title</label>
               <input
@@ -116,7 +135,7 @@ export function MaterialsTab({
                 required
                 value={materialTitle}
                 onChange={e => setMaterialTitle(e.target.value)}
-                placeholder={materialMode === 'read_aloud' ? "e.g. Tech Essay (Hard)" : "e.g. Hobbies Topic"}
+                placeholder={materialMode === 'read_aloud' ? "e.g. Tech Essay (Hard)" : materialMode === 'conversation' ? "e.g. Booking a Hotel" : "e.g. Hobbies Topic"}
                 className="w-full px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white placeholder-slate-650 focus:outline-none focus:border-indigo-500 transition text-xs"
               />
             </div>
@@ -167,29 +186,64 @@ export function MaterialsTab({
           <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
             {customMaterials.map((material) => (
               <div key={material.id} className="p-4 rounded-xl bg-slate-900/50 border border-slate-850 flex justify-between items-start gap-4">
-                <div className="space-y-1.5 flex-1 min-w-0">
-                  <div className="flex items-center space-x-2">
-                    {material.mode === 'read_aloud' && <span className="px-2 py-0.5 bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Read Aloud</span>}
-                    {material.mode === 'qa' && <span className="px-2 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Q&A Mock</span>}
-                    {material.mode === 'conversation' && <span className="px-2 py-0.5 bg-pink-500/10 text-pink-400 border border-pink-500/20 rounded text-[9px] font-bold uppercase tracking-wider">AI Dialogue</span>}
-                    {material.mode === 'debate' && <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Debate</span>}
-                    {material.class_id === null ? (
-                      <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">Global: {material.grade_level}</span>
-                    ) : (
-                      <span className="text-[10px] text-slate-500 font-mono">({material.class?.class_name})</span>
+                {editingMaterialId === material.id ? (
+                  <div className="w-full space-y-3">
+                    {material.mode !== 'conversation' && material.mode !== 'debate' && (
+                      <input 
+                        type="text" 
+                        value={editTitle} 
+                        onChange={e => setEditTitle(e.target.value)} 
+                        className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white text-sm focus:border-indigo-500 outline-none" 
+                        placeholder="Material Title"
+                      />
                     )}
+                    <textarea
+                      rows={4}
+                      value={editContent}
+                      onChange={e => setEditContent(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white text-xs focus:border-indigo-500 outline-none"
+                    />
+                    <div className="flex justify-end space-x-2">
+                      <button onClick={() => saveEditMaterial(material.id)} className="p-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-lg flex items-center space-x-1 text-xs px-3"><Check size={14} /> <span>Save</span></button>
+                      <button onClick={() => setEditingMaterialId(null)} className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg flex items-center space-x-1 text-xs px-3"><X size={14} /> <span>Cancel</span></button>
+                    </div>
                   </div>
-                  <h4 className="font-bold text-white text-sm truncate">{material.title}</h4>
-                  <p className="text-xs text-slate-400 line-clamp-3 leading-relaxed whitespace-pre-wrap">{material.content}</p>
-                </div>
+                ) : (
+                  <>
+                    <div className="space-y-1.5 flex-1 min-w-0">
+                      <div className="flex items-center space-x-2">
+                        {material.mode === 'read_aloud' && <span className="px-2 py-0.5 bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Read Aloud</span>}
+                        {material.mode === 'qa' && <span className="px-2 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Q&A Mock</span>}
+                        {material.mode === 'conversation' && <span className="px-2 py-0.5 bg-pink-500/10 text-pink-400 border border-pink-500/20 rounded text-[9px] font-bold uppercase tracking-wider">AI Dialogue</span>}
+                        {material.mode === 'debate' && <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Debate</span>}
+                        {material.class_id === null ? (
+                          <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">Global: {material.grade_level}</span>
+                        ) : (
+                          <span className="text-[10px] text-slate-500 font-mono">({material.class?.class_name})</span>
+                        )}
+                      </div>
+                      <h4 className="font-bold text-white text-sm truncate">{material.title}</h4>
+                      <p className="text-xs text-slate-400 line-clamp-3 leading-relaxed whitespace-pre-wrap">{material.content}</p>
+                    </div>
 
-                <button
-                  onClick={() => handleDeleteMaterial(material.id)}
-                  className="p-2 bg-slate-950 border border-slate-850 hover:border-rose-900/50 hover:bg-rose-950/20 text-slate-500 hover:text-rose-400 rounded-lg transition shrink-0 cursor-pointer"
-                  title="Delete material"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                    <div className="flex flex-col space-y-2 shrink-0">
+                      <button
+                        onClick={() => startEditMaterial(material)}
+                        className="p-2 bg-slate-950 border border-slate-850 hover:border-indigo-900/50 hover:bg-indigo-950/20 text-slate-500 hover:text-indigo-400 rounded-lg transition cursor-pointer"
+                        title="Edit material"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteMaterial(material.id)}
+                        className="p-2 bg-slate-950 border border-slate-850 hover:border-rose-900/50 hover:bg-rose-950/20 text-slate-500 hover:text-rose-400 rounded-lg transition cursor-pointer"
+                        title="Delete material"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             ))}
           </div>

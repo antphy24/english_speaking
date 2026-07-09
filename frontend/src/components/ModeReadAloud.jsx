@@ -24,19 +24,22 @@ const PARAGRAPHS = [
 ];
 
 export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagraphs = [] }) {
-  const paragraphsList = customParagraphs && customParagraphs.length > 0
-    ? customParagraphs.map((m, idx) => ({
-        id: m.id,
-        title: m.title || `Custom Paragraph ${idx + 1}`,
-        text: m.content
-      }))
-    : PARAGRAPHS;
+  const customMapped = (customParagraphs || []).map((m, idx) => ({
+    id: m.id,
+    title: m.title || `Custom Paragraph ${idx + 1}`,
+    text: m.content
+  }));
+  
+  const paragraphsList = [...customMapped, ...PARAGRAPHS];
 
   const [selectedParagraph, setSelectedParagraph] = useState(paragraphsList[0]);
 
   useEffect(() => {
     if (paragraphsList.length > 0) {
-      setSelectedParagraph(paragraphsList[0]);
+      setSelectedParagraph(prev => {
+        const stillExists = paragraphsList.find(p => p.id === prev?.id);
+        return stillExists || paragraphsList[0];
+      });
     }
   }, [customParagraphs]);
 
@@ -226,7 +229,7 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
     setIsSaving(true);
     setSaveStatus('');
     try {
-      await onSaveScore('read_aloud', evaluation);
+      await onSaveScore('read_aloud', { ...evaluation, material_title: selectedParagraph.title });
       setSaveStatus('success');
     } catch (err) {
       setSaveStatus('error');

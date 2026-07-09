@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../utils/supabaseClient';
+import { supabaseTeacher as supabase } from '../utils/supabaseClient';
+import { useConfirm } from '../components/UI/ConfirmModal';
 
 export function useTeacherData() {
   const navigate = useNavigate();
+  const confirm = useConfirm();
   
   // Auth state
   const [teacher, setTeacher] = useState(null);
@@ -15,7 +17,14 @@ export function useTeacherData() {
   const [allStudents, setAllStudents] = useState([]);
   const [allAssessments, setAllAssessments] = useState([]);
   const [customMaterials, setCustomMaterials] = useState([]);
+  const [activityData, setActivityData] = useState([]);
   const [loadingData, setLoadingData] = useState(false);
+
+  // Activity monitor state
+  const [selectedActivityClass, setSelectedActivityClass] = useState('all');
+
+  // Editing state
+  const [editingMaterial, setEditingMaterial] = useState(null);
 
   // Forms state
   const [newClassName, setNewClassName] = useState('');
@@ -41,6 +50,7 @@ export function useTeacherData() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClassFilter, setSelectedClassFilter] = useState('all');
   const [selectedModeFilter, setSelectedModeFilter] = useState('all');
+  const [selectedMaterialFilter, setSelectedMaterialFilter] = useState('all');
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -49,7 +59,7 @@ export function useTeacherData() {
   // Reset pagination on filter change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedClassFilter, selectedModeFilter]);
+  }, [searchQuery, selectedClassFilter, selectedModeFilter, selectedMaterialFilter]);
 
   // Verify auth session
   useEffect(() => {
@@ -149,10 +159,25 @@ export function useTeacherData() {
         if (materialsErr) throw materialsErr;
         setCustomMaterials(materialsData || []);
 
+        // 5. Fetch Activity Logs
+        if (studentIds.length > 0) {
+          const { data: activityLogsData, error: activityErr } = await supabase
+            .from('activity_logs')
+            .select('*')
+            .in('student_id', studentIds)
+            .order('created_at', { ascending: false });
+
+          if (activityErr) throw activityErr;
+          setActivityData(activityLogsData || []);
+        } else {
+          setActivityData([]);
+        }
+
       } else {
         setAllStudents([]);
         setAllAssessments([]);
         setCustomMaterials([]);
+        setActivityData([]);
       }
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
@@ -169,7 +194,13 @@ export function useTeacherData() {
   }, [loadingAuth, teacher, loadDashboardData]);
 
   const handleSignOut = async () => {
-    if (window.confirm('Log out from teacher portal?')) {
+    const confirmed = await confirm({
+      title: 'Log Out',
+      message: 'Are you sure you want to log out from the teacher portal?',
+      confirmLabel: 'Log Out',
+      variant: 'logout',
+    });
+    if (confirmed) {
       await supabase.auth.signOut();
       navigate('/teacher/login');
     }
@@ -207,6 +238,85 @@ export function useTeacherData() {
     } catch (err) {
       console.error('Create class failed:', err);
       setActionError(err.message || 'Failed to create class. Code collision? Try again.');
+    }
+  };
+
+  // Update a class
+  const handleUpdateClass = async (classId, updates) => {
+    setActionError('');
+    setActionSuccess('');
+    
+    try {
+      const { data, error } = await supabase
+        .from('classes')
+        .update(updates)
+        .eq('id', classId)
+        .select()
+        .single();
+        
+      if (error) throw error;
+      
+      setActionSuccess('Class updated successfully!');
+      setClassesList(prev => prev.map(c => c.id === classId ? { ...c, ...updates } : c));
+      if (selectedClass?.id === classId) setSelectedClass(prev => ({ ...prev, ...updates }));
+      if (selectedClassMaterial?.id === classId) setSelectedClassMaterial(prev => ({ ...prev, ...updates }));
+    } catch (err) {
+      console.error('Update class failed:', err);
+      setActionError(err.message || 'Failed to update class.');
+    }
+  };
+
+  // Delete a class
+  const handleDeleteClass = async (classId, className) => {
+    const confirmed = await confirm({
+      title: 'Delete Class',
+      message: `Delete class "${className}"? This will permanently delete ALL students, their assessment data, and their activity logs. This action cannot be undone.`,
+      confirmLabel: 'Delete Class & All Data',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
+
+    setActionError('');
+    setActionSuccess('');
+    
+    const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const sessionToken = session?.access_token;
+      
+      if (!sessionToken) throw new Error('Teacher session expired. Please log in again.');
+
+      const response = await fetch(`${API_BASE}/teacher/delete-class`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionToken}`
+        },
+        body: JSON.stringify({ classId })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        let errMsg = 'Failed to delete class.';
+        try {
+          const parsed = JSON.parse(errText);
+          errMsg = parsed.detail || errMsg;
+        } catch (_) {}
+        throw new Error(errMsg);
+      }
+
+      setActionSuccess(`Class "${className}" deleted successfully.`);
+      setClassesList(prev => prev.filter(c => c.id !== classId));
+      if (selectedClass?.id === classId) setSelectedClass(null);
+      if (selectedClassMaterial?.id === classId) setSelectedClassMaterial(null);
+      // Remove associated students and assessments from state
+      setAllStudents(prev => prev.filter(s => s.class_id !== classId));
+      setAllAssessments(prev => prev.filter(a => a.student?.class?.class_name !== className)); // best effort based on current state shape
+      setActivityData(prev => prev.filter(a => a.class_id !== classId));
+    } catch (err) {
+      console.error('Delete class failed:', err);
+      setActionError(err.message || 'Failed to delete class.');
     }
   };
 
@@ -307,6 +417,131 @@ export function useTeacherData() {
     }
   };
 
+  // Unenroll a single student from a class
+  const handleUnenrollStudent = async (studentId, studentName, classId) => {
+    const confirmed = await confirm({
+      title: 'Unenroll Student',
+      message: `Remove "${studentName}" from this class? This will delete their account and all associated assessment data.`,
+      confirmLabel: 'Remove Student',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
+
+    setActionError('');
+    setActionSuccess('');
+
+    const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const sessionToken = session?.access_token;
+
+      if (!sessionToken) {
+        throw new Error('Teacher session expired. Please log in again.');
+      }
+
+      const response = await fetch(`${API_BASE}/teacher/unenroll-student`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionToken}`
+        },
+        body: JSON.stringify({ studentId, classId })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        let errMsg = 'Failed to unenroll student.';
+        try {
+          const parsed = JSON.parse(errText);
+          errMsg = parsed.detail || errMsg;
+        } catch (_) {}
+        throw new Error(errMsg);
+      }
+
+      // Remove student from local state immediately
+      setAllStudents(prev => prev.filter(s => s.id !== studentId));
+      setAllAssessments(prev => prev.filter(a => a.student_id !== studentId));
+      setActivityData(prev => prev.filter(a => a.student_id !== studentId));
+      setActionSuccess(`"${studentName}" has been unenrolled successfully.`);
+    } catch (err) {
+      console.error('Unenroll failed:', err);
+      setActionError(err.message || 'Failed to unenroll student.');
+    }
+  };
+
+  // Update a student
+  const handleUpdateStudent = async (studentId, updates) => {
+    setActionError('');
+    setActionSuccess('');
+    
+    try {
+      const { data, error } = await supabase
+        .from('students')
+        .update(updates)
+        .eq('id', studentId)
+        .select()
+        .single();
+        
+      if (error) throw error;
+      
+      setActionSuccess('Student updated successfully!');
+      setAllStudents(prev => prev.map(s => s.id === studentId ? { ...s, ...updates } : s));
+      // Optionally update assessments display if needed, but it's tricky with nested fields. Better to just let loadDashboardData catch it on next refresh or just update the main list.
+    } catch (err) {
+      console.error('Update student failed:', err);
+      setActionError(err.message || 'Failed to update student.');
+    }
+  };
+
+  // Reset student password
+  const handleResetStudentPassword = async (studentId, schoolId, studentName, classId) => {
+    const confirmed = await confirm({
+      title: 'Reset Password',
+      message: `Reset password for "${studentName}"? Their password will be reset to their school ID (${schoolId}) and they will be forced to change it on their next login.`,
+      confirmLabel: 'Reset Password',
+      variant: 'warning',
+    });
+    if (!confirmed) return;
+
+    setActionError('');
+    setActionSuccess('');
+    
+    const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const sessionToken = session?.access_token;
+      
+      if (!sessionToken) throw new Error('Teacher session expired. Please log in again.');
+
+      const response = await fetch(`${API_BASE}/teacher/reset-student-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionToken}`
+        },
+        body: JSON.stringify({ studentId, schoolId, classId })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        let errMsg = 'Failed to reset password.';
+        try {
+          const parsed = JSON.parse(errText);
+          errMsg = parsed.detail || errMsg;
+        } catch (_) {}
+        throw new Error(errMsg);
+      }
+
+      setActionSuccess(`Password reset successfully for "${studentName}".`);
+      setAllStudents(prev => prev.map(s => s.id === studentId ? { ...s, requires_password_change: true } : s));
+    } catch (err) {
+      console.error('Reset password failed:', err);
+      setActionError(err.message || 'Failed to reset password.');
+    }
+  };
+
   // Custom materials creation
   const handleCreateMaterial = async (e) => {
     e.preventDefault();
@@ -359,9 +594,41 @@ export function useTeacherData() {
     }
   };
 
+  // Update a custom material
+  const handleUpdateMaterial = async (materialId, updates) => {
+    setActionError('');
+    setActionSuccess('');
+    
+    try {
+      const { data, error } = await supabase
+        .from('custom_materials')
+        .update(updates)
+        .eq('id', materialId)
+        .select('*, class:classes(class_name)')
+        .single();
+        
+      if (error) throw error;
+      
+      setActionSuccess('Material updated successfully!');
+      setCustomMaterials(prev => prev.map(m => m.id === materialId ? data : m));
+      setEditingMaterial(null);
+      setMaterialTitle('');
+      setMaterialContent('');
+    } catch (err) {
+      console.error('Update material failed:', err);
+      setActionError(err.message || 'Failed to update material.');
+    }
+  };
+
   // Custom materials deletion
   const handleDeleteMaterial = async (materialId) => {
-    if (!window.confirm('Are you sure you want to delete this custom material?')) return;
+    const confirmed = await confirm({
+      title: 'Delete Material',
+      message: 'Are you sure you want to delete this custom material? This action cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
 
     setActionError('');
     setActionSuccess('');
@@ -391,9 +658,12 @@ export function useTeacherData() {
       const matchClass = selectedClassFilter === 'all' || item.student?.class?.class_name === selectedClassFilter;
       const matchMode = selectedModeFilter === 'all' || item.mode === selectedModeFilter;
       
-      return matchSearch && matchClass && matchMode;
+      const materialTitle = item.feedback?.material_title || item.feedback?.motion || 'Default Material';
+      const matchMaterial = selectedMaterialFilter === 'all' || materialTitle === selectedMaterialFilter;
+      
+      return matchSearch && matchClass && matchMode && matchMaterial;
     });
-  }, [allAssessments, searchQuery, selectedClassFilter, selectedModeFilter]);
+  }, [allAssessments, searchQuery, selectedClassFilter, selectedModeFilter, selectedMaterialFilter]);
 
   // Export Assessment Records to CSV
   const handleDownloadCSV = useCallback(() => {
@@ -457,8 +727,13 @@ export function useTeacherData() {
     allStudents,
     allAssessments,
     customMaterials,
+    activityData,
     loadingData,
     loadDashboardData,
+    
+    // Activity Monitor
+    selectedActivityClass,
+    setSelectedActivityClass,
     
     // Forms
     newClassName,
@@ -481,6 +756,8 @@ export function useTeacherData() {
     setMaterialTitle,
     materialContent,
     setMaterialContent,
+    editingMaterial,
+    setEditingMaterial,
     
     // Feedback
     actionError,
@@ -498,14 +775,22 @@ export function useTeacherData() {
     setSelectedClassFilter,
     selectedModeFilter,
     setSelectedModeFilter,
+    selectedMaterialFilter,
+    setSelectedMaterialFilter,
     currentPage,
     setCurrentPage,
     itemsPerPage,
     
     // Actions
     handleCreateClass,
+    handleUpdateClass,
+    handleDeleteClass,
     handleBulkEnroll,
+    handleUnenrollStudent,
+    handleUpdateStudent,
+    handleResetStudentPassword,
     handleCreateMaterial,
+    handleUpdateMaterial,
     handleDeleteMaterial,
     getFilteredAssessments,
     handleDownloadCSV,

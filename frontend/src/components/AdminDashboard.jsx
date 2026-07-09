@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../utils/supabaseClient';
+import { supabaseAdmin as supabase } from '../utils/supabaseClient';
 import { LogOut, CheckCircle, XCircle, Users, UserCheck, Shield } from 'lucide-react';
 import Spinner from './UI/Spinner';
 

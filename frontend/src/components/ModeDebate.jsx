@@ -30,7 +30,7 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, isSaving
   const timerIntervalRef = useRef(null);
   const recordingIntervalRef = useRef(null);
 
-  const availableMotions = customMotions.length > 0 ? customMotions.map(m => m.content) : DEFAULT_MOTIONS;
+  const availableMotions = [...(customMotions || []).map(m => m.content), ...DEFAULT_MOTIONS];
 
   useEffect(() => {
     return () => {
@@ -167,6 +167,7 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, isSaving
     if (resultData) {
       onSaveScore('debate', {
         ...resultData,
+        material_title: motion,
         motion,
         role
       });

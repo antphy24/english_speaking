@@ -76,6 +76,18 @@ class BulkEnrollRequest(BaseModel):
     classCode: str
     students: List[StudentEnrollInfo]
 
+class UnenrollRequest(BaseModel):
+    studentId: str
+    classId: str
+
+class DeleteClassRequest(BaseModel):
+    classId: str
+
+class ResetPasswordRequest(BaseModel):
+    studentId: str
+    classId: str
+    schoolId: str
+
 async def verify_teacher(authorization: Optional[str] = Header(None)):
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header missing.")
@@ -207,6 +219,185 @@ async def bulk_enroll(request: Request, bulk_request: BulkEnrollRequest, teacher
         "failures": failures,
         "successes": successes
     }
+
+@app.post("/teacher/unenroll-student")
+@limiter.limit("10/minute")
+async def unenroll_student(request: Request, body: UnenrollRequest, teacher: dict = Depends(verify_teacher)):
+    """
+    Removes a student from a class by deleting their Supabase auth account.
+    The students table row is expected to cascade-delete via DB trigger/FK.
+    """
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        raise HTTPException(status_code=500, detail="Supabase environment configuration missing.")
+
+    headers = {
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    # Verify the teacher owns this class
+    teacher_id = teacher.get("id")
+    async with httpx.AsyncClient() as client:
+        # Check the student belongs to a class owned by this teacher
+        verify_resp = await client.get(
+            f"{SUPABASE_URL}/rest/v1/students?id=eq.{body.studentId}&class_id=eq.{body.classId}&select=id,class:classes!inner(teacher_id)",
+            headers={**headers, "apikey": SUPABASE_SERVICE_ROLE_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"}
+        )
+
+        if verify_resp.status_code != 200:
+            raise HTTPException(status_code=500, detail="Failed to verify student ownership.")
+
+        rows = verify_resp.json()
+        if not rows or len(rows) == 0:
+            raise HTTPException(status_code=404, detail="Student not found in this class.")
+
+        student_class = rows[0].get("class", {})
+        if student_class.get("teacher_id") != teacher_id:
+            raise HTTPException(status_code=403, detail="You do not own this class.")
+
+        # Delete the auth user (students table row cascades)
+        del_resp = await client.delete(
+            f"{SUPABASE_URL}/auth/v1/admin/users/{body.studentId}",
+            headers=headers
+        )
+
+        if del_resp.status_code not in [200, 204]:
+            err_data = del_resp.json() if del_resp.headers.get("content-type", "").startswith("application/json") else {}
+            err_msg = err_data.get("msg") or err_data.get("error_description") or del_resp.text
+            raise HTTPException(status_code=500, detail=f"Failed to delete student account: {err_msg}")
+
+    return {"success": True, "message": "Student unenrolled successfully."}
+
+@app.post("/teacher/delete-class")
+@limiter.limit("5/minute")
+async def delete_class(request: Request, body: DeleteClassRequest, teacher: dict = Depends(verify_teacher)):
+    """
+    Deletes a class and all associated student auth accounts.
+    The classes table cascade handles students, assessments, and activity_logs rows.
+    """
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        raise HTTPException(status_code=500, detail="Supabase environment configuration missing.")
+
+    headers = {
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    teacher_id = teacher.get("id")
+
+    async with httpx.AsyncClient() as client:
+        # 1. Verify the teacher owns this class
+        verify_resp = await client.get(
+            f"{SUPABASE_URL}/rest/v1/classes?id=eq.{body.classId}&teacher_id=eq.{teacher_id}&select=id",
+            headers=headers
+        )
+
+        if verify_resp.status_code != 200:
+            raise HTTPException(status_code=500, detail="Failed to verify class ownership.")
+
+        rows = verify_resp.json()
+        if not rows or len(rows) == 0:
+            raise HTTPException(status_code=403, detail="You do not own this class.")
+
+        # 2. Fetch all student IDs in the class
+        students_resp = await client.get(
+            f"{SUPABASE_URL}/rest/v1/students?class_id=eq.{body.classId}&select=id",
+            headers=headers
+        )
+
+        if students_resp.status_code != 200:
+            raise HTTPException(status_code=500, detail="Failed to fetch students for class.")
+
+        student_rows = students_resp.json()
+        student_ids = [s["id"] for s in student_rows]
+
+        # 3. Delete each student's auth account concurrently
+        deleted_count = 0
+        semaphore = asyncio.Semaphore(10)
+
+        async def delete_auth_user(student_id: str):
+            async with semaphore:
+                resp = await client.delete(
+                    f"{SUPABASE_URL}/auth/v1/admin/users/{student_id}",
+                    headers=headers
+                )
+                return resp.status_code in [200, 204]
+
+        results = await asyncio.gather(*[delete_auth_user(sid) for sid in student_ids])
+        deleted_count = sum(1 for r in results if r)
+
+        # 4. Delete the class record (cascade handles students, assessments, activity_logs)
+        del_resp = await client.delete(
+            f"{SUPABASE_URL}/rest/v1/classes?id=eq.{body.classId}",
+            headers=headers
+        )
+
+        if del_resp.status_code not in [200, 204]:
+            err_data = del_resp.json() if del_resp.headers.get("content-type", "").startswith("application/json") else {}
+            err_msg = err_data.get("msg") or err_data.get("error_description") or del_resp.text
+            raise HTTPException(status_code=500, detail=f"Failed to delete class: {err_msg}")
+
+    return {"success": True, "deletedStudents": deleted_count}
+
+@app.post("/teacher/reset-student-password")
+@limiter.limit("10/minute")
+async def reset_student_password(request: Request, body: ResetPasswordRequest, teacher: dict = Depends(verify_teacher)):
+    """
+    Resets a student's password to their school ID (padded to 6 chars)
+    and flags the account as requiring a password change.
+    """
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        raise HTTPException(status_code=500, detail="Supabase environment configuration missing.")
+
+    headers = {
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    teacher_id = teacher.get("id")
+
+    async with httpx.AsyncClient() as client:
+        # 1. Verify the teacher owns this class (same pattern as unenroll-student)
+        verify_resp = await client.get(
+            f"{SUPABASE_URL}/rest/v1/students?id=eq.{body.studentId}&class_id=eq.{body.classId}&select=id,class:classes!inner(teacher_id)",
+            headers=headers
+        )
+
+        if verify_resp.status_code != 200:
+            raise HTTPException(status_code=500, detail="Failed to verify student ownership.")
+
+        rows = verify_resp.json()
+        if not rows or len(rows) == 0:
+            raise HTTPException(status_code=404, detail="Student not found in this class.")
+
+        student_class = rows[0].get("class", {})
+        if student_class.get("teacher_id") != teacher_id:
+            raise HTTPException(status_code=403, detail="You do not own this class.")
+
+        # 2. Calculate password: schoolId padded to 6 chars if shorter
+        new_password = body.schoolId.ljust(6, '0')
+
+        # 3. Update the auth user's password and flag for password change
+        update_resp = await client.put(
+            f"{SUPABASE_URL}/auth/v1/admin/users/{body.studentId}",
+            headers=headers,
+            json={
+                "password": new_password,
+                "user_metadata": {
+                    "requires_password_change": True
+                }
+            }
+        )
+
+        if update_resp.status_code not in [200, 201]:
+            err_data = update_resp.json() if update_resp.headers.get("content-type", "").startswith("application/json") else {}
+            err_msg = err_data.get("msg") or err_data.get("error_description") or update_resp.text
+            raise HTTPException(status_code=500, detail=f"Failed to reset password: {err_msg}")
+
+    return {"success": True, "message": "Password reset successfully."}
 
 @app.post("/transcribe")
 @limiter.limit("10/minute")

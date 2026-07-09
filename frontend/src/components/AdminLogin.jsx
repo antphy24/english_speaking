@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../utils/supabaseClient';
+import { supabaseAdmin as supabase } from '../utils/supabaseClient';
 import { ShieldAlert, Shield } from 'lucide-react';
 
 export function AdminLogin() {

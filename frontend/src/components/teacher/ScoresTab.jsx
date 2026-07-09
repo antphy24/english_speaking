@@ -9,6 +9,9 @@ export function ScoresTab({
   setSelectedClassFilter,
   selectedModeFilter,
   setSelectedModeFilter,
+  selectedMaterialFilter,
+  setSelectedMaterialFilter,
+  allAssessments = [],
   getFilteredAssessments,
   handleDownloadCSV,
   formatScoreDetails,
@@ -17,6 +20,12 @@ export function ScoresTab({
   itemsPerPage,
 }) {
   const filtered = getFilteredAssessments();
+  
+  const uniqueMaterials = Array.from(new Set(
+    allAssessments
+      .map(item => item.feedback?.material_title || item.feedback?.motion || 'Default Material')
+      .filter(Boolean)
+  )).sort();
   
   return (
     <div className="space-y-6">
@@ -67,6 +76,21 @@ export function ScoresTab({
             </select>
           </div>
 
+          {/* Material Filter */}
+          <div className="flex items-center space-x-1.5">
+            <Filter className="w-3.5 h-3.5 text-slate-500" />
+            <select
+              value={selectedMaterialFilter}
+              onChange={e => setSelectedMaterialFilter(e.target.value)}
+              className="px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-white text-xs focus:outline-none focus:border-indigo-500 transition-all max-w-[200px] truncate"
+            >
+              <option value="all">All Materials</option>
+              {uniqueMaterials.map((mat, i) => (
+                <option key={i} value={mat}>{mat}</option>
+              ))}
+            </select>
+          </div>
+
           {/* CSV Export Button */}
           <button
             onClick={handleDownloadCSV}
@@ -92,6 +116,7 @@ export function ScoresTab({
                   <th className="py-3.5 px-6">Student</th>
                   <th className="py-3.5 px-6">School ID</th>
                   <th className="py-3.5 px-6">Class</th>
+                  <th className="py-3.5 px-6">Material Title</th>
                   <th className="py-3.5 px-6">Date</th>
                   <th className="py-3.5 px-6">Score details</th>
                   <th className="py-3.5 px-6">Examiner Feedback</th>
@@ -103,6 +128,9 @@ export function ScoresTab({
                     <td className="py-4 px-6 font-bold text-white">{record.student?.full_name}</td>
                     <td className="py-4 px-6 font-mono text-[10px]">{record.student?.school_id}</td>
                     <td className="py-4 px-6">{record.student?.class?.class_name}</td>
+                    <td className="py-4 px-6 text-slate-300 font-medium truncate max-w-[150px]" title={record.feedback?.material_title || record.feedback?.motion || 'Default Material'}>
+                      {record.feedback?.material_title || record.feedback?.motion || 'Default Material'}
+                    </td>
                     <td className="py-4 px-6 text-slate-400 font-mono text-[10px]">
                       {new Date(record.created_at).toLocaleString()}
                     </td>
