@@ -213,6 +213,8 @@ export function TeacherDashboard() {
                 setNewClassName={data.setNewClassName}
                 newClassCode={data.newClassCode}
                 setNewClassCode={data.setNewClassCode}
+                newGradeLevel={data.newGradeLevel}
+                setNewGradeLevel={data.setNewGradeLevel}
                 handleCreateClass={data.handleCreateClass}
                 bulkStudentsText={data.bulkStudentsText}
                 setBulkStudentsText={data.setBulkStudentsText}
@@ -223,6 +225,10 @@ export function TeacherDashboard() {
                 setActionSuccess={data.setActionSuccess}
                 setActionError={data.setActionError}
                 setImportResults={data.setImportResults}
+                handleUpdateClass={data.handleUpdateClass}
+                handleDeleteClass={data.handleDeleteClass}
+                handleUpdateStudent={data.handleUpdateStudent}
+                handleResetStudentPassword={data.handleResetStudentPassword}
               />
             )}
 
@@ -244,6 +250,7 @@ export function TeacherDashboard() {
                 setMaterialContent={data.setMaterialContent}
                 handleCreateMaterial={data.handleCreateMaterial}
                 customMaterials={data.customMaterials}
+                handleUpdateMaterial={data.handleUpdateMaterial}
                 handleDeleteMaterial={data.handleDeleteMaterial}
                 setActionError={data.setActionError}
                 setActionSuccess={data.setActionSuccess}
