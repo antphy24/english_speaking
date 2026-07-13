@@ -289,72 +289,41 @@ export function ClassesTab({
                     <tbody className="divide-y divide-slate-850/60 text-slate-300">
                       {allStudents.filter(s => s.class_id === selectedClass.id).map(student => (
                         <tr key={student.id} className="hover:bg-slate-900/20">
-                          {editingStudentId === student.id ? (
-                            <>
-                              <td className="py-2 px-4">
-                                <input 
-                                  type="text" 
-                                  value={editStudentName} 
-                                  onChange={e => setEditStudentName(e.target.value)} 
-                                  className="w-full px-2 py-1 bg-slate-900 border border-slate-800 rounded text-white text-xs outline-none focus:border-indigo-500" 
-                                />
-                              </td>
-                              <td className="py-2 px-4">
-                                <input 
-                                  type="text" 
-                                  value={editSchoolId} 
-                                  onChange={e => setEditSchoolId(e.target.value)} 
-                                  className="w-full px-2 py-1 bg-slate-900 border border-slate-800 rounded text-white text-xs font-mono outline-none focus:border-indigo-500" 
-                                />
-                              </td>
-                              <td className="py-2 px-4 text-slate-500">-</td>
-                              <td className="py-2 px-4 text-center">-</td>
-                              <td className="py-2 px-4 text-center">
-                                <div className="flex justify-center space-x-1">
-                                  <button onClick={() => saveEditStudent(student.id)} className="p-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded transition"><Check size={14} /></button>
-                                  <button onClick={() => setEditingStudentId(null)} className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition"><X size={14} /></button>
-                                </div>
-                              </td>
-                            </>
-                          ) : (
-                            <>
-                              <td className="py-2 px-4 font-bold text-white">{student.full_name}</td>
-                              <td className="py-2 px-4 font-mono">{student.school_id}</td>
-                              <td className="py-2 px-4 font-mono text-slate-500">{`student_${student.school_id.replace(/[^a-zA-Z0-9]/g, '')}@${selectedClass.class_code}.HreFSpeak.com`.toLowerCase()}</td>
-                              <td className="py-2 px-4 text-center">
-                                {student.requires_password_change ? (
-                                  <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-[4px] text-[9px] font-semibold">New</span>
-                                ) : (
-                                  <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-[4px] text-[9px] font-semibold">Ready</span>
-                                )}
-                              </td>
-                              <td className="py-2 px-4 text-center">
-                                <div className="flex justify-center space-x-2">
-                                  <button
-                                    onClick={() => startEditStudent(student)}
-                                    className="p-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-300 transition cursor-pointer"
-                                    title={`Edit ${student.full_name}`}
-                                  >
-                                    <Edit2 className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleResetStudentPassword(student.id, student.school_id, student.full_name, selectedClass.id)}
-                                    className="p-1.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 hover:border-amber-500/40 rounded-lg text-amber-400 transition cursor-pointer"
-                                    title={`Reset Password for ${student.full_name}`}
-                                  >
-                                    <Key className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleUnenrollStudent(student.id, student.full_name, selectedClass.id)}
-                                    className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 hover:border-rose-500/40 rounded-lg text-rose-400 hover:text-rose-300 transition cursor-pointer"
-                                    title={`Remove ${student.full_name}`}
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </td>
-                            </>
-                          )}
+                          <td className="py-2 px-4 font-bold text-white">{student.full_name}</td>
+                          <td className="py-2 px-4 font-mono">{student.school_id}</td>
+                          <td className="py-2 px-4 font-mono text-slate-500">{`student_${student.school_id.replace(/[^a-zA-Z0-9]/g, '')}@${selectedClass.class_code}.HreFSpeak.com`.toLowerCase()}</td>
+                          <td className="py-2 px-4 text-center">
+                            {student.requires_password_change ? (
+                              <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-[4px] text-[9px] font-semibold">New</span>
+                            ) : (
+                              <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-[4px] text-[9px] font-semibold">Ready</span>
+                            )}
+                          </td>
+                          <td className="py-2 px-4 text-center">
+                            <div className="flex justify-center space-x-2">
+                              <button
+                                onClick={() => startEditStudent(student)}
+                                className="p-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-300 transition cursor-pointer"
+                                title={`Edit ${student.full_name}`}
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleResetStudentPassword(student.id, student.school_id, student.full_name, selectedClass.id)}
+                                className="p-1.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 hover:border-amber-500/40 rounded-lg text-amber-400 transition cursor-pointer"
+                                title={`Reset Password for ${student.full_name}`}
+                              >
+                                <Key className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleUnenrollStudent(student.id, student.full_name, selectedClass.id)}
+                                className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 hover:border-rose-500/40 rounded-lg text-rose-400 hover:text-rose-300 transition cursor-pointer"
+                                title={`Remove ${student.full_name}`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -369,6 +338,57 @@ export function ClassesTab({
           </div>
         )}
       </div>
+
+      {/* Edit Student Modal */}
+      {editingStudentId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden relative">
+            <div className="p-6 border-b border-slate-800 flex justify-between items-center">
+              <h3 className="font-bold text-white text-lg">Edit Student Profile</h3>
+              <button onClick={() => setEditingStudentId(null)} className="text-slate-400 hover:text-white transition">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Student Name</label>
+                <input 
+                  type="text" 
+                  value={editStudentName} 
+                  onChange={e => setEditStudentName(e.target.value)} 
+                  className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all" 
+                  placeholder="Full Name"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">School ID</label>
+                <input 
+                  type="text" 
+                  value={editSchoolId} 
+                  onChange={e => setEditSchoolId(e.target.value)} 
+                  className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white text-sm font-mono focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all" 
+                  placeholder="School ID"
+                />
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-800 bg-slate-950/50 flex justify-end space-x-3">
+              <button 
+                onClick={() => setEditingStudentId(null)}
+                className="px-5 py-2.5 rounded-xl text-sm font-bold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => saveEditStudent(editingStudentId)}
+                className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-500 shadow-md transition flex items-center space-x-2"
+              >
+                <Check size={16} />
+                <span>Save Changes</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
