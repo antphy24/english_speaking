@@ -271,7 +271,14 @@ export function ClassesTab({
 
             {/* Enrolled Students Table */}
             <div className="border-t border-slate-850 pt-5 space-y-3">
-              <h4 className="font-bold text-sm text-slate-300">Enrolled Students ({allStudents.filter(s => s.class_id === selectedClass.id).length})</h4>
+              <h4 className="font-bold text-sm text-slate-300 flex items-center">
+                Enrolled Students ({allStudents.filter(s => s.class_id === selectedClass.id).length})
+                <span className="ml-3 text-[11px] font-normal bg-slate-900/50 px-2 py-0.5 rounded-full border border-slate-800">
+                  <span className="text-amber-400">{allStudents.filter(s => s.class_id === selectedClass.id && s.requires_password_change).length} New</span>
+                  <span className="text-slate-500 mx-1.5">•</span>
+                  <span className="text-emerald-400">{allStudents.filter(s => s.class_id === selectedClass.id && !s.requires_password_change).length} Ready</span>
+                </span>
+              </h4>
               {allStudents.filter(s => s.class_id === selectedClass.id).length === 0 ? (
                 <p className="text-slate-500 text-xs italic">No students registered in this class.</p>
               ) : (

@@ -13,6 +13,14 @@ export function Leaderboard({ student }) {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  // Reset page when tabs change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeSource, activeModeTab, activeMaterialFilter]);
+
   // Reset material filter when mode changes
   useEffect(() => {
     setActiveMaterialFilter('all');
@@ -260,9 +268,9 @@ export function Leaderboard({ student }) {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-850 text-slate-300 text-xs">
-                        {getSortedRankings(activeModeTab).map((record, index) => (
+                        {getSortedRankings(activeModeTab).slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((record, index) => (
                           <tr key={record.id} className="hover:bg-slate-900/40 transition">
-                            <td className="py-4 px-6 text-center">{getRankBadge(index)}</td>
+                            <td className="py-4 px-6 text-center">{getRankBadge((currentPage - 1) * itemsPerPage + index)}</td>
                             <td className="py-4 px-6 font-bold text-white">{record.student?.full_name}</td>
                             <td className="py-4 px-6 text-slate-300 font-medium truncate max-w-[150px]" title={record.feedback?.material_title || record.feedback?.motion || 'Default Material'}>
                               {record.feedback?.material_title || record.feedback?.motion || 'Default Material'}
@@ -280,6 +288,29 @@ export function Leaderboard({ student }) {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                )}
+                {getSortedRankings(activeModeTab).length > itemsPerPage && (
+                  <div className="flex items-center justify-between px-6 py-4 bg-slate-900/40 border-t border-slate-850">
+                    <span className="text-xs text-slate-400">
+                      Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, getSortedRankings(activeModeTab).length)} of {getSortedRankings(activeModeTab).length} entries
+                    </span>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="px-3 py-1 text-xs font-medium rounded-md bg-slate-800 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700"
+                      >
+                        Previous
+                      </button>
+                      <button
+                        onClick={() => setCurrentPage(p => p + 1)}
+                        disabled={currentPage * itemsPerPage >= getSortedRankings(activeModeTab).length}
+                        className="px-3 py-1 text-xs font-medium rounded-md bg-slate-800 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700"
+                      >
+                        Next
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -307,7 +338,7 @@ export function Leaderboard({ student }) {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-850 text-slate-300 text-xs">
-                        {localHistory.map((record) => (
+                        {localHistory.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((record) => (
                           <tr key={record.id} className="hover:bg-slate-900/40 transition">
                             <td className="py-4 px-6 text-slate-400 font-mono text-[10px]">
                               {new Date(record.created_at).toLocaleString()}
@@ -331,6 +362,29 @@ export function Leaderboard({ student }) {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                )}
+                {localHistory.length > itemsPerPage && (
+                  <div className="flex items-center justify-between px-6 py-4 bg-slate-900/40 border-t border-slate-850">
+                    <span className="text-xs text-slate-400">
+                      Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, localHistory.length)} of {localHistory.length} entries
+                    </span>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="px-3 py-1 text-xs font-medium rounded-md bg-slate-800 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700"
+                      >
+                        Previous
+                      </button>
+                      <button
+                        onClick={() => setCurrentPage(p => p + 1)}
+                        disabled={currentPage * itemsPerPage >= localHistory.length}
+                        className="px-3 py-1 text-xs font-medium rounded-md bg-slate-800 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700"
+                      >
+                        Next
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Clock, Users, TrendingUp } from 'lucide-react';
 
 function formatDuration(totalSeconds) {
@@ -27,6 +27,13 @@ export function ActivityTab({
   selectedActivityClass,
   setSelectedActivityClass,
 }) {
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedActivityClass]);
+
   // Aggregate data per student
   const aggregatedData = useMemo(() => {
     const studentMap = new Map();
@@ -195,7 +202,7 @@ export function ActivityTab({
                   </td>
                 </tr>
               ) : (
-                sortedData.map((row) => {
+                sortedData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((row) => {
                   const totalSeconds = row.totalActiveSeconds + row.totalIdleSeconds;
                   const idleRatio = totalSeconds > 0 ? (row.totalIdleSeconds / totalSeconds) * 100 : 0;
                   
@@ -245,6 +252,29 @@ export function ActivityTab({
             </tbody>
           </table>
         </div>
+        {sortedData.length > itemsPerPage && (
+          <div className="flex items-center justify-between px-6 py-4 bg-slate-900/40 border-t border-slate-850">
+            <span className="text-xs text-slate-400">
+              Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, sortedData.length)} of {sortedData.length} entries
+            </span>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1 text-xs font-medium rounded-md bg-slate-800 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700"
+              >
+                Previous
+              </button>
+              <button
+                onClick={() => setCurrentPage(p => p + 1)}
+                disabled={currentPage * itemsPerPage >= sortedData.length}
+                className="px-3 py-1 text-xs font-medium rounded-md bg-slate-800 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
