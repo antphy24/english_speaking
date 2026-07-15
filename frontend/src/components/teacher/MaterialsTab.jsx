@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Trash2, Edit2, X, Check } from 'lucide-react';
 
 export function MaterialsTab({
   teacher,
   classesList,
-  selectedClassMaterial,
-  setSelectedClassMaterial,
+  selectedClassesMaterial,
+  setSelectedClassesMaterial,
   materialCreationMode,
   setMaterialCreationMode,
   globalGradeLevel,
@@ -18,27 +18,78 @@ export function MaterialsTab({
   setMaterialContent,
   handleCreateMaterial,
   customMaterials,
-  handleDeleteMaterial,
+  handleDeleteMaterialGroup,
   setActionError,
   setActionSuccess,
-  handleUpdateMaterial,
+  handleUpdateMaterialGroup,
 }) {
-  const [editingMaterialId, setEditingMaterialId] = useState(null);
+  const [editingGroupId, setEditingGroupId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
+  const [editClassIds, setEditClassIds] = useState([]);
 
-  const startEditMaterial = (material) => {
-    setEditTitle(material.title);
-    setEditContent(material.content);
-    setEditingMaterialId(material.id);
+  const groupedMaterials = useMemo(() => {
+    const groups = {};
+    customMaterials.forEach(m => {
+      if (m.class_id === null) {
+        // Global material
+        groups[`global-${m.id}`] = {
+          isGlobal: true,
+          id: m.id,
+          grade_level: m.grade_level,
+          mode: m.mode,
+          title: m.title,
+          content: m.content,
+          materials: [m]
+        };
+      } else {
+        const key = `${m.mode}|${m.title}|${m.content}`;
+        if (!groups[key]) {
+          groups[key] = {
+            isGlobal: false,
+            id: m.id, // primary id for key
+            mode: m.mode,
+            title: m.title,
+            content: m.content,
+            classes: [],
+            materials: []
+          };
+        }
+        // avoid duplicates if same class is added twice (shouldn't happen but safe)
+        if (!groups[key].classes.find(c => c.class_name === m.class?.class_name)) {
+            groups[key].classes.push(m.class || { class_name: 'Unknown Class' });
+        }
+        groups[key].materials.push(m);
+      }
+    });
+    return Object.values(groups);
+  }, [customMaterials]);
+
+  const startEditMaterialGroup = (group) => {
+    setEditTitle(group.title);
+    setEditContent(group.content);
+    setEditingGroupId(group.id);
+    if (!group.isGlobal) {
+      setEditClassIds(group.materials.map(m => m.class_id));
+    } else {
+      setEditClassIds([]);
+    }
   };
 
-  const saveEditMaterial = async (materialId) => {
-    await handleUpdateMaterial(materialId, {
-      title: editTitle,
-      content: editContent
-    });
-    setEditingMaterialId(null);
+  const saveEditMaterialGroup = async (group) => {
+    if (!group.isGlobal && editClassIds.length === 0) {
+      setActionError("A material must be assigned to at least one class.");
+      return;
+    }
+    await handleUpdateMaterialGroup(
+      group.materials,
+      {
+        title: editTitle,
+        content: editContent
+      },
+      group.isGlobal ? null : editClassIds
+    );
+    setEditingGroupId(null);
   };
 
   return (
@@ -79,17 +130,34 @@ export function MaterialsTab({
 
           {/* Class or Grade Dropdown */}
           {materialCreationMode === 'class' ? (
-            <div className="space-y-1 text-left">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Target Classroom</label>
-              <select
-                value={selectedClassMaterial?.id || ''}
-                onChange={e => setSelectedClassMaterial(classesList.find(c => c.id === e.target.value))}
-                className="w-full px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-indigo-500 transition text-xs"
-              >
-                {classesList.map(c => (
-                  <option key={c.id} value={c.id}>{c.class_name} (Grade: {c.grade_level || 'General'})</option>
-                ))}
-              </select>
+            <div className="space-y-2 text-left">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block flex justify-between items-center">
+                <span>Target Classrooms</span>
+                <span className="text-indigo-400 lowercase font-normal">{selectedClassesMaterial.length} selected</span>
+              </label>
+              <div className="max-h-32 overflow-y-auto space-y-1 bg-slate-900 border border-slate-800 rounded-xl p-2">
+                {classesList.length === 0 ? (
+                  <div className="text-xs text-slate-500 p-2">No classes available</div>
+                ) : (
+                  classesList.map(c => (
+                    <label key={c.id} className="flex items-center space-x-2 text-xs text-slate-300 hover:bg-slate-800 p-1.5 rounded cursor-pointer transition">
+                      <input 
+                        type="checkbox" 
+                        checked={selectedClassesMaterial.includes(c.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedClassesMaterial(prev => [...prev, c.id]);
+                          } else {
+                            setSelectedClassesMaterial(prev => prev.filter(id => id !== c.id));
+                          }
+                        }}
+                        className="text-indigo-500 bg-slate-950 border-slate-700 rounded"
+                      />
+                      <span className="truncate">{c.class_name} <span className="text-[10px] text-slate-500">({c.grade_level || 'General'})</span></span>
+                    </label>
+                  ))
+                )}
+              </div>
             </div>
           ) : (
             <div className="space-y-1 text-left">
@@ -180,15 +248,15 @@ export function MaterialsTab({
       <div className="lg:col-span-7 glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
         <h3 className="font-bold text-base text-white">Current Custom Materials</h3>
         
-        {customMaterials.length === 0 ? (
+        {groupedMaterials.length === 0 ? (
           <p className="text-slate-500 text-xs italic py-16 text-center">No custom materials created yet.</p>
         ) : (
           <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
-            {customMaterials.map((material) => (
-              <div key={material.id} className="p-4 rounded-xl bg-slate-900/50 border border-slate-850 flex justify-between items-start gap-4">
-                {editingMaterialId === material.id ? (
+            {groupedMaterials.map((group) => (
+              <div key={group.id} className="p-4 rounded-xl bg-slate-900/50 border border-slate-850 flex justify-between items-start gap-4">
+                {editingGroupId === group.id ? (
                   <div className="w-full space-y-3">
-                    {material.mode !== 'conversation' && material.mode !== 'debate' && (
+                    {group.mode !== 'conversation' && group.mode !== 'debate' && (
                       <input 
                         type="text" 
                         value={editTitle} 
@@ -203,41 +271,77 @@ export function MaterialsTab({
                       onChange={e => setEditContent(e.target.value)}
                       className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white text-xs focus:border-indigo-500 outline-none"
                     />
-                    <div className="flex justify-end space-x-2">
-                      <button onClick={() => saveEditMaterial(material.id)} className="p-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-lg flex items-center space-x-1 text-xs px-3"><Check size={14} /> <span>Save</span></button>
-                      <button onClick={() => setEditingMaterialId(null)} className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg flex items-center space-x-1 text-xs px-3"><X size={14} /> <span>Cancel</span></button>
+                    
+                    {!group.isGlobal && (
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block flex justify-between items-center">
+                          <span>Assigned Classes</span>
+                          <span className="text-indigo-400 lowercase font-normal">{editClassIds.length} selected</span>
+                        </label>
+                        <div className="max-h-28 overflow-y-auto space-y-1 bg-slate-950 border border-slate-800 rounded-lg p-2">
+                          {classesList.map(c => (
+                            <label key={c.id} className="flex items-center space-x-2 text-xs text-slate-300 hover:bg-slate-800 p-1.5 rounded cursor-pointer transition">
+                              <input 
+                                type="checkbox" 
+                                checked={editClassIds.includes(c.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setEditClassIds(prev => [...prev, c.id]);
+                                  } else {
+                                    setEditClassIds(prev => prev.filter(id => id !== c.id));
+                                  }
+                                }}
+                                className="text-indigo-500 bg-slate-900 border-slate-700 rounded"
+                              />
+                              <span className="truncate">{c.class_name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex justify-end space-x-2 pt-2">
+                      <button onClick={() => saveEditMaterialGroup(group)} className="p-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-lg flex items-center space-x-1 text-xs px-3"><Check size={14} /> <span>Save</span></button>
+                      <button onClick={() => setEditingGroupId(null)} className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg flex items-center space-x-1 text-xs px-3"><X size={14} /> <span>Cancel</span></button>
                     </div>
                   </div>
                 ) : (
                   <>
                     <div className="space-y-1.5 flex-1 min-w-0">
-                      <div className="flex items-center space-x-2">
-                        {material.mode === 'read_aloud' && <span className="px-2 py-0.5 bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Read Aloud</span>}
-                        {material.mode === 'qa' && <span className="px-2 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Q&A Mock</span>}
-                        {material.mode === 'conversation' && <span className="px-2 py-0.5 bg-pink-500/10 text-pink-400 border border-pink-500/20 rounded text-[9px] font-bold uppercase tracking-wider">AI Dialogue</span>}
-                        {material.mode === 'debate' && <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Debate</span>}
-                        {material.class_id === null ? (
-                          <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">Global: {material.grade_level}</span>
+                      <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                        {group.mode === 'read_aloud' && <span className="px-2 py-0.5 bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Read Aloud</span>}
+                        {group.mode === 'qa' && <span className="px-2 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Q&A Mock</span>}
+                        {group.mode === 'conversation' && <span className="px-2 py-0.5 bg-pink-500/10 text-pink-400 border border-pink-500/20 rounded text-[9px] font-bold uppercase tracking-wider">AI Dialogue</span>}
+                        {group.mode === 'debate' && <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Debate</span>}
+                        
+                        {group.isGlobal ? (
+                          <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">Global: {group.grade_level}</span>
                         ) : (
-                          <span className="text-[10px] text-slate-500 font-mono">({material.class?.class_name})</span>
+                          <div className="flex flex-wrap gap-1">
+                            {group.classes.map(c => (
+                              <span key={c.class_name} className="text-[9px] text-slate-400 bg-slate-800/80 border border-slate-700 px-1.5 py-0.5 rounded">
+                                {c.class_name}
+                              </span>
+                            ))}
+                          </div>
                         )}
                       </div>
-                      <h4 className="font-bold text-white text-sm truncate">{material.title}</h4>
-                      <p className="text-xs text-slate-400 line-clamp-3 leading-relaxed whitespace-pre-wrap">{material.content}</p>
+                      <h4 className="font-bold text-white text-sm truncate">{group.title}</h4>
+                      <p className="text-xs text-slate-400 line-clamp-3 leading-relaxed whitespace-pre-wrap">{group.content}</p>
                     </div>
 
                     <div className="flex flex-col space-y-2 shrink-0">
                       <button
-                        onClick={() => startEditMaterial(material)}
+                        onClick={() => startEditMaterialGroup(group)}
                         className="p-2 bg-slate-950 border border-slate-850 hover:border-indigo-900/50 hover:bg-indigo-950/20 text-slate-500 hover:text-indigo-400 rounded-lg transition cursor-pointer"
-                        title="Edit material"
+                        title="Edit material and class assignments"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
                       <button
-                        onClick={() => handleDeleteMaterial(material.id)}
+                        onClick={() => handleDeleteMaterialGroup(group.materials.map(m => m.id))}
                         className="p-2 bg-slate-950 border border-slate-850 hover:border-rose-900/50 hover:bg-rose-950/20 text-slate-500 hover:text-rose-400 rounded-lg transition cursor-pointer"
-                        title="Delete material"
+                        title="Delete material from all classes"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>

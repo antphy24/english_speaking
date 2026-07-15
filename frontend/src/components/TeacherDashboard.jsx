@@ -236,8 +236,8 @@ export function TeacherDashboard() {
               <MaterialsTab
                 teacher={data.teacher}
                 classesList={data.classesList}
-                selectedClassMaterial={data.selectedClassMaterial}
-                setSelectedClassMaterial={data.setSelectedClassMaterial}
+                selectedClassesMaterial={data.selectedClassesMaterial}
+                setSelectedClassesMaterial={data.setSelectedClassesMaterial}
                 materialCreationMode={data.materialCreationMode}
                 setMaterialCreationMode={data.setMaterialCreationMode}
                 globalGradeLevel={data.globalGradeLevel}
@@ -250,8 +250,8 @@ export function TeacherDashboard() {
                 setMaterialContent={data.setMaterialContent}
                 handleCreateMaterial={data.handleCreateMaterial}
                 customMaterials={data.customMaterials}
-                handleUpdateMaterial={data.handleUpdateMaterial}
-                handleDeleteMaterial={data.handleDeleteMaterial}
+                handleUpdateMaterialGroup={data.handleUpdateMaterialGroup}
+                handleDeleteMaterialGroup={data.handleDeleteMaterialGroup}
                 setActionError={data.setActionError}
                 setActionSuccess={data.setActionSuccess}
               />

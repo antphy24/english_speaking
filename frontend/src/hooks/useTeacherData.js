@@ -33,7 +33,7 @@ export function useTeacherData() {
   const [bulkStudentsText, setBulkStudentsText] = useState('');
   
   // Custom materials form state
-  const [selectedClassMaterial, setSelectedClassMaterial] = useState(null);
+  const [selectedClassesMaterial, setSelectedClassesMaterial] = useState([]);
   const [materialCreationMode, setMaterialCreationMode] = useState('class'); // 'class' or 'global'
   const [globalGradeLevel, setGlobalGradeLevel] = useState('General');
   const [materialMode, setMaterialMode] = useState('read_aloud');
@@ -109,7 +109,7 @@ export function useTeacherData() {
       
       if (classesData.length > 0) {
         setSelectedClass(prev => prev || classesData[0]);
-        setSelectedClassMaterial(prev => prev || classesData[0]);
+        setSelectedClassesMaterial(prev => prev.length > 0 ? prev : [classesData[0].id]);
       }
 
       // 2. Fetch Students in all classes
@@ -259,7 +259,6 @@ export function useTeacherData() {
       setActionSuccess('Class updated successfully!');
       setClassesList(prev => prev.map(c => c.id === classId ? { ...c, ...updates } : c));
       if (selectedClass?.id === classId) setSelectedClass(prev => ({ ...prev, ...updates }));
-      if (selectedClassMaterial?.id === classId) setSelectedClassMaterial(prev => ({ ...prev, ...updates }));
     } catch (err) {
       console.error('Update class failed:', err);
       setActionError(err.message || 'Failed to update class.');
@@ -309,7 +308,7 @@ export function useTeacherData() {
       setActionSuccess(`Class "${className}" deleted successfully.`);
       setClassesList(prev => prev.filter(c => c.id !== classId));
       if (selectedClass?.id === classId) setSelectedClass(null);
-      if (selectedClassMaterial?.id === classId) setSelectedClassMaterial(null);
+      setSelectedClassesMaterial(prev => prev.filter(id => id !== classId));
       // Remove associated students and assessments from state
       setAllStudents(prev => prev.filter(s => s.class_id !== classId));
       setAllAssessments(prev => prev.filter(a => a.student?.class?.class_name !== className)); // best effort based on current state shape
@@ -545,8 +544,8 @@ export function useTeacherData() {
   // Custom materials creation
   const handleCreateMaterial = async (e) => {
     e.preventDefault();
-    if (materialCreationMode === 'class' && !selectedClassMaterial) {
-      setActionError('Please select a class first.');
+    if (materialCreationMode === 'class' && selectedClassesMaterial.length === 0) {
+      setActionError('Please select at least one class.');
       return;
     }
     if (!materialContent.trim()) {
@@ -566,51 +565,129 @@ export function useTeacherData() {
     const isGlobal = teacher?.is_admin && materialCreationMode === 'global';
 
     try {
-      const { data, error } = await supabase
-        .from('custom_materials')
-        .insert({
-          class_id: isGlobal ? null : selectedClassMaterial.id,
-          grade_level: isGlobal ? globalGradeLevel : selectedClassMaterial.grade_level,
+      let insertData = [];
+      if (isGlobal) {
+        insertData.push({
+          class_id: null,
+          grade_level: globalGradeLevel,
           mode: materialMode,
           title: titleVal,
           content: materialContent.trim()
-        })
-        .select('*, class:classes(class_name)')
-        .single();
+        });
+      } else {
+        insertData = selectedClassesMaterial.map(classId => ({
+          class_id: classId,
+          grade_level: classesList.find(c => c.id === classId)?.grade_level || 'General',
+          mode: materialMode,
+          title: titleVal,
+          content: materialContent.trim()
+        }));
+      }
+
+      const { data, error } = await supabase
+        .from('custom_materials')
+        .insert(insertData)
+        .select('*, class:classes(class_name)');
 
       if (error) throw error;
 
       if (isGlobal) {
         setActionSuccess(`Global default material added successfully for grade "${globalGradeLevel}"!`);
       } else {
-        setActionSuccess(`Custom material added successfully for class "${selectedClassMaterial.class_name}"!`);
+        setActionSuccess(`Custom material assigned to ${selectedClassesMaterial.length} class(es) successfully!`);
       }
       setMaterialTitle('');
       setMaterialContent('');
-      setCustomMaterials(prev => [data, ...prev]);
+      setCustomMaterials(prev => [...data, ...prev]);
     } catch (err) {
       console.error('Failed to create material:', err);
       setActionError(err.message || 'Failed to create material.');
     }
   };
 
-  // Update a custom material
-  const handleUpdateMaterial = async (materialId, updates) => {
+  // Update a custom material group
+  const handleUpdateMaterialGroup = async (groupMaterials, updates, newClassIds) => {
     setActionError('');
     setActionSuccess('');
     
     try {
-      const { data, error } = await supabase
-        .from('custom_materials')
-        .update(updates)
-        .eq('id', materialId)
-        .select('*, class:classes(class_name)')
-        .single();
-        
-      if (error) throw error;
+      // 1. Update existing materials (title & content)
+      const existingIds = groupMaterials.map(m => m.id);
       
-      setActionSuccess('Material updated successfully!');
-      setCustomMaterials(prev => prev.map(m => m.id === materialId ? data : m));
+      let updatedData = [];
+      if (existingIds.length > 0) {
+        const { data, error } = await supabase
+          .from('custom_materials')
+          .update(updates)
+          .in('id', existingIds)
+          .select('*, class:classes(class_name)');
+        
+        if (error) throw error;
+        updatedData = data || [];
+      }
+      
+      // If global, we're done (global materials don't have newClassIds assigned).
+      // If class, we handle adds/removes
+      let newInsertedData = [];
+      let deletedIds = [];
+      
+      if (!groupMaterials[0]?.isGlobal && newClassIds) {
+        const currentClassIds = groupMaterials.map(m => m.class_id);
+        const toAdd = newClassIds.filter(id => !currentClassIds.includes(id));
+        const toRemove = currentClassIds.filter(id => !newClassIds.includes(id));
+        
+        // Remove unassigned classes
+        if (toRemove.length > 0) {
+          const materialIdsToRemove = groupMaterials.filter(m => toRemove.includes(m.class_id)).map(m => m.id);
+          const { error: deleteErr } = await supabase
+            .from('custom_materials')
+            .delete()
+            .in('id', materialIdsToRemove);
+          if (deleteErr) throw deleteErr;
+          deletedIds = materialIdsToRemove;
+        }
+        
+        // Add newly assigned classes
+        if (toAdd.length > 0) {
+          const insertData = toAdd.map(classId => ({
+            class_id: classId,
+            grade_level: classesList.find(c => c.id === classId)?.grade_level || 'General',
+            mode: groupMaterials[0].mode,
+            title: updates.title,
+            content: updates.content
+          }));
+          
+          const { data: inserted, error: insertErr } = await supabase
+            .from('custom_materials')
+            .insert(insertData)
+            .select('*, class:classes(class_name)');
+            
+          if (insertErr) throw insertErr;
+          newInsertedData = inserted || [];
+        }
+      }
+      
+      setActionSuccess('Material group updated successfully!');
+      
+      // Update local state
+      setCustomMaterials(prev => {
+        let next = [...prev];
+        // Remove deleted
+        if (deletedIds.length > 0) {
+          next = next.filter(m => !deletedIds.includes(m.id));
+        }
+        // Update existing
+        if (updatedData.length > 0) {
+          const updateMap = new Map(updatedData.map(m => [m.id, m]));
+          next = next.map(m => updateMap.has(m.id) ? updateMap.get(m.id) : m);
+        }
+        // Add new
+        if (newInsertedData.length > 0) {
+          next = [...newInsertedData, ...next];
+        }
+        return next;
+      });
+      
       setEditingMaterial(null);
       setMaterialTitle('');
       setMaterialContent('');
@@ -621,10 +698,10 @@ export function useTeacherData() {
   };
 
   // Custom materials deletion
-  const handleDeleteMaterial = async (materialId) => {
+  const handleDeleteMaterialGroup = async (materialIds) => {
     const confirmed = await confirm({
       title: 'Delete Material',
-      message: 'Are you sure you want to delete this custom material? This action cannot be undone.',
+      message: 'Are you sure you want to delete this custom material from all assigned classes? This action cannot be undone.',
       confirmLabel: 'Delete',
       variant: 'danger',
     });
@@ -637,12 +714,12 @@ export function useTeacherData() {
       const { error } = await supabase
         .from('custom_materials')
         .delete()
-        .eq('id', materialId);
+        .in('id', materialIds);
 
       if (error) throw error;
 
-      setActionSuccess('Material deleted successfully.');
-      setCustomMaterials(prev => prev.filter(m => m.id !== materialId));
+      setActionSuccess('Material deleted successfully from all classes.');
+      setCustomMaterials(prev => prev.filter(m => !materialIds.includes(m.id)));
     } catch (err) {
       console.error('Failed to delete material:', err);
       setActionError(err.message || 'Failed to delete material.');
@@ -744,8 +821,8 @@ export function useTeacherData() {
     setNewGradeLevel,
     bulkStudentsText,
     setBulkStudentsText,
-    selectedClassMaterial,
-    setSelectedClassMaterial,
+    selectedClassesMaterial,
+    setSelectedClassesMaterial,
     materialCreationMode,
     setMaterialCreationMode,
     globalGradeLevel,
@@ -790,8 +867,8 @@ export function useTeacherData() {
     handleUpdateStudent,
     handleResetStudentPassword,
     handleCreateMaterial,
-    handleUpdateMaterial,
-    handleDeleteMaterial,
+    handleUpdateMaterialGroup,
+    handleDeleteMaterialGroup,
     getFilteredAssessments,
     handleDownloadCSV,
   };
