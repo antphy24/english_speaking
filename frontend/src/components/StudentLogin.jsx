@@ -36,8 +36,9 @@ export function StudentLogin() {
         if (rpcError) throw rpcError;
         
         if (data && data.length > 0) {
-          setStudentsList(data);
-          setSelectedStudent(data[0]); // Default to first student
+          const sortedData = [...data].sort((a, b) => a.full_name.localeCompare(b.full_name));
+          setStudentsList(sortedData);
+          setSelectedStudent(sortedData[0]); // Default to first student
         } else {
           setStudentsList([]);
           setSelectedStudent(null);
@@ -79,10 +80,15 @@ export function StudentLogin() {
     const sanitizedSchoolId = rawSchoolId.replace(/[^a-zA-Z0-9]/g, '');
     const dummyEmail = `student_${sanitizedSchoolId}@${classCode}.HreFSpeak.com`.toLowerCase();
     
+    let loginPassword = password.trim();
+    if (loginPassword.length < 6) {
+      loginPassword = loginPassword.padEnd(6, '0');
+    }
+    
     try {
       const { data, error: loginError } = await supabase.auth.signInWithPassword({
         email: dummyEmail,
-        password: password
+        password: loginPassword
       });
       
       if (loginError) throw loginError;

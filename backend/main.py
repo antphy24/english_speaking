@@ -397,6 +397,15 @@ async def reset_student_password(request: Request, body: ResetPasswordRequest, t
             err_msg = err_data.get("msg") or err_data.get("error_description") or update_resp.text
             raise HTTPException(status_code=500, detail=f"Failed to reset password: {err_msg}")
 
+        # 4. Also update the public.students table so the UI reflects the 'New' status
+        await client.patch(
+            f"{SUPABASE_URL}/rest/v1/students?id=eq.{body.studentId}",
+            headers=headers,
+            json={
+                "requires_password_change": True
+            }
+        )
+
     return {"success": True, "message": "Password reset successfully."}
 
 @app.post("/transcribe")

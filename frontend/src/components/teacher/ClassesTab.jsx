@@ -294,7 +294,10 @@ export function ClassesTab({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-850/60 text-slate-300">
-                      {allStudents.filter(s => s.class_id === selectedClass.id).map(student => (
+                      {allStudents
+                        .filter(s => s.class_id === selectedClass.id)
+                        .sort((a, b) => a.full_name.localeCompare(b.full_name))
+                        .map(student => (
                         <tr key={student.id} className="hover:bg-slate-900/20">
                           <td className="py-2 px-4 font-bold text-white">{student.full_name}</td>
                           <td className="py-2 px-4 font-mono">{student.school_id}</td>
