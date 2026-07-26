@@ -194,8 +194,8 @@ export function MaterialsTab({
             </select>
           </div>
 
-          {/* Title input (Hidden for Debate mode only) */}
-          {materialMode !== 'debate' && (
+          {/* Title input (Hidden for Conversation mode since it's hardcoded) */}
+          {materialMode !== 'conversation' && (
             <div className="space-y-1 text-left animate-fadeIn">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Material Title</label>
               <input
@@ -203,7 +203,7 @@ export function MaterialsTab({
                 required
                 value={materialTitle}
                 onChange={e => setMaterialTitle(e.target.value)}
-                placeholder={materialMode === 'read_aloud' ? "e.g. Tech Essay (Hard)" : materialMode === 'conversation' ? "e.g. Booking a Hotel" : "e.g. Hobbies Topic"}
+                placeholder={materialMode === 'read_aloud' ? "e.g. Tech Essay (Hard)" : materialMode === 'debate' ? "e.g. AI in Education" : "e.g. Hobbies Topic"}
                 className="w-full px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white placeholder-slate-650 focus:outline-none focus:border-indigo-500 transition text-xs"
               />
             </div>
@@ -256,7 +256,7 @@ export function MaterialsTab({
               <div key={group.id} className="p-4 rounded-xl bg-slate-900/50 border border-slate-850 flex justify-between items-start gap-4">
                 {editingGroupId === group.id ? (
                   <div className="w-full space-y-3">
-                    {group.mode !== 'conversation' && group.mode !== 'debate' && (
+                    {group.mode !== 'conversation' && (
                       <input 
                         type="text" 
                         value={editTitle} 
