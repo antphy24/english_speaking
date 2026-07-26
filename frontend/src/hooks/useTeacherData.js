@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabaseTeacher as supabase } from '../utils/supabaseClient';
 import { useConfirm } from '../components/UI/ConfirmModal';
 
-export function useTeacherData() {
+export function useTeacherData(dateFilter = '30days') {
   const navigate = useNavigate();
   const confirm = useConfirm();
   
@@ -125,12 +125,29 @@ export function useTeacherData() {
 
         // 3. Fetch Assessments for these students
         const studentIds = studentsData.map(s => s.id);
+        
+        let dateLimit = new Date();
+        if (dateFilter === '7days') {
+          dateLimit.setDate(dateLimit.getDate() - 7);
+        } else if (dateFilter === '30days') {
+          dateLimit.setDate(dateLimit.getDate() - 30);
+        } else {
+          dateLimit = null; // all time
+        }
+
         if (studentIds.length > 0) {
-          const { data: assessmentsData, error: assessErr } = await supabase
+          let assessQuery = supabase
             .from('assessments')
             .select('*, student:students(full_name, school_id, class:classes(class_name))')
             .in('student_id', studentIds)
-            .order('created_at', { ascending: false });
+            .order('created_at', { ascending: false })
+            .limit(1000);
+            
+          if (dateLimit) {
+            assessQuery = assessQuery.gte('created_at', dateLimit.toISOString());
+          }
+          
+          const { data: assessmentsData, error: assessErr } = await assessQuery;
             
           if (assessErr) throw assessErr;
           setAllAssessments(assessmentsData);
@@ -161,11 +178,18 @@ export function useTeacherData() {
 
         // 5. Fetch Activity Logs
         if (studentIds.length > 0) {
-          const { data: activityLogsData, error: activityErr } = await supabase
+          let activityQuery = supabase
             .from('activity_logs')
             .select('*')
             .in('student_id', studentIds)
-            .order('created_at', { ascending: false });
+            .order('created_at', { ascending: false })
+            .limit(1000);
+            
+          if (dateLimit) {
+            activityQuery = activityQuery.gte('created_at', dateLimit.toISOString());
+          }
+
+          const { data: activityLogsData, error: activityErr } = await activityQuery;
 
           if (activityErr) throw activityErr;
           setActivityData(activityLogsData || []);
@@ -185,7 +209,7 @@ export function useTeacherData() {
     } finally {
       setLoadingData(false);
     }
-  }, [teacher]);
+  }, [teacher, dateFilter]);
 
   useEffect(() => {
     if (!loadingAuth && teacher) {
@@ -234,7 +258,7 @@ export function useTeacherData() {
       setNewGradeLevel('General');
       setClassesList(prev => [data, ...prev]);
       setSelectedClass(prev => prev || data);
-      setSelectedClassMaterial(prev => prev || data);
+      setSelectedClassesMaterial(prev => prev.length > 0 ? prev : [data.id]);
     } catch (err) {
       console.error('Create class failed:', err);
       setActionError(err.message || 'Failed to create class. Code collision? Try again.');
@@ -306,12 +330,13 @@ export function useTeacherData() {
       }
 
       setActionSuccess(`Class "${className}" deleted successfully.`);
+      const deletedStudentIds = allStudents.filter(s => s.class_id === classId).map(s => s.id);
       setClassesList(prev => prev.filter(c => c.id !== classId));
       if (selectedClass?.id === classId) setSelectedClass(null);
       setSelectedClassesMaterial(prev => prev.filter(id => id !== classId));
       // Remove associated students and assessments from state
       setAllStudents(prev => prev.filter(s => s.class_id !== classId));
-      setAllAssessments(prev => prev.filter(a => a.student?.class?.class_name !== className)); // best effort based on current state shape
+      setAllAssessments(prev => prev.filter(a => !deletedStudentIds.includes(a.student_id)));
       setActivityData(prev => prev.filter(a => a.class_id !== classId));
     } catch (err) {
       console.error('Delete class failed:', err);
@@ -789,6 +814,7 @@ export function useTeacherData() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   }, [getFilteredAssessments]);
 
   return {

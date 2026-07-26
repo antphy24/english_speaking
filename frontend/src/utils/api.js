@@ -1,5 +1,22 @@
+import { supabase } from './supabaseClient';
+
+let _cachedToken = null;
+let _tokenExpiry = 0;
+
+async function getToken() {
+  const now = Date.now();
+  if (_cachedToken && now < _tokenExpiry) return _cachedToken;
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.access_token) {
+    _cachedToken = session.access_token;
+    _tokenExpiry = now + 4 * 60 * 1000; // Cache for 4 minutes
+  }
+  return _cachedToken;
+}
+
 /**
  * Enhanced fetch wrapper with automatic exponential backoff retry for handling rate limits (HTTP 429).
+ * Automatically injects the Supabase JWT token into the request headers.
  * 
  * @param {string} url - The target endpoint.
  * @param {RequestInit} options - Standard fetch options.
@@ -9,11 +26,20 @@
  */
 export async function fetchWithRetry(url, options = {}, retries = 5, delay = 1500) {
   try {
+    // Automatically inject JWT token using cache
+    const token = await getToken();
+    if (token) {
+      options.headers = {
+        ...options.headers,
+        'Authorization': `Bearer ${token}`
+      };
+    }
+
     const response = await fetch(url, options);
     
-    // Intercept rate limiting (HTTP 429)
-    if (response.status === 429 && retries > 0) {
-      console.warn(`Rate limit (429) encountered. Retrying in ${delay}ms... (${retries} attempts left)`);
+    // Intercept rate limiting (HTTP 429) or Server Errors (5xx)
+    if ((response.status === 429 || response.status >= 500) && retries > 0) {
+      console.warn(`Rate limit (429) or Server Error (5xx) encountered. Retrying in ${delay}ms... (${retries} attempts left)`);
       await new Promise((resolve) => setTimeout(resolve, delay));
       // Retry with double the delay (exponential backoff)
       return fetchWithRetry(url, options, retries - 1, delay * 2);
@@ -59,4 +85,40 @@ export async function parseError(response, defaultMsg = 'An error occurred.') {
   }
 }
 
-export default { fetchWithRetry, parseError };
+export async function pollJobStatus(apiBase, jobId, options = {}, initialDelayMs = 1500, maxWaitMs = 120000, onProgress = null) {
+  const url = `${apiBase}/job/${jobId}`;
+  const deadline = Date.now() + maxWaitMs;
+  let currentDelay = initialDelayMs;
+  const maxDelay = 10000; // Cap at 10s
+
+  while (Date.now() < deadline) {
+    if (options.signal && options.signal.aborted) {
+      throw new Error('Evaluation aborted by user.');
+    }
+    
+    const response = await fetchWithRetry(url, options);
+    if (!response.ok) {
+      const errorMsg = await parseError(response, 'Failed to fetch job status');
+      throw new Error(errorMsg);
+    }
+    const data = await response.json();
+    if (data.status === 'completed') {
+      return data.result;
+    }
+    if (data.status === 'failed') {
+      throw new Error(data.error || 'Background job failed');
+    }
+    
+    // Pass queue status back to the caller for UI updates
+    if (onProgress && (data.status === 'queued' || data.status === 'started')) {
+      onProgress(data.status);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, currentDelay));
+    currentDelay = Math.min(currentDelay * 1.5, maxDelay); // Backoff
+  }
+  
+  throw new Error('Evaluation timed out. Please try again.');
+}
+
+export default { fetchWithRetry, parseError, pollJobStatus };

@@ -3,7 +3,7 @@ import { useMediaRecorder } from '../hooks/useMediaRecorder';
 import ScoreCard from './UI/ScoreCard';
 import Spinner from './UI/Spinner';
 import { Mic, Info, RefreshCw, Volume2 } from 'lucide-react';
-import { fetchWithRetry, parseError } from '../utils/api';
+import { fetchWithRetry, parseError, pollJobStatus } from '../utils/api';
 
 const PARAGRAPHS = [
   {
@@ -47,9 +47,20 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
   const [errorMessage, setErrorMessage] = useState('');
   const [transcript, setTranscript] = useState('');
   const [evaluation, setEvaluation] = useState(null);
+  const [resultData, setResultData] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [queueStatus, setQueueStatus] = useState('');
 
   const pointerDownTimeRef = useRef(0);
   const [isToggleRecording, setIsToggleRecording] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   // Custom Recording Hook
   const {
@@ -151,7 +162,9 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
         throw new Error(errMsg);
       }
 
-      const { text } = await transcribeRes.json();
+      const { job_id: transcribeJobId } = await transcribeRes.json();
+      setQueueStatus('');
+      const { text } = await pollJobStatus(apiBase, transcribeJobId, {}, 2500, 120000, setQueueStatus);
       setTranscript(text);
 
       if (!text || text.trim().length === 0) {
@@ -175,7 +188,9 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
         throw new Error(errMsg);
       }
 
-      const gradeData = await gradeRes.json();
+      const { job_id: gradeJobId } = await gradeRes.json();
+      setQueueStatus('');
+      const gradeData = await pollJobStatus(apiBase, gradeJobId, {}, 2500, 120000, setQueueStatus);
       setEvaluation(gradeData);
       setStatus('graded');
     } catch (err) {
@@ -205,7 +220,9 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
         throw new Error(errMsg);
       }
 
-      const gradeData = await gradeRes.json();
+      const { job_id: gradeJobId } = await gradeRes.json();
+      setQueueStatus('');
+      const gradeData = await pollJobStatus(apiBase, gradeJobId, {}, 2500, 120000, setQueueStatus);
       setEvaluation(gradeData);
       setStatus('graded');
     } catch (err) {
@@ -314,6 +331,11 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
                 onPointerDown={handlePointerDown}
                 onPointerUp={handlePointerUp}
                 onPointerLeave={handlePointerLeave}
+                onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handlePointerDown(); } }}
+                onKeyUp={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handlePointerUp(); } }}
+                aria-label={isRecording ? `Recording in progress, ${recordingTime} seconds` : 'Hold to record your reading'}
+                role="button"
+                tabIndex={0}
                 className={`relative w-16 h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center transition-all duration-350 select-none shrink-0 ${
                   isRecording 
                     ? 'bg-red-500 text-white animate-record-pulse'
@@ -339,7 +361,7 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
       )}
 
       {/* Loading States */}
-      {status === 'transcribing' && <Spinner message="Sending audio to Whisper for transcription..." />}
+      {status === 'transcribing' && <Spinner message={queueStatus ? `[${queueStatus.toUpperCase()}] Transcribing...` : "Sending audio to Whisper for transcription..."} />}
       {status === 'grading' && (
         <div className="space-y-4">
           <div className="p-4 bg-slate-900/40 border border-slate-800 rounded-xl">
@@ -375,7 +397,12 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
             <Mic className="w-6 h-6" />
           </div>
           <div className="space-y-1">
-            <h4 className="text-lg font-bold text-white">Recording Failed</h4>
+            <h3 className="text-xl font-bold text-white mb-2">
+              {queueStatus ? `[${queueStatus.toUpperCase()}] ` : ''}Analyzing your speech...
+            </h3>
+            <h4 className="text-lg font-bold text-white">
+              {queueStatus ? `[${queueStatus.toUpperCase()}] ` : ''}Recording Failed
+            </h4>
             <p className="text-sm text-rose-300">{errorMessage}</p>
           </div>
           <div className="flex flex-wrap justify-center gap-3">

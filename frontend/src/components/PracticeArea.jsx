@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../utils/supabaseClient';
 import ModeReadAloud from './ModeReadAloud';
@@ -10,6 +10,7 @@ import { BookOpen, HelpCircle, MessageSquare, Award, UserCheck, LogOut, Sparkles
 import Spinner from './UI/Spinner';
 import { useConfirm } from './UI/ConfirmModal';
 import useActivityTracker from '../hooks/useActivityTracker';
+import useBeforeUnload from '../hooks/useBeforeUnload';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
@@ -39,6 +40,14 @@ export function PracticeArea() {
     // Reset assessment duration timer when mode changes
     sessionStartTimeRef.current = Date.now();
   }, [activeTab]);
+
+  const shouldWarnOnUnload = activeTab !== 'leaderboard';
+  useBeforeUnload(shouldWarnOnUnload, "You have an active practice session. Are you sure you want to leave?");
+
+  const readAloudMaterials = useMemo(() => customMaterials.filter(m => m.mode === 'read_aloud'), [customMaterials]);
+  const qaMaterials = useMemo(() => customMaterials.filter(m => m.mode === 'qa'), [customMaterials]);
+  const conversationMaterials = useMemo(() => customMaterials.filter(m => m.mode === 'conversation'), [customMaterials]);
+  const debateMaterials = useMemo(() => customMaterials.filter(m => m.mode === 'debate'), [customMaterials]);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -323,7 +332,7 @@ export function PracticeArea() {
               onSaveScore={handleSaveScore}
               isSaving={isSaving}
               saveStatus={saveStatus}
-              customParagraphs={customMaterials.filter(m => m.mode === 'read_aloud')}
+              customParagraphs={readAloudMaterials}
             />
           )}
           {activeTab === 'qa' && (
@@ -333,7 +342,7 @@ export function PracticeArea() {
               onSaveScore={handleSaveScore}
               isSaving={isSaving}
               saveStatus={saveStatus}
-              customQuestions={customMaterials.filter(m => m.mode === 'qa')}
+              customQuestions={qaMaterials}
             />
           )}
           {activeTab === 'conversation' && (
@@ -343,7 +352,7 @@ export function PracticeArea() {
               onSaveScore={handleSaveScore}
               isSaving={isSaving}
               saveStatus={saveStatus}
-              customGreetings={customMaterials.filter(m => m.mode === 'conversation')}
+              customGreetings={conversationMaterials}
             />
           )}
           {activeTab === 'debate' && (
@@ -353,7 +362,7 @@ export function PracticeArea() {
               onSaveScore={handleSaveScore}
               isSaving={isSaving}
               saveStatus={saveStatus}
-              customMotions={customMaterials.filter(m => m.mode === 'debate')}
+              customMotions={debateMaterials}
             />
           )}
           {activeTab === 'leaderboard' && (

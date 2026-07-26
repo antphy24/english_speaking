@@ -1,36 +1,48 @@
 import os
+import tempfile
 from typing import List, Optional
 from pydantic import BaseModel, Field
 from google import genai
 from google.genai import types
 from groq import Groq
 from dotenv import load_dotenv
-
+from tenacity import retry, wait_exponential, stop_after_attempt, stop_after_delay
 load_dotenv()
+
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # Initialize clients lazily to avoid startup crashes if keys are not set yet
+import time
+
 _groq_client = None
+_groq_client_created_at = 0
 _gemini_client = None
+_gemini_client_created_at = 0
+CLIENT_TTL = 1800  # 30 minutes
 
 def get_groq_client():
-    global _groq_client
-    if _groq_client is None:
+    global _groq_client, _groq_client_created_at
+    now = time.time()
+    if _groq_client is None or (now - _groq_client_created_at > CLIENT_TTL):
         api_key = os.getenv("GROQ_API_KEY")
         if not api_key or api_key == "YOUR_GROQ_API_KEY":
             raise ValueError("GROQ_API_KEY is not set or is invalid in .env")
         _groq_client = Groq(api_key=api_key)
+        _groq_client_created_at = now
     return _groq_client
 
 def get_gemini_client():
-    global _gemini_client
-    if _gemini_client is None:
+    global _gemini_client, _gemini_client_created_at
+    now = time.time()
+    if _gemini_client is None or (now - _gemini_client_created_at > CLIENT_TTL):
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key or api_key == "YOUR_GEMINI_API_KEY":
             raise ValueError("GEMINI_API_KEY is not set or is invalid in .env")
         _gemini_client = genai.Client(api_key=api_key)
+        _gemini_client_created_at = now
     return _gemini_client
 
 # --- Pydantic Schemas for Gemini Structured JSON output ---
@@ -70,6 +82,7 @@ class DebateEvaluation(BaseModel):
 
 # --- Service Functions ---
 
+@retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=(stop_after_attempt(5) | stop_after_delay(120)))
 def transcribe_audio_bytes(audio_bytes: bytes, filename: str) -> str:
     """
     Transcribe raw audio bytes using Groq Whisper.
@@ -84,6 +97,24 @@ def transcribe_audio_bytes(audio_bytes: bytes, filename: str) -> str:
     )
     return response.text
 
+
+def transcribe_audio_from_file(file_path: str, filename: str) -> str:
+    """
+    Read audio from a temp file on disk, transcribe it, then clean up.
+    Designed for RQ workers to avoid passing large byte payloads through Redis.
+    """
+    try:
+        with open(file_path, 'rb') as f:
+            audio_bytes = f.read()
+        return transcribe_audio_bytes(audio_bytes, filename)
+    finally:
+        # Always clean up the temp file
+        try:
+            os.unlink(file_path)
+        except OSError:
+            pass
+
+@retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=(stop_after_attempt(5) | stop_after_delay(120)))
 def get_llama_chat_reply(messages: List[dict]) -> str:
     """
     Generate next chatbot turn using Groq Qwen3.6-27B.
@@ -110,6 +141,7 @@ def get_llama_chat_reply(messages: List[dict]) -> str:
     )
     return completion.choices[0].message.content
 
+@retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=(stop_after_attempt(5) | stop_after_delay(120)))
 def evaluate_read_aloud(source_text: str, student_transcript: str) -> ReadAloudEvaluation:
     """
     Evaluate Read Aloud mode using Gemini 2.5 Flash structured output.
@@ -129,7 +161,7 @@ def evaluate_read_aloud(source_text: str, student_transcript: str) -> ReadAloudE
     )
     
     response = client.models.generate_content(
-        model='gemini-2.5-flash',
+        model=GEMINI_MODEL,
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
@@ -140,6 +172,7 @@ def evaluate_read_aloud(source_text: str, student_transcript: str) -> ReadAloudE
     # The return content is guaranteed to match the schema
     return ReadAloudEvaluation.model_validate_json(response.text)
 
+@retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=(stop_after_attempt(5) | stop_after_delay(120)))
 def evaluate_qa(question: str, student_transcript: str) -> QAEvaluation:
     """
     Evaluate Q&A mode using Gemini 2.5 Flash structured output.
@@ -160,7 +193,7 @@ def evaluate_qa(question: str, student_transcript: str) -> QAEvaluation:
     )
     
     response = client.models.generate_content(
-        model='gemini-2.5-flash',
+        model=GEMINI_MODEL,
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
@@ -170,6 +203,7 @@ def evaluate_qa(question: str, student_transcript: str) -> QAEvaluation:
     )
     return QAEvaluation.model_validate_json(response.text)
 
+@retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=(stop_after_attempt(5) | stop_after_delay(120)))
 def evaluate_conversation(messages: List[dict]) -> ConversationEvaluation:
     """
     Evaluate multi-turn conversation using Gemini 2.5 Flash structured output.
@@ -196,7 +230,7 @@ def evaluate_conversation(messages: List[dict]) -> ConversationEvaluation:
     )
     
     response = client.models.generate_content(
-        model='gemini-2.5-flash',
+        model=GEMINI_MODEL,
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
@@ -206,6 +240,7 @@ def evaluate_conversation(messages: List[dict]) -> ConversationEvaluation:
     )
     return ConversationEvaluation.model_validate_json(response.text)
 
+@retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=(stop_after_attempt(5) | stop_after_delay(120)))
 def evaluate_debate(motion: str, role: str, student_transcript: str) -> DebateEvaluation:
     """
     Evaluate debate performance using Gemini 2.5 Flash structured output with strict grading.
@@ -234,7 +269,7 @@ def evaluate_debate(motion: str, role: str, student_transcript: str) -> DebateEv
     )
     
     response = client.models.generate_content(
-        model='gemini-2.5-flash',
+        model=GEMINI_MODEL,
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",

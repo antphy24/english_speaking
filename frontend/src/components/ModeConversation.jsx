@@ -4,7 +4,7 @@ import ScoreCard from './UI/ScoreCard';
 import Spinner from './UI/Spinner';
 import { useConfirm } from './UI/ConfirmModal';
 import { Mic, MicOff, Info, Send, Volume2, VolumeX, User, Bot, AlertTriangle } from 'lucide-react';
-import { fetchWithRetry, parseError } from '../utils/api';
+import { fetchWithRetry, parseError, pollJobStatus } from '../utils/api';
 
 const DEFAULT_GREETINGS = [
   { id: 'def-1', title: "General Chat", content: "Hello {studentName}! I am your AI English conversation partner. What is a topic you would like to chat about today? Or we can talk about your hobbies!" },
@@ -42,7 +42,15 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
   const [evaluation, setEvaluation] = useState(null);
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const [errorType, setErrorType] = useState(null); // null | 'turn' | 'grading'
-  
+  const [queueStatus, setQueueStatus] = useState('');
+  useEffect(() => {
+    return () => {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
   // Custom Recording Hook
   const {
     isRecording,
@@ -156,7 +164,9 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
         throw new Error(errMsg);
       }
 
-      const { text } = await transcribeRes.json();
+      const { job_id: transcribeJobId } = await transcribeRes.json();
+      setQueueStatus('');
+      const { text } = await pollJobStatus(apiBase, transcribeJobId, {}, 2500, 120000, setQueueStatus);
 
       if (!text || text.trim().length === 0) {
         throw new Error("No speech was detected. Please make sure your mic is working and try again.");
@@ -240,7 +250,9 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
         throw new Error(errMsg);
       }
 
-      const gradeData = await gradeRes.json();
+      const { job_id: gradeJobId } = await gradeRes.json();
+      setQueueStatus('');
+      const gradeData = await pollJobStatus(apiBase, gradeJobId, {}, 2500, 120000, setQueueStatus);
       setEvaluation(gradeData);
       setStatus('graded');
     } catch (err) {
@@ -468,6 +480,7 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
               <button
                 onClick={handleToggleRecord}
                 disabled={status === 'bot_replying' || status === 'transcribing'}
+                aria-label={isRecording ? `Stop recording and send, ${recordingTime} seconds elapsed` : 'Start recording response'}
                 className={`w-16 h-16 rounded-full flex items-center justify-center transition shadow-lg ${
                   isRecording 
                     ? 'bg-red-500 text-white animate-record-pulse'

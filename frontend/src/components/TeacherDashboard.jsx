@@ -63,7 +63,8 @@ const formatScoreDetails = (mode, scoreData) => {
 
 export function TeacherDashboard() {
   const [activeTab, setActiveTab] = useState('overview');
-  const data = useTeacherData();
+  const [dateFilter, setDateFilter] = useState('30days');
+  const data = useTeacherData(dateFilter);
 
   if (data.loadingAuth) {
     return (
@@ -164,14 +165,26 @@ export function TeacherDashboard() {
             </p>
           </div>
           
-          <button 
-            onClick={data.loadDashboardData}
-            disabled={data.loadingData}
-            className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-xl transition cursor-pointer"
-            title="Refresh logs"
-          >
-            <RefreshCw className={`w-4 h-4 ${data.loadingData ? 'animate-spin' : ''}`} />
-          </button>
+          <div className="flex items-center space-x-3">
+            <select 
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              className="bg-slate-900 border border-slate-800 text-white text-xs rounded-xl px-3 py-2 outline-none focus:border-indigo-500"
+            >
+              <option value="7days">Last 7 Days</option>
+              <option value="30days">Last 30 Days</option>
+              <option value="all">All Time</option>
+            </select>
+
+            <button 
+              onClick={data.loadDashboardData}
+              disabled={data.loadingData}
+              className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-xl transition cursor-pointer"
+              title="Refresh logs"
+            >
+              <RefreshCw className={`w-4 h-4 ${data.loadingData ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
         </header>
 
         {data.actionError && (

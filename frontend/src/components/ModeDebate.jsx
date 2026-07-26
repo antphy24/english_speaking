@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Square, Loader2, Save, Mic, ShieldAlert, CheckCircle2, ChevronRight, XCircle, BrainCircuit, Users, Target, FileText, ArrowRight, Clock } from 'lucide-react';
+import { Play, Square, Loader2, Save, Mic, ShieldAlert, CheckCircle2, ChevronRight, XCircle, BrainCircuit, Users, Target, FileText, ArrowRight, Clock, AlertTriangle } from 'lucide-react';
 import Spinner from './UI/Spinner';
+import { fetchWithRetry, parseError, pollJobStatus } from '../utils/api';
+import { useMediaRecorder } from '../hooks/useMediaRecorder';
 
 const DEFAULT_MOTIONS = [
   "This House would ban the use of AI in educational assessments.",
@@ -18,29 +20,51 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, isSaving
   
   const [timer, setTimer] = useState(900); // 15 mins for case building, 435s for speech
   
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
+  const [isRecordingState, setIsRecordingState] = useState(false); // Remove if not needed, wait actually I should just use the hook
   const [audioUrl, setAudioUrl] = useState(null);
+  
+  const {
+    isRecording,
+    recordingTime,
+    audioBlob,
+    error: recordingError,
+    startRecording,
+    stopRecording,
+    clearAudio
+  } = useMediaRecorder();
+  
+  const [errorMessage, setErrorMessage] = useState('');
   
   const [resultData, setResultData] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [queueStatus, setQueueStatus] = useState('');
 
-  const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
   const timerIntervalRef = useRef(null);
-  const recordingIntervalRef = useRef(null);
 
   const availableMotions = [...(customMotions || []).map(m => m.content), ...DEFAULT_MOTIONS];
 
   useEffect(() => {
     return () => {
       clearInterval(timerIntervalRef.current);
-      clearInterval(recordingIntervalRef.current);
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-        mediaRecorderRef.current.stop();
-      }
     };
   }, []);
+
+  useEffect(() => {
+    if (recordingError) {
+      setErrorMessage(recordingError);
+      setStep('error');
+    }
+  }, [recordingError]);
+
+  const processAudioRef = useRef(null);
+  useEffect(() => {
+    processAudioRef.current = handleProcessSpeech;
+  });
+  useEffect(() => {
+    if (audioBlob && processAudioRef.current) {
+      processAudioRef.current(audioBlob);
+    }
+  }, [audioBlob]);
 
   const handleStartCaseBuilding = () => {
     if (!motion) {
@@ -71,52 +95,21 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, isSaving
     setTimer(435); // 7 mins 15 seconds
   };
 
-  const handleStartRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const audioUrl = URL.createObjectURL(audioBlob);
-        setAudioUrl(audioUrl);
-        handleProcessSpeech(audioBlob);
-      };
-
-      mediaRecorder.start();
-      setIsRecording(true);
-      setRecordingTime(0);
-      startTimer(); // Start countdown timer
-      
-      recordingIntervalRef.current = setInterval(() => {
-        setRecordingTime((prev) => prev + 1);
-      }, 1000);
-
-    } catch (error) {
-      console.error("Error accessing microphone:", error);
-      alert("Microphone access is required for practice modes.");
-    }
+  const handleBeginSpeech = () => {
+    clearAudio();
+    setErrorMessage('');
+    startRecording();
+    startTimer();
   };
 
-  const handleStopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      clearInterval(recordingIntervalRef.current);
-      clearInterval(timerIntervalRef.current);
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-    }
+  const handleFinishSpeech = () => {
+    stopRecording();
+    clearInterval(timerIntervalRef.current);
   };
 
   const handleProcessSpeech = async (audioBlob) => {
+    const url = URL.createObjectURL(audioBlob);
+    setAudioUrl(url);
     setIsProcessing(true);
     setStep('grading');
     try {
@@ -124,15 +117,20 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, isSaving
       const formData = new FormData();
       formData.append('file', audioBlob, 'debate_recording.webm');
       
-      const transcribeRes = await fetch(`${apiBase}/transcribe`, {
+      const transcribeRes = await fetchWithRetry(`${apiBase}/transcribe`, {
         method: 'POST',
         body: formData
       });
-      if (!transcribeRes.ok) throw new Error("Transcription failed");
-      const { text: transcript } = await transcribeRes.json();
+      if (!transcribeRes.ok) {
+        const errMsg = await parseError(transcribeRes, "Transcription failed");
+        throw new Error(errMsg);
+      }
+      const { job_id: transcribeJobId } = await transcribeRes.json();
+      setQueueStatus('');
+      const { text: transcript } = await pollJobStatus(apiBase, transcribeJobId, {}, 2500, 120000, setQueueStatus);
 
       // 2. Grade
-      const gradeRes = await fetch(`${apiBase}/grade`, {
+      const gradeRes = await fetchWithRetry(`${apiBase}/grade`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -142,8 +140,13 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, isSaving
           role
         })
       });
-      if (!gradeRes.ok) throw new Error("Grading failed");
-      const evalData = await gradeRes.json();
+      if (!gradeRes.ok) {
+        const errMsg = await parseError(gradeRes, "Grading failed");
+        throw new Error(errMsg);
+      }
+      const { job_id: gradeJobId } = await gradeRes.json();
+      setQueueStatus('');
+      const evalData = await pollJobStatus(apiBase, gradeJobId, {}, 2500, 120000, setQueueStatus);
       
       // Calculate overall score (Matter 40%, Manner 40%, Method 20%)
       const finalScore = (evalData.matter_score * 4) + (evalData.manner_score * 4) + (evalData.method_score * 2);
@@ -156,8 +159,8 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, isSaving
       setStep('results');
     } catch (err) {
       console.error(err);
-      alert("Error processing your speech. Please try again.");
-      setStep('recording'); // allow retry
+      setErrorMessage(err.message || "Error processing your speech. Please try again.");
+      setStep('error');
     } finally {
       setIsProcessing(false);
     }
@@ -175,6 +178,8 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, isSaving
   };
 
   const handleReset = () => {
+    clearAudio();
+    setErrorMessage('');
     setStep('setup');
     setMotion('');
     setScratchpad('');
@@ -324,7 +329,8 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, isSaving
 
             {!isRecording ? (
               <button
-                onClick={handleStartRecording}
+                onClick={handleBeginSpeech}
+                aria-label="Record Speech"
                 className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-4 rounded-xl transition-all transform hover:scale-105 flex justify-center items-center space-x-3 shadow-lg shadow-indigo-900/20"
               >
                 <Mic className="w-5 h-5" />
@@ -332,7 +338,8 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, isSaving
               </button>
             ) : (
               <button
-                onClick={handleStopRecording}
+                onClick={handleFinishSpeech}
+                aria-label={`Stop Recording, ${recordingTime} seconds elapsed`}
                 className="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-4 px-4 rounded-xl transition-all transform hover:scale-105 flex justify-center items-center space-x-3 animate-pulse shadow-lg shadow-rose-900/20"
               >
                 <Square className="w-5 h-5 fill-current" />
@@ -374,6 +381,28 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, isSaving
     );
   }
 
+  if (step === 'error') {
+    return (
+      <div className="glass-panel p-6 rounded-xl border border-red-500/20 text-center space-y-4 animate-fadeIn">
+        <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto text-red-500">
+          <AlertTriangle className="w-6 h-6" />
+        </div>
+        <div className="space-y-1">
+          <h4 className="text-lg font-bold text-white">Error</h4>
+          <p className="text-sm text-rose-300">{errorMessage}</p>
+        </div>
+        <div className="flex justify-center mt-4">
+          <button 
+            onClick={handleReset}
+            className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (step === 'grading') {
     return (
       <div className="flex flex-col items-center justify-center py-20 animate-fadeIn">
@@ -381,7 +410,7 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, isSaving
            <div className="absolute inset-0 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin"></div>
            <BrainCircuit className="w-8 h-8 text-indigo-400" />
         </div>
-        <h3 className="text-xl font-bold text-white mb-2">Analyzing your speech...</h3>
+        <h3 className="text-xl font-bold text-white mb-2">{queueStatus ? `[${queueStatus.toUpperCase()}] ` : ''}Analyzing your speech...</h3>
         <p className="text-slate-400 text-sm max-w-md text-center">
           Whisper is transcribing the audio and Gemini 2.5 is adjudicating your speech based on strict matter, manner, and method rubrics. This may take a minute.
         </p>

@@ -15,5 +15,9 @@ COPY . /code
 # Expose port (Hugging Face Spaces runs on 7860 by default)
 EXPOSE 7860
 
-# Run FastAPI application
-CMD ["python", "main.py"]
+# Copy the start script and make it executable
+COPY start.sh /code/start.sh
+RUN chmod +x /code/start.sh
+
+# Run the start script which starts both the workers and FastAPI
+CMD ["./start.sh"]

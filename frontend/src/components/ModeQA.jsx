@@ -3,7 +3,7 @@ import { useMediaRecorder } from '../hooks/useMediaRecorder';
 import ScoreCard from './UI/ScoreCard';
 import Spinner from './UI/Spinner';
 import { Mic, MicOff, Info, HelpCircle } from 'lucide-react';
-import { fetchWithRetry, parseError } from '../utils/api';
+import { fetchWithRetry, parseError, pollJobStatus } from '../utils/api';
 
 const QUESTIONS = [
   {
@@ -58,6 +58,7 @@ export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = []
   } = useMediaRecorder();
 
   const [isSaving, setIsSaving] = useState(false);
+  const [queueStatus, setQueueStatus] = useState('');
   const [saveStatus, setSaveStatus] = useState('');
 
   // Sync recording error
@@ -114,7 +115,9 @@ export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = []
         throw new Error(errMsg);
       }
 
-      const { text } = await transcribeRes.json();
+      const { job_id: transcribeJobId } = await transcribeRes.json();
+      setQueueStatus('');
+      const { text } = await pollJobStatus(apiBase, transcribeJobId, {}, 2500, 120000, setQueueStatus);
       setTranscript(text);
 
       if (!text || text.trim().length === 0) {
@@ -138,7 +141,9 @@ export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = []
         throw new Error(errMsg);
       }
 
-      const gradeData = await gradeRes.json();
+      const { job_id: gradeJobId } = await gradeRes.json();
+      setQueueStatus('');
+      const gradeData = await pollJobStatus(apiBase, gradeJobId, {}, 2500, 120000, setQueueStatus);
       setEvaluation(gradeData);
       setStatus('graded');
     } catch (err) {
@@ -181,7 +186,9 @@ export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = []
         throw new Error(errMsg);
       }
 
-      const gradeData = await gradeRes.json();
+      const { job_id: gradeJobId } = await gradeRes.json();
+      setQueueStatus('');
+      const gradeData = await pollJobStatus(apiBase, gradeJobId, {}, 2500, 120000, setQueueStatus);
       setEvaluation(gradeData);
       setStatus('graded');
     } catch (err) {
@@ -265,6 +272,7 @@ export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = []
             <div className="flex flex-col items-center justify-center space-y-3 pt-2">
               <button
                 onClick={handleToggleRecord}
+                aria-label={isRecording ? `Stop recording, ${recordingTime} seconds elapsed` : 'Start recording response'}
                 className={`relative w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300 ${
                   isRecording 
                     ? 'bg-red-500 text-white animate-record-pulse glow-purple-lg'

@@ -23,6 +23,7 @@ export default function useActivityTracker({ studentId, classId, activeMode }) {
   const lastInteractionRef  = useRef(Date.now());
   const segmentStartRef     = useRef(new Date().toISOString());
   const tabVisibleRef       = useRef(!document.hidden);
+  const tokenRef            = useRef(null);
 
   // Keep latest props in refs so callbacks never go stale
   const studentIdRef  = useRef(studentId);
@@ -31,6 +32,16 @@ export default function useActivityTracker({ studentId, classId, activeMode }) {
 
   useEffect(() => { studentIdRef.current = studentId; }, [studentId]);
   useEffect(() => { classIdRef.current = classId; },     [classId]);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      tokenRef.current = session?.access_token || null;
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      tokenRef.current = session?.access_token || null;
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   // ── Flush helper ──────────────────────────────────────────────────
   const flush = useCallback(async (modeOverride) => {
@@ -88,11 +99,17 @@ export default function useActivityTracker({ studentId, classId, activeMode }) {
     idleSecondsRef.current   = 0;
 
     try {
-      const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-      navigator.sendBeacon(
-        `${supabaseUrl}/rest/v1/activity_logs?apikey=${supabaseAnonKey}`,
-        blob,
-      );
+      const token = tokenRef.current || '';
+      fetch(`${supabaseUrl}/rest/v1/activity_logs`, {
+        method: 'POST',
+        keepalive: true,
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': supabaseAnonKey,
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      }).catch(err => console.error('[ActivityTracker] keepalive fetch failed:', err));
     } catch (err) {
       console.error('[ActivityTracker] beacon flush failed:', err);
     }
@@ -155,9 +172,13 @@ export default function useActivityTracker({ studentId, classId, activeMode }) {
     window.addEventListener('beforeunload', handleBeforeUnload);
 
     // ── 1-second tick ────────────────────────────────────────────────
+    let lastTick = Date.now();
     const tickId = setInterval(() => {
       // Determine active/idle state
       const now = Date.now();
+      const elapsed = Math.round((now - lastTick) / 1000);
+      lastTick = now;
+      
       const sinceInteraction = now - lastInteractionRef.current;
 
       if (tabVisibleRef.current && sinceInteraction < IDLE_THRESHOLD_MS) {
@@ -166,16 +187,16 @@ export default function useActivityTracker({ studentId, classId, activeMode }) {
           isActiveRef.current = true;
           setIsActive(true);
         }
-        activeSecondsRef.current += 1;
-        setActiveSeconds((s) => s + 1);
+        activeSecondsRef.current += elapsed;
+        setActiveSeconds((s) => s + elapsed);
       } else {
         // Idle (tab hidden OR idle timeout)
         if (isActiveRef.current) {
           isActiveRef.current = false;
           setIsActive(false);
         }
-        idleSecondsRef.current += 1;
-        setIdleSeconds((s) => s + 1);
+        idleSecondsRef.current += elapsed;
+        setIdleSeconds((s) => s + elapsed);
       }
     }, TICK_INTERVAL_MS);
 
