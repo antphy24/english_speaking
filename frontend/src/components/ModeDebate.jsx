@@ -127,7 +127,7 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, isSaving
       }
       const { job_id: transcribeJobId } = await transcribeRes.json();
       setQueueStatus('');
-      const { text: transcript } = await pollJobStatus(apiBase, transcribeJobId, {}, 2500, 120000, setQueueStatus);
+      const { text: transcript } = await pollJobStatus(apiBase, transcribeJobId, {}, 2500, 600000, setQueueStatus);
 
       // 2. Grade
       const gradeRes = await fetchWithRetry(`${apiBase}/grade`, {
@@ -146,7 +146,7 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, isSaving
       }
       const { job_id: gradeJobId } = await gradeRes.json();
       setQueueStatus('');
-      const evalData = await pollJobStatus(apiBase, gradeJobId, {}, 2500, 120000, setQueueStatus);
+      const evalData = await pollJobStatus(apiBase, gradeJobId, {}, 2500, 600000, setQueueStatus);
       
       // Calculate overall score (Matter 40%, Manner 40%, Method 20%)
       const finalScore = (evalData.matter_score * 4) + (evalData.manner_score * 4) + (evalData.method_score * 2);

@@ -117,7 +117,7 @@ export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = []
 
       const { job_id: transcribeJobId } = await transcribeRes.json();
       setQueueStatus('');
-      const { text } = await pollJobStatus(apiBase, transcribeJobId, {}, 2500, 120000, setQueueStatus);
+      const { text } = await pollJobStatus(apiBase, transcribeJobId, {}, 2500, 600000, setQueueStatus);
       setTranscript(text);
 
       if (!text || text.trim().length === 0) {
@@ -143,7 +143,7 @@ export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = []
 
       const { job_id: gradeJobId } = await gradeRes.json();
       setQueueStatus('');
-      const gradeData = await pollJobStatus(apiBase, gradeJobId, {}, 2500, 120000, setQueueStatus);
+      const gradeData = await pollJobStatus(apiBase, gradeJobId, {}, 2500, 600000, setQueueStatus);
       setEvaluation(gradeData);
       setStatus('graded');
     } catch (err) {
@@ -188,7 +188,7 @@ export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = []
 
       const { job_id: gradeJobId } = await gradeRes.json();
       setQueueStatus('');
-      const gradeData = await pollJobStatus(apiBase, gradeJobId, {}, 2500, 120000, setQueueStatus);
+      const gradeData = await pollJobStatus(apiBase, gradeJobId, {}, 2500, 600000, setQueueStatus);
       setEvaluation(gradeData);
       setStatus('graded');
     } catch (err) {

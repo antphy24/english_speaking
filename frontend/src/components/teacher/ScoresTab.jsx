@@ -137,8 +137,8 @@ export function ScoresTab({
                     <td className="py-4 px-6">
                       {formatScoreDetails(record.mode, record.feedback)}
                     </td>
-                    <td className="py-4 px-6 max-w-xs truncate italic text-slate-400" title={record.feedback?.feedback || record.feedback}>
-                      {record.feedback?.feedback || record.feedback}
+                    <td className="py-4 px-6 max-w-xs truncate italic text-slate-400" title={record.feedback?.feedback || record.feedback?.overall_feedback || (typeof record.feedback === 'string' ? record.feedback : 'See detailed scores')}>
+                      {record.feedback?.feedback || record.feedback?.overall_feedback || (typeof record.feedback === 'string' ? record.feedback : 'See detailed scores')}
                     </td>
                   </tr>
                 ))}

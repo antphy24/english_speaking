@@ -11,6 +11,7 @@ import Spinner from './UI/Spinner';
 import { useConfirm } from './UI/ConfirmModal';
 import useActivityTracker from '../hooks/useActivityTracker';
 import useBeforeUnload from '../hooks/useBeforeUnload';
+import AIStatusBadge from './AIStatusBadge';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
@@ -321,6 +322,7 @@ export function PracticeArea() {
               {activeTab === 'leaderboard' && 'Logs and scores saved in the Supabase classroom database.'}
             </p>
           </div>
+          <AIStatusBadge apiBase={API_BASE} />
         </header>
 
         {/* Tab Components */}

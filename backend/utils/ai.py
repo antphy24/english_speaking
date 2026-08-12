@@ -1,26 +1,28 @@
 import os
+import re
 import tempfile
 from typing import List, Optional
 from pydantic import BaseModel, Field
-from google import genai
-from google.genai import types
+import instructor
 from groq import Groq
 from dotenv import load_dotenv
-from tenacity import retry, wait_exponential, stop_after_attempt, stop_after_delay
+from tenacity import retry, wait_exponential, stop_after_attempt, stop_after_delay, retry_if_exception
 load_dotenv()
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # Initialize clients lazily to avoid startup crashes if keys are not set yet
 import time
+import redis
+
+redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+redis_kwargs = {}
+if redis_url.startswith('rediss://'):
+    redis_kwargs['ssl_cert_reqs'] = None
+redis_conn = redis.from_url(redis_url, **redis_kwargs)
 
 _groq_client = None
 _groq_client_created_at = 0
-_gemini_client = None
-_gemini_client_created_at = 0
 CLIENT_TTL = 1800  # 30 minutes
 
 def get_groq_client():
@@ -30,22 +32,35 @@ def get_groq_client():
         api_key = os.getenv("GROQ_API_KEY")
         if not api_key or api_key == "YOUR_GROQ_API_KEY":
             raise ValueError("GROQ_API_KEY is not set or is invalid in .env")
-        _groq_client = Groq(api_key=api_key)
+        raw_client = Groq(api_key=api_key)
+        _groq_client = instructor.from_groq(raw_client, mode=instructor.Mode.JSON)
         _groq_client_created_at = now
     return _groq_client
 
-def get_gemini_client():
-    global _gemini_client, _gemini_client_created_at
-    now = time.time()
-    if _gemini_client is None or (now - _gemini_client_created_at > CLIENT_TTL):
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key or api_key == "YOUR_GEMINI_API_KEY":
-            raise ValueError("GEMINI_API_KEY is not set or is invalid in .env")
-        _gemini_client = genai.Client(api_key=api_key)
-        _gemini_client_created_at = now
-    return _gemini_client
+def call_groq_json(prompt, schema, temperature=0.1):
+    """
+    Wrapper for Groq API calls using instructor to guarantee JSON schema, and catches rate limits proactively.
+    """
+    client = get_groq_client()
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            response_model=schema,
+            temperature=temperature,
+            max_retries=2
+        )
+        return response
+    except Exception as e:
+        err_str = str(e)
+        if "429" in err_str or "rate limit" in err_str.lower():
+            import re
+            match = re.search(r'(?:try again in|retry in) (\d+(?:\.\d+)?)s', err_str, re.IGNORECASE)
+            ttl = int(float(match.group(1))) + 5 if match else 60
+            redis_conn.setex("ai_quota_exhausted", ttl, "true")
+        raise
 
-# --- Pydantic Schemas for Gemini Structured JSON output ---
+# --- Pydantic Schemas for Structured JSON output ---
 
 class ReadAloudEvaluation(BaseModel):
     accuracy_score: int = Field(..., description="Accuracy score from 0 to 100 based on comparison to the source text")
@@ -134,19 +149,18 @@ def get_llama_chat_reply(messages: List[dict]) -> str:
         })
         
     completion = client.chat.completions.create(
-        model="qwen/qwen3.6-27b",
+        model="llama-3.3-70b-versatile",
         messages=formatted_messages,
         temperature=0.7,
-        max_tokens=150
+        max_tokens=150,
+        response_model=None
     )
     return completion.choices[0].message.content
 
-@retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=(stop_after_attempt(5) | stop_after_delay(120)))
 def evaluate_read_aloud(source_text: str, student_transcript: str) -> ReadAloudEvaluation:
     """
-    Evaluate Read Aloud mode using Gemini 2.5 Flash structured output.
+    Evaluate Read Aloud mode using Groq Llama 3 structured output.
     """
-    client = get_gemini_client()
     
     prompt = (
         f"Analyze the student's read aloud attempt.\n\n"
@@ -157,27 +171,17 @@ def evaluate_read_aloud(source_text: str, student_transcript: str) -> ReadAloudE
         f"1. Words skipped by the student.\n"
         f"2. Words mispronounced, misspelled or substituted.\n"
         f"3. Calculate accuracy score (0-100) and Word Error Rate (WER).\n"
-        f"4. Provide actionable feedback to help them improve."
+        f"4. Provide actionable feedback to help them improve. IMPORTANT: Speak directly to the student using 'you' and 'your' (e.g., 'You did a great job...', 'Your pronunciation...'). DO NOT speak in the third person."
     )
-    
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=ReadAloudEvaluation,
-            temperature=0.1
-        )
-    )
-    # The return content is guaranteed to match the schema
-    return ReadAloudEvaluation.model_validate_json(response.text)
+    response = call_groq_json(prompt, ReadAloudEvaluation, temperature=0.1)
+    if hasattr(response, "model_dump"):
+        return response.model_dump()
+    return response
 
-@retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=(stop_after_attempt(5) | stop_after_delay(120)))
 def evaluate_qa(question: str, student_transcript: str) -> QAEvaluation:
     """
-    Evaluate Q&A mode using Gemini 2.5 Flash structured output.
+    Evaluate Q&A mode using Groq Llama 3 structured output.
     """
-    client = get_gemini_client()
     
     prompt = (
         f"Act as an official IELTS Speaking examiner grading a candidate.\n\n"
@@ -189,26 +193,18 @@ def evaluate_qa(question: str, student_transcript: str) -> QAEvaluation:
         f"- Grammatical Range and Accuracy (grammar score: 0 to 100)\n"
         f"- Pronunciation (pronunciation score: 0 to 100)\n\n"
         f"Give the scores and provide detailed feedback on their strengths and weaknesses, "
-        f"with recommendations to score higher."
+        f"with recommendations to score higher. IMPORTANT: Speak directly to the candidate using 'you' and 'your' (e.g., 'You did a great job...'). DO NOT speak in the third person."
     )
     
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=QAEvaluation,
-            temperature=0.2
-        )
-    )
-    return QAEvaluation.model_validate_json(response.text)
+    response = call_groq_json(prompt, QAEvaluation, temperature=0.2)
+    if hasattr(response, "model_dump"):
+        return response.model_dump()
+    return response
 
-@retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=(stop_after_attempt(5) | stop_after_delay(120)))
 def evaluate_conversation(messages: List[dict]) -> ConversationEvaluation:
     """
-    Evaluate multi-turn conversation using Gemini 2.5 Flash structured output.
+    Evaluate multi-turn conversation using Groq Llama 3 structured output.
     """
-    client = get_gemini_client()
     
     # Format the messages transcript for Gemini
     formatted_transcript = ""
@@ -226,26 +222,18 @@ def evaluate_conversation(messages: List[dict]) -> ConversationEvaluation:
         f"- Grammatical Range and Accuracy (grammatical_range score)\n"
         f"- Pronunciation (pronunciation score - note that since this is a text transcript, base this on phonetic signals, punctuation indicators, or assume a baseline grade if no clear errors, but evaluate based on general fluency cues)\n"
         f"- Interactive Communication (interactive_communication score - how well the student responds to the AI prompts, keeps the conversation going, and handles turn-taking)\n\n"
-        f"Provide detailed constructive feedback highlighting their conversational ability and grammatical accuracy."
+        f"Provide detailed constructive feedback highlighting their conversational ability and grammatical accuracy. IMPORTANT: Speak directly to the student using 'you' and 'your' (e.g., 'You did a great job...'). DO NOT speak in the third person."
     )
     
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=ConversationEvaluation,
-            temperature=0.2
-        )
-    )
-    return ConversationEvaluation.model_validate_json(response.text)
+    response = call_groq_json(prompt, ConversationEvaluation, temperature=0.2)
+    if hasattr(response, "model_dump"):
+        return response.model_dump()
+    return response
 
-@retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=(stop_after_attempt(5) | stop_after_delay(120)))
 def evaluate_debate(motion: str, role: str, student_transcript: str) -> DebateEvaluation:
     """
-    Evaluate debate performance using Gemini 2.5 Flash structured output with strict grading.
+    Evaluate debate performance using Groq Llama 3 structured output with strict grading.
     """
-    client = get_gemini_client()
     
     prompt = (
         f"Act as a strict and professional Debate Adjudicator. Evaluate the speaker's performance.\n\n"
@@ -265,16 +253,10 @@ def evaluate_debate(motion: str, role: str, student_transcript: str) -> DebateEv
         f"   - 8–10: Alur pidato sangat sistematis (pengantar, poin argumen, kesimpulan). Penggunaan waktu efisien.\n"
         f"   - 5–7: Struktur ada, tetapi transisi terasa kasar/mendadak. Manajemen waktu kurang pas.\n"
         f"   - 1–4: Pidato tidak terstruktur, melompat tanpa arah jelas. Tidak ada signposting.\n\n"
-        f"Provide the scores (1-10) and detailed, rigorous feedback for Matter, Manner, and Method. Be critical and strict."
+        f"Provide the scores (1-10) and detailed, rigorous feedback for Matter, Manner, and Method. Be critical and strict. IMPORTANT: Speak directly to the debater using 'you' and 'your' (e.g., 'You structured your argument well...'). DO NOT speak in the third person."
     )
     
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=DebateEvaluation,
-            temperature=0.1
-        )
-    )
-    return DebateEvaluation.model_validate_json(response.text)
+    response = call_groq_json(prompt, DebateEvaluation, temperature=0.2)
+    if hasattr(response, "model_dump"):
+        return response.model_dump()
+    return response

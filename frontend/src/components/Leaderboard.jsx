@@ -281,8 +281,8 @@ export function Leaderboard({ student }) {
                             <td className="py-4 px-6">
                               {formatScoreDisplay(record.mode, record.score, record.feedback)}
                             </td>
-                            <td className="py-4 px-6 max-w-xs truncate text-slate-400 italic" title={record.feedback?.feedback || record.feedback}>
-                              {record.feedback?.feedback || record.feedback}
+                            <td className="py-4 px-6 max-w-xs truncate text-slate-400 italic" title={record.feedback?.feedback || record.feedback?.overall_feedback || (typeof record.feedback === 'string' ? record.feedback : 'See detailed scores')}>
+                              {record.feedback?.feedback || record.feedback?.overall_feedback || (typeof record.feedback === 'string' ? record.feedback : 'See detailed scores')}
                             </td>
                           </tr>
                         ))}
@@ -355,8 +355,8 @@ export function Leaderboard({ student }) {
                             <td className="py-4 px-6">
                               {formatScoreDisplay(record.mode, record.score, record.feedback)}
                             </td>
-                            <td className="py-4 px-6 max-w-xs truncate text-slate-400 italic" title={record.feedback?.feedback || record.feedback}>
-                              {record.feedback?.feedback || record.feedback}
+                            <td className="py-4 px-6 max-w-xs truncate text-slate-400 italic" title={record.feedback?.feedback || record.feedback?.overall_feedback || (typeof record.feedback === 'string' ? record.feedback : 'See detailed scores')}>
+                              {record.feedback?.feedback || record.feedback?.overall_feedback || (typeof record.feedback === 'string' ? record.feedback : 'See detailed scores')}
                             </td>
                           </tr>
                         ))}

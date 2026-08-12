@@ -37,9 +37,21 @@ export async function fetchWithRetry(url, options = {}, retries = 5, delay = 150
 
     const response = await fetch(url, options);
     
-    // Intercept rate limiting (HTTP 429) or Server Errors (5xx)
-    if ((response.status === 429 || response.status >= 500) && retries > 0) {
-      console.warn(`Rate limit (429) or Server Error (5xx) encountered. Retrying in ${delay}ms... (${retries} attempts left)`);
+    // Intercept rate limiting (HTTP 429) or temporary unavailability (503) — do NOT retry 500 (prevents duplicate jobs)
+    if ((response.status === 429 || response.status === 503) && retries > 0) {
+      // Check if it's our intentional circuit breaker from the backend
+      const clonedResponse = response.clone();
+      try {
+        const errorData = await clonedResponse.json();
+        if (errorData && errorData.detail) {
+          // Do not retry blindly; return to let the UI show the error immediately
+          return response;
+        }
+      } catch (e) {
+        // ignore parse errors, likely a proxy HTML error, proceed to retry
+      }
+
+      console.warn(`Rate limit (429) or Service Unavailable (503) encountered. Retrying in ${delay}ms... (${retries} attempts left)`);
       await new Promise((resolve) => setTimeout(resolve, delay));
       // Retry with double the delay (exponential backoff)
       return fetchWithRetry(url, options, retries - 1, delay * 2);
@@ -110,8 +122,12 @@ export async function pollJobStatus(apiBase, jobId, options = {}, initialDelayMs
     }
     
     // Pass queue status back to the caller for UI updates
-    if (onProgress && (data.status === 'queued' || data.status === 'started')) {
-      onProgress(data.status);
+    if (onProgress && (data.status === 'queued' || data.status === 'started' || data.status === 'scheduled' || data.status === 'deferred')) {
+      if (data.position) {
+        onProgress(`${data.status} (Position: ${data.position})`);
+      } else {
+        onProgress(data.status);
+      }
     }
 
     await new Promise((resolve) => setTimeout(resolve, currentDelay));

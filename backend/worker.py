@@ -24,7 +24,7 @@ SimpleWorker.death_penalty_class = DummyDeathPenalty
 
 load_dotenv()
 
-listen = ['default']
+listen = ['transcribe', 'grade']
 
 redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
 

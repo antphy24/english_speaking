@@ -6,6 +6,7 @@ import asyncio
 import tempfile
 import time
 import glob
+import re
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,7 +20,7 @@ from slowapi.errors import RateLimitExceeded
 import base64
 import json
 import redis
-from rq import Queue
+from rq import Queue, Retry
 from rq.job import Job
 
 # Import utilities
@@ -86,8 +87,12 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
-redis_conn = redis.from_url(redis_url)
-task_queue = Queue(connection=redis_conn)
+redis_kwargs = {}
+if redis_url.startswith('rediss://'):
+    redis_kwargs['ssl_cert_reqs'] = None
+redis_conn = redis.from_url(redis_url, **redis_kwargs)
+transcribe_queue = Queue('transcribe', connection=redis_conn)
+grade_queue = Queue('grade', connection=redis_conn)
 
 # Enable CORS for frontend requests
 allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173")
@@ -146,6 +151,11 @@ async def _verify_token(authorization: Optional[str], request: Request):
     
     token = authorization.split(" ")[1]
     
+    cache_key = f"auth_token:{token}"
+    cached_user = redis_conn.get(cache_key)
+    if cached_user:
+        return json.loads(cached_user)
+    
     # Bypass for Locust load testing
     if token.endswith(".mock_signature") and os.getenv("ALLOW_MOCK_TOKENS", "false").lower() == "true":
         try:
@@ -167,16 +177,18 @@ async def _verify_token(authorization: Optional[str], request: Request):
     try:
         client = request.app.state.http_client
         response = await client.get(f"{SUPABASE_URL}/auth/v1/user", headers=headers)
-            
+        
         if response.status_code != 200:
             raise HTTPException(status_code=401, detail="Session expired or invalid token.")
             
-        return response.json()
+        user_info = response.json()
+        redis_conn.setex(cache_key, 600, json.dumps(user_info)) # Cache for 10 mins
+        return user_info
     except HTTPException as he:
         raise he
     except Exception as e:
         print(f"Auth verification error: {e}")
-        raise HTTPException(status_code=500, detail="Authentication check failed.")
+        raise HTTPException(status_code=500, detail=f"Authentication check failed: {type(e).__name__} - {str(e)}")
 
 async def verify_authenticated(request: Request, authorization: Optional[str] = Header(None)):
     """Lightweight auth check: verifies JWT is valid, returns user info. Used for student endpoints."""
@@ -207,6 +219,23 @@ def health_check():
     if not os.getenv("GROQ_API_KEY") or not os.getenv("GEMINI_API_KEY") or not SUPABASE_URL:
         raise HTTPException(status_code=503, detail="Missing essential API keys.")
     return {"status": "healthy"}
+
+@app.get("/ai-status")
+def ai_status():
+    """
+    Check the availability of the AI backend based on rate limits and queue length.
+    """
+    is_exhausted = redis_conn.get("ai_quota_exhausted")
+    
+    grade_queue_length = len(grade_queue)
+    transcribe_queue_length = len(transcribe_queue)
+    
+    if is_exhausted:
+        return {"status": "exhausted", "message": "AI quota reached. Please wait a minute."}
+    elif grade_queue_length >= 5:
+        return {"status": "busy", "message": f"AI is busy processing requests ({grade_queue_length} in queue)."}
+    else:
+        return {"status": "ready", "message": "AI is ready."}
 
 async def _enroll_student(client, student, classId, classCode, headers):
     sanitized_school_id = "".join(c for c in student.schoolId if c.isalnum())
@@ -499,7 +528,7 @@ async def transcribe(request: Request, file: UploadFile = File(...), user: dict 
         
         # Enqueue the job with file path instead of raw bytes
         job = await asyncio.to_thread(
-            task_queue.enqueue,
+            transcribe_queue.enqueue,
             "utils.ai.transcribe_audio_from_file", 
             temp_path, 
             filename, 
@@ -508,6 +537,11 @@ async def transcribe(request: Request, file: UploadFile = File(...), user: dict 
         return {"job_id": job.get_id()}
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"Transcription error: {e}")
+        raise HTTPException(status_code=500, detail="Transcription failed. Please try again later.")
 
 @app.post("/grade")
 @limiter.limit("10/minute")
@@ -517,25 +551,30 @@ async def grade(request: Request, grade_data: GradeRequest, user: dict = Depends
     Returns schema-specific JSON based on the selected mode.
     """
     try:
+        # Circuit breaker: if we know Gemini is rate-limited, don't even enqueue the job
+        if redis_conn.get("ai_quota_exhausted"):
+            raise HTTPException(status_code=429, detail="AI quota is temporarily exhausted. Please wait a moment.")
+
+        retry_policy = Retry(max=3, interval=60)
         if grade_data.mode == "read_aloud":
             if not grade_data.source_text or not grade_data.transcript:
                 raise HTTPException(status_code=400, detail="read_aloud requires 'source_text' and 'transcript'")
-            job = await asyncio.to_thread(task_queue.enqueue, "utils.ai.evaluate_read_aloud", grade_data.source_text, grade_data.transcript, result_ttl=3600)
+            job = await asyncio.to_thread(grade_queue.enqueue, "utils.ai.evaluate_read_aloud", grade_data.source_text, grade_data.transcript, result_ttl=3600, retry=retry_policy)
             
         elif grade_data.mode == "qa":
             if not grade_data.question or not grade_data.transcript:
                 raise HTTPException(status_code=400, detail="qa requires 'question' and 'transcript'")
-            job = await asyncio.to_thread(task_queue.enqueue, "utils.ai.evaluate_qa", grade_data.question, grade_data.transcript, result_ttl=3600)
+            job = await asyncio.to_thread(grade_queue.enqueue, "utils.ai.evaluate_qa", grade_data.question, grade_data.transcript, result_ttl=3600, retry=retry_policy)
             
         elif grade_data.mode == "conversation":
             if not grade_data.messages or len(grade_data.messages) == 0:
                 raise HTTPException(status_code=400, detail="conversation requires 'messages'")
-            job = await asyncio.to_thread(task_queue.enqueue, "utils.ai.evaluate_conversation", grade_data.messages, result_ttl=3600)
+            job = await asyncio.to_thread(grade_queue.enqueue, "utils.ai.evaluate_conversation", grade_data.messages, result_ttl=3600, retry=retry_policy)
             
         elif grade_data.mode == "debate":
             if not grade_data.motion or not grade_data.role or not grade_data.transcript:
                 raise HTTPException(status_code=400, detail="debate requires 'motion', 'role', and 'transcript'")
-            job = await asyncio.to_thread(task_queue.enqueue, "utils.ai.evaluate_debate", grade_data.motion, grade_data.role, grade_data.transcript, result_ttl=3600)
+            job = await asyncio.to_thread(grade_queue.enqueue, "utils.ai.evaluate_debate", grade_data.motion, grade_data.role, grade_data.transcript, result_ttl=3600, retry=retry_policy)
             
         else:
             raise HTTPException(status_code=400, detail=f"Invalid mode: {grade_data.mode}")
@@ -590,9 +629,21 @@ async def get_job_status(job_id: str):
     elif job.is_failed:
         # Log the full error server-side, return a generic message to the client
         print(f"[JOB FAILED] {job_id}: {job.exc_info}")
+        
+        # Detect if it was a rate limit exhaustion (Gemini 429)
+        if job.exc_info and "429" in str(job.exc_info):
+            _match = re.search(r'retry in (\d+(?:\.\d+)?)s', str(job.exc_info), re.IGNORECASE)
+            _ttl = int(float(_match.group(1))) + 10 if _match else 60
+            redis_conn.setex("ai_quota_exhausted", _ttl, "true")
+            return {"status": "failed", "error": "AI provider rate limit reached. Please wait a minute and try again."}
+            
         return {"status": "failed", "error": "Evaluation failed. Please try again."}
     else:
-        return {"status": job.get_status()} # e.g. 'queued', 'started'
+        position = job.get_position()
+        return {
+            "status": job.get_status(), # e.g. 'queued', 'started', 'deferred', 'scheduled'
+            "position": position + 1 if position is not None else None
+        }
 
 if __name__ == "__main__":
     import uvicorn

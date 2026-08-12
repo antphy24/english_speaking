@@ -5,11 +5,12 @@ python-dotenv==1.0.1
 google-genai==0.2.0
 groq==0.9.0
 slowapi==0.1.9
-pydantic==2.7.4
-pydantic-settings==2.3.4
+pydantic>=2.7.4
+pydantic-settings>=2.3.4
 httpx<0.28
 redis==5.0.7
 rq==1.16.2
 tenacity==8.5.0
 locust
 supervisor
+instructor
