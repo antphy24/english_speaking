@@ -44,7 +44,7 @@ def call_groq_json(prompt, schema, temperature=0.1):
     client = get_groq_client()
     try:
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             messages=[{"role": "user", "content": prompt}],
             response_model=schema,
             temperature=temperature,
@@ -130,9 +130,9 @@ def transcribe_audio_from_file(file_path: str, filename: str) -> str:
             pass
 
 @retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=(stop_after_attempt(5) | stop_after_delay(120)))
-def get_llama_chat_reply(messages: List[dict]) -> str:
+def get_chat_reply(messages: List[dict]) -> str:
     """
-    Generate next chatbot turn using Groq Qwen3.6-27B.
+    Generate next chatbot turn using Groq Qwen 3.6-27B.
     """
     client = get_groq_client()
     system_prompt = (
@@ -149,7 +149,7 @@ def get_llama_chat_reply(messages: List[dict]) -> str:
         })
         
     completion = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model="qwen/qwen3.6-27b",
         messages=formatted_messages,
         temperature=0.7,
         max_tokens=150,
@@ -159,7 +159,7 @@ def get_llama_chat_reply(messages: List[dict]) -> str:
 
 def evaluate_read_aloud(source_text: str, student_transcript: str) -> ReadAloudEvaluation:
     """
-    Evaluate Read Aloud mode using Groq Llama 3 structured output.
+    Evaluate Read Aloud mode using Groq GPT-OSS-120B structured output.
     """
     
     prompt = (
@@ -180,7 +180,7 @@ def evaluate_read_aloud(source_text: str, student_transcript: str) -> ReadAloudE
 
 def evaluate_qa(question: str, student_transcript: str) -> QAEvaluation:
     """
-    Evaluate Q&A mode using Groq Llama 3 structured output.
+    Evaluate Q&A mode using Groq GPT-OSS-120B structured output.
     """
     
     prompt = (
@@ -203,7 +203,7 @@ def evaluate_qa(question: str, student_transcript: str) -> QAEvaluation:
 
 def evaluate_conversation(messages: List[dict]) -> ConversationEvaluation:
     """
-    Evaluate multi-turn conversation using Groq Llama 3 structured output.
+    Evaluate multi-turn conversation using Groq GPT-OSS-120B structured output.
     """
     
     # Format the messages transcript for Gemini
@@ -232,7 +232,7 @@ def evaluate_conversation(messages: List[dict]) -> ConversationEvaluation:
 
 def evaluate_debate(motion: str, role: str, student_transcript: str) -> DebateEvaluation:
     """
-    Evaluate debate performance using Groq Llama 3 structured output with strict grading.
+    Evaluate debate performance using Groq GPT-OSS-120B structured output with strict grading.
     """
     
     prompt = (

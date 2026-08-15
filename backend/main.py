@@ -27,7 +27,7 @@ from rq.job import Job
 from utils.ai import (
     transcribe_audio_bytes,
     transcribe_audio_from_file,
-    get_llama_chat_reply,
+    get_chat_reply,
     evaluate_read_aloud,
     evaluate_qa,
     evaluate_conversation,
@@ -593,10 +593,10 @@ async def grade(request: Request, grade_data: GradeRequest, user: dict = Depends
 @limiter.limit("15/minute")
 async def chat_reply(request: Request, chat_data: ChatReplyRequest, user: dict = Depends(verify_authenticated)):
     """
-    Generates a brief response to continue the conversation, using Groq Qwen3.6-27B.
+    Generates a brief response to continue the conversation, using Groq Qwen 3.6-27B.
     """
     try:
-        reply = await asyncio.to_thread(get_llama_chat_reply, chat_data.messages)
+        reply = await asyncio.to_thread(get_chat_reply, chat_data.messages)
         return {"reply": reply}
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))

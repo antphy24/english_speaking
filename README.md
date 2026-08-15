@@ -8,8 +8,8 @@ HreFSpeak is an AI-powered speaking practice and evaluation platform designed fo
 - **Frontend**: React (Vite) + Tailwind CSS + Web Speech API (TTS)
 - **Backend**: Python FastAPI (Uvicorn)
 - **Speech-to-Text**: Groq API (Whisper-Large-V3)
-- **Conversational Tutor**: Groq API (Llama-3.3-70B)
-- **Evaluator**: Google Gemini API (Gemini 2.5 Flash structured outputs)
+- **Conversational Tutor**: Groq API (Qwen 3.6-27B)
+- **Evaluator / Grading**: Groq API (GPT-OSS-120B) + Google Gemini API (Gemini 2.5 Flash structured outputs)
 - **Leaderboard Database**: Google Sheets API (`gspread`)
 
 ---
@@ -113,7 +113,7 @@ Open a new terminal session in the project root:
    - Output: IELTS band scores (1-9) for Fluency, Lexical Resource, Grammatical Range, Pronunciation, and examiner feedback.
 
 3. **AI Conversation**:
-   - Chat with the AI tutor (Llama-3.3-70B). The tutor answers audibly using native browser Text-to-Speech.
+   - Chat with the AI tutor (Qwen 3.6-27B). The tutor answers audibly using native browser Text-to-Speech.
    - Maintain 3-5 speaking turns.
    - Click **End Conversation** to evaluate the complete transcript.
    - Output: IELTS band scores (1-9) for Fluency, Lexical, Grammar, Pronunciation, Interactive Communication, and overall dialogue feedback.

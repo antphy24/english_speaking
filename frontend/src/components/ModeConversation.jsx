@@ -176,7 +176,7 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
       const updatedMessages = [...messages, { role: 'user', content: text }];
       setMessages(updatedMessages);
 
-      // 3. Request Llama-3.3-70B response
+      // 3. Request Qwen 3.6-27B response
       setStatus('bot_replying');
       const chatRes = await fetchWithRetry(`${apiBase}/chat_reply`, {
         method: 'POST',
@@ -185,7 +185,7 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
       });
 
       if (!chatRes.ok) {
-        const errMsg = await parseError(chatRes, 'Failed to get a response from Llama tutor.');
+        const errMsg = await parseError(chatRes, 'Failed to get a response from AI tutor.');
         throw new Error(errMsg);
       }
 
@@ -373,7 +373,7 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
               <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></div>
               <div>
                 <h4 className="text-sm font-bold text-white">English AI Conversation Partner</h4>
-                <p className="text-[10px] text-slate-400">Llama-3.3-70B model</p>
+                <p className="text-[10px] text-slate-400">Qwen 3.6-27B model</p>
               </div>
             </div>
             

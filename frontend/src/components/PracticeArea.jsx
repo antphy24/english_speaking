@@ -317,7 +317,7 @@ export function PracticeArea() {
             <p className="text-xs text-slate-400 mt-1">
               {activeTab === 'read_aloud' && 'Read the paragraph aloud. Whisper evaluates your accuracy.'}
               {activeTab === 'qa' && 'Express your thoughts on the prompt. Gemini evaluates against IELTS standards.'}
-              {activeTab === 'conversation' && 'Hold a conversation with Llama-3. Whisper and Gemini evaluate dialogue performance.'}
+              {activeTab === 'conversation' && 'Hold a conversation with the AI tutor. Whisper and Gemini evaluate dialogue performance.'}
               {activeTab === 'debate' && 'Practice case building and speech delivery. Gemini acts as a strict debate adjudicator.'}
               {activeTab === 'leaderboard' && 'Logs and scores saved in the Supabase classroom database.'}
             </p>
