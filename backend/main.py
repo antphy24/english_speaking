@@ -119,15 +119,6 @@ class PrivateNetworkAccessMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # Always inject the PNA header on all OPTIONS preflight requests,
-        # because reverse proxies (like Traefik on HF Spaces) might strip 
-        # the incoming Access-Control-Request-Private-Network header.
-        is_options = scope.get("method") == "OPTIONS"
-
-        if not is_options:
-            await self.app(scope, receive, send)
-            return
-
         async def send_with_pna(message):
             if message["type"] == "http.response.start":
                 headers = list(message.get("headers", []))
