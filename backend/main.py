@@ -106,6 +106,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Middleware to handle Chrome Private Network Access (PNA) preflight requests.
+# HF Spaces' internal routing can trigger Chrome's CORS-RFC1918 check, which
+# requires the server to explicitly allow private network access.
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+
+class PrivateNetworkAccessMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        response = await call_next(request)
+        if request.headers.get("access-control-request-private-network") == "true":
+            response.headers["Access-Control-Allow-Private-Network"] = "true"
+        return response
+
+app.add_middleware(PrivateNetworkAccessMiddleware)
+
 # --- API Schemas ---
 
 class GradeRequest(BaseModel):
