@@ -107,17 +107,35 @@ app.add_middleware(
 )
 
 # Middleware to handle Chrome Private Network Access (PNA) preflight requests.
-# HF Spaces' internal routing can trigger Chrome's CORS-RFC1918 check, which
-# requires the server to explicitly allow private network access.
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request as StarletteRequest
+# HF Spaces returns fd00:: IPv6 addresses (private range), which triggers Chrome's
+# CORS-RFC1918 check. This raw ASGI middleware injects the required response header
+# at the protocol level, which is more reliable than BaseHTTPMiddleware.
+class PrivateNetworkAccessMiddleware:
+    def __init__(self, app):
+        self.app = app
 
-class PrivateNetworkAccessMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: StarletteRequest, call_next):
-        response = await call_next(request)
-        if request.headers.get("access-control-request-private-network") == "true":
-            response.headers["Access-Control-Allow-Private-Network"] = "true"
-        return response
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        # Check if the request includes the PNA preflight header
+        request_headers = dict(scope.get("headers", []))
+        is_pna = request_headers.get(b"access-control-request-private-network") == b"true"
+
+        if not is_pna:
+            await self.app(scope, receive, send)
+            return
+
+        # Wrap the send callable to inject the PNA response header
+        async def send_with_pna(message):
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers", []))
+                headers.append((b"access-control-allow-private-network", b"true"))
+                message["headers"] = headers
+            await send(message)
+
+        await self.app(scope, receive, send_with_pna)
 
 app.add_middleware(PrivateNetworkAccessMiddleware)
 
