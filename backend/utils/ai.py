@@ -42,10 +42,15 @@ def call_groq_json(prompt, schema, temperature=0.1):
     Wrapper for Groq API calls using instructor to guarantee JSON schema, and catches rate limits proactively.
     """
     client = get_groq_client()
+    
+    # Groq's JSON mode requires the prompt to explicitly mention JSON.
+    # Without this, the model may generate empty strings resulting in validation errors.
+    prompt_with_json_instruction = prompt + "\n\nYou must respond with a valid JSON object."
+    
     try:
         response = client.chat.completions.create(
             model="openai/gpt-oss-120b",
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": prompt_with_json_instruction}],
             response_model=schema,
             temperature=temperature,
             max_retries=2,
