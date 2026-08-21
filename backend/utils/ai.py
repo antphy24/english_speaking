@@ -49,12 +49,12 @@ def call_groq_json(prompt, schema, temperature=0.1):
     
     try:
         response = client.chat.completions.create(
-            model="groq/compound",
+            model="qwen/qwen3.6-27b",
             messages=[{"role": "user", "content": prompt_with_json_instruction}],
             response_model=schema,
             temperature=temperature,
             max_retries=2,
-            max_tokens=2048
+            max_tokens=4096
         )
         return response
     except Exception as e:
