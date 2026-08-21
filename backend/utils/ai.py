@@ -49,7 +49,7 @@ def call_groq_json(prompt, schema, temperature=0.1):
     
     try:
         response = client.chat.completions.create(
-            model="groq/compound",
+            model="llama-3.1-70b-versatile",
             messages=[{"role": "user", "content": prompt_with_json_instruction}],
             response_model=schema,
             temperature=temperature,
