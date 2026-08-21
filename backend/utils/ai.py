@@ -33,7 +33,7 @@ def get_groq_client():
         if not api_key or api_key == "YOUR_GROQ_API_KEY":
             raise ValueError("GROQ_API_KEY is not set or is invalid in .env")
         raw_client = Groq(api_key=api_key)
-        _groq_client = instructor.from_groq(raw_client, mode=instructor.Mode.JSON)
+        _groq_client = instructor.from_groq(raw_client, mode=instructor.Mode.MD_JSON)
         _groq_client_created_at = now
     return _groq_client
 
@@ -54,7 +54,7 @@ def call_groq_json(prompt, schema, temperature=0.1):
             response_model=schema,
             temperature=temperature,
             max_retries=2,
-            max_tokens=4096
+            max_tokens=2048
         )
         return response
     except Exception as e:
