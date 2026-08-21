@@ -54,7 +54,7 @@ def call_groq_json(prompt, schema, temperature=0.1):
             response_model=schema,
             temperature=temperature,
             max_retries=2,
-            max_tokens=4096
+            max_tokens=8000
         )
         return response
     except Exception as e:
@@ -71,8 +71,8 @@ def call_groq_json(prompt, schema, temperature=0.1):
 class ReadAloudEvaluation(BaseModel):
     accuracy_score: int = Field(..., description="Accuracy score from 0 to 100 based on comparison to the source text")
     word_error_rate: float = Field(..., description="Word Error Rate (WER) as a float between 0.0 and 1.0 (or higher if extra words read)")
-    skipped_words: List[str] = Field(..., description="List of words present in source text but skipped by student")
-    mispronounced_words: List[str] = Field(..., description="List of words present in transcript but pronounced incorrectly compared to source text")
+    skipped_words: List[str] = Field(..., description="List of words present in source text but skipped by student (max 30 words)")
+    mispronounced_words: List[str] = Field(..., description="List of words present in transcript but pronounced incorrectly compared to source text (max 30 words)")
     feedback: str = Field(..., description="Detailed constructive feedback analyzing the student's read aloud performance")
 
 class QAEvaluation(BaseModel):
@@ -174,8 +174,8 @@ def evaluate_read_aloud(source_text: str, student_transcript: str) -> ReadAloudE
         f"Student's transcript: \"{student_transcript}\"\n\n"
         f"Compare the student's transcript with the original text.\n"
         f"Identify:\n"
-        f"1. Words skipped by the student.\n"
-        f"2. Words mispronounced, misspelled or substituted.\n"
+        f"1. Words skipped by the student (list up to a maximum of 30 words).\n"
+        f"2. Words mispronounced, misspelled or substituted (list up to a maximum of 30 words).\n"
         f"3. Calculate accuracy score (0-100) and Word Error Rate (WER).\n"
         f"4. Provide actionable feedback to help them improve. IMPORTANT: Speak directly to the student using 'you' and 'your' (e.g., 'You did a great job...', 'Your pronunciation...'). DO NOT speak in the third person."
     )
