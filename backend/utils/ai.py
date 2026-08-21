@@ -39,32 +39,81 @@ def get_groq_client():
 
 def call_groq_json(prompt, schema, temperature=0.1):
     """
-    Wrapper for Groq API calls using instructor to guarantee JSON schema, and catches rate limits proactively.
+    Direct Groq API call with manual JSON parsing.
+    Bypasses instructor library entirely to avoid MD_JSON token overhead
+    and IncompleteOutputException errors.
     """
-    client = get_groq_client()
-    
-    # Groq's JSON mode requires the prompt to explicitly mention JSON.
-    # Without this, the model may generate empty strings resulting in validation errors.
-    prompt_with_json_instruction = prompt + "\n\nYou must respond with a valid JSON object. IMPORTANT: Do not include any introductory or concluding conversational text. Output ONLY the raw JSON. Keep all feedback strings concise (maximum 3-4 sentences)."
-    
-    try:
-        response = client.chat.completions.create(
-            model="openai/gpt-oss-20b",
-            messages=[{"role": "user", "content": prompt_with_json_instruction}],
-            response_model=schema,
-            temperature=temperature,
-            max_retries=2,
-            max_tokens=4096
-        )
-        return response
-    except Exception as e:
-        err_str = str(e)
-        if "429" in err_str or "rate limit" in err_str.lower():
-            import re
-            match = re.search(r'(?:try again in|retry in) (\d+(?:\.\d+)?)s', err_str, re.IGNORECASE)
-            ttl = int(float(match.group(1))) + 5 if match else 60
-            redis_conn.setex("ai_quota_exhausted", ttl, "true")
-        raise
+    import json
+
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key or api_key == "YOUR_GROQ_API_KEY":
+        raise ValueError("GROQ_API_KEY is not set or is invalid in .env")
+
+    raw_client = Groq(api_key=api_key)
+
+    # Build a compact schema description for the prompt
+    schema_json = json.dumps(schema.model_json_schema(), indent=2)
+
+    system_msg = (
+        "You are a JSON-only response bot. You MUST respond with ONLY a valid JSON object. "
+        "No markdown code fences, no explanation, no preamble, no trailing text. "
+        "Just the raw JSON object starting with { and ending with }. "
+        "Keep all feedback/string values concise (2-3 sentences max)."
+    )
+
+    user_msg = f"{prompt}\n\nRespond with ONLY a JSON object matching this schema:\n{schema_json}"
+
+    last_error = None
+    for attempt in range(3):
+        try:
+            response = raw_client.chat.completions.create(
+                model="openai/gpt-oss-20b",
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": user_msg}
+                ],
+                temperature=temperature,
+                max_tokens=4096
+            )
+
+            content = response.choices[0].message.content.strip()
+
+            # Strip markdown code fences if the model added them
+            if content.startswith("```"):
+                lines = content.split("\n")
+                json_lines = []
+                in_block = False
+                for line in lines:
+                    if line.strip().startswith("```") and not in_block:
+                        in_block = True
+                        continue
+                    elif line.strip().startswith("```") and in_block:
+                        break
+                    elif in_block:
+                        json_lines.append(line)
+                content = "\n".join(json_lines).strip()
+
+            # Find JSON object boundaries as a safety net
+            start = content.find("{")
+            end = content.rfind("}") + 1
+            if start != -1 and end > start:
+                content = content[start:end]
+
+            data = json.loads(content)
+            return schema(**data)
+
+        except Exception as e:
+            last_error = e
+            err_str = str(e)
+            if "429" in err_str or "rate limit" in err_str.lower():
+                match = re.search(r'(?:try again in|retry in) (\d+(?:\.\d+)?)s', err_str, re.IGNORECASE)
+                ttl = int(float(match.group(1))) + 5 if match else 60
+                redis_conn.setex("ai_quota_exhausted", ttl, "true")
+                raise
+            print(f"[Groq] JSON parse attempt {attempt + 1}/3 failed: {e}")
+            continue
+
+    raise Exception(f"Failed to get valid JSON after 3 attempts. Last error: {last_error}")
 
 # --- Pydantic Schemas for Structured JSON output ---
 
@@ -108,9 +157,10 @@ def transcribe_audio_bytes(audio_bytes: bytes, filename: str) -> str:
     """
     Transcribe raw audio bytes using Groq Whisper.
     """
-    client = get_groq_client()
+    api_key = os.getenv("GROQ_API_KEY")
+    raw_client = Groq(api_key=api_key)
     # Groq needs a tuple of (filename, file_bytes) or an open file-like object
-    response = client.audio.transcriptions.create(
+    response = raw_client.audio.transcriptions.create(
         file=(filename, audio_bytes),
         model="whisper-large-v3",
         language="en",
@@ -138,9 +188,10 @@ def transcribe_audio_from_file(file_path: str, filename: str) -> str:
 @retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=(stop_after_attempt(5) | stop_after_delay(120)))
 def get_chat_reply(messages: List[dict]) -> str:
     """
-    Generate next chatbot turn using Groq Qwen 3.6-27B.
+    Generate next chatbot turn using Groq.
     """
-    client = get_groq_client()
+    api_key = os.getenv("GROQ_API_KEY")
+    raw_client = Groq(api_key=api_key)
     system_prompt = (
         "You are an encouraging, professional, and friendly native English conversation partner. "
         "Your goal is to help the user practice their speaking. Keep your replies natural, brief (1-3 sentences), "
@@ -154,12 +205,11 @@ def get_chat_reply(messages: List[dict]) -> str:
             "content": msg["content"]
         })
         
-    completion = client.chat.completions.create(
-        model="qwen/qwen3.6-27b",
+    completion = raw_client.chat.completions.create(
+        model="openai/gpt-oss-20b",
         messages=formatted_messages,
         temperature=0.7,
-        max_tokens=150,
-        response_model=None
+        max_tokens=150
     )
     return completion.choices[0].message.content
 
