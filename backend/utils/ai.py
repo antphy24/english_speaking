@@ -45,7 +45,7 @@ def call_groq_json(prompt, schema, temperature=0.1):
     
     # Groq's JSON mode requires the prompt to explicitly mention JSON.
     # Without this, the model may generate empty strings resulting in validation errors.
-    prompt_with_json_instruction = prompt + "\n\nYou must respond with a valid JSON object."
+    prompt_with_json_instruction = prompt + "\n\nYou must respond with a valid JSON object. IMPORTANT: Do not include any introductory or concluding conversational text. Output ONLY the raw JSON. Keep all feedback strings concise (maximum 3-4 sentences)."
     
     try:
         response = client.chat.completions.create(
@@ -54,7 +54,7 @@ def call_groq_json(prompt, schema, temperature=0.1):
             response_model=schema,
             temperature=temperature,
             max_retries=2,
-            max_tokens=2048
+            max_tokens=2560
         )
         return response
     except Exception as e:
