@@ -76,7 +76,13 @@ def call_groq_json(prompt, schema, temperature=0.1):
                 max_tokens=4096
             )
 
-            content = response.choices[0].message.content.strip()
+            content = response.choices[0].message.content
+            if not content or not content.strip():
+                print(f"[Groq] Attempt {attempt + 1}/3: Model returned empty response, retrying...")
+                time.sleep(5)
+                continue
+
+            content = content.strip()
 
             # Strip markdown code fences if the model added them
             if content.startswith("```"):
@@ -111,6 +117,7 @@ def call_groq_json(prompt, schema, temperature=0.1):
                 redis_conn.setex("ai_quota_exhausted", ttl, "true")
                 raise
             print(f"[Groq] JSON parse attempt {attempt + 1}/3 failed: {e}")
+            time.sleep(5)
             continue
 
     raise Exception(f"Failed to get valid JSON after 3 attempts. Last error: {last_error}")
