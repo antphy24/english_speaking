@@ -54,7 +54,7 @@ def call_groq_json(prompt, schema, temperature=0.1):
             response_model=schema,
             temperature=temperature,
             max_retries=2,
-            max_tokens=8000
+            max_tokens=2048
         )
         return response
     except Exception as e:
