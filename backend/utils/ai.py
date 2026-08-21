@@ -49,7 +49,7 @@ def call_groq_json(prompt, schema, temperature=0.1):
     
     try:
         response = client.chat.completions.create(
-            model="openai/gpt-oss-120b",
+            model="groq/compound",
             messages=[{"role": "user", "content": prompt_with_json_instruction}],
             response_model=schema,
             temperature=temperature,
