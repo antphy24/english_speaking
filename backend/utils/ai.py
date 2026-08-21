@@ -67,7 +67,7 @@ def call_groq_json(prompt, schema, temperature=0.1):
     for attempt in range(3):
         try:
             response = raw_client.chat.completions.create(
-                model="openai/gpt-oss-20b",
+                model="openai/gpt-oss-120b",
                 messages=[
                     {"role": "system", "content": system_msg},
                     {"role": "user", "content": user_msg}
@@ -78,8 +78,9 @@ def call_groq_json(prompt, schema, temperature=0.1):
 
             content = response.choices[0].message.content
             if not content or not content.strip():
-                print(f"[Groq] Attempt {attempt + 1}/3: Model returned empty response, retrying...")
-                time.sleep(5)
+                last_error = Exception(f"Model returned empty response (finish_reason={response.choices[0].finish_reason})")
+                print(f"[Groq] Attempt {attempt + 1}/3: {last_error}")
+                time.sleep(10)
                 continue
 
             content = content.strip()
