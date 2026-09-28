@@ -3,7 +3,8 @@ import { useMediaRecorder } from '../hooks/useMediaRecorder';
 import ScoreCard from './UI/ScoreCard';
 import Spinner from './UI/Spinner';
 import { Mic, MicOff, Info, HelpCircle } from 'lucide-react';
-import { fetchWithRetry, parseError, pollJobStatus } from '../utils/api';
+import useSubmission from '../hooks/useSubmission';
+import SubmissionProgress from './UI/SubmissionProgress';
 
 const QUESTIONS = [
   {
@@ -42,7 +43,7 @@ export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = []
       });
     }
   }, [customQuestions]);
-  const [status, setStatus] = useState('idle'); // 'idle' | 'recording' | 'transcribing' | 'grading' | 'graded' | 'error'
+  const [status, setStatus] = useState('idle'); // 'idle' | 'recording' | 'processing' | 'graded' | 'error'
   const [errorMessage, setErrorMessage] = useState('');
   const [transcript, setTranscript] = useState('');
   const [evaluation, setEvaluation] = useState(null);
@@ -58,7 +59,8 @@ export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = []
   } = useMediaRecorder();
 
   const [isSaving, setIsSaving] = useState(false);
-  const [queueStatus, setQueueStatus] = useState('');
+  const submission = useSubmission(apiBase, 'qa');
+  const resultMetaRef = useRef({});
   const [saveStatus, setSaveStatus] = useState('');
 
   // Sync recording error
@@ -80,6 +82,7 @@ export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = []
   // Auto-save score when grading completes
   useEffect(() => {
     if (status === 'graded' && evaluation) {
+      submission.clear(); // result is in hand; don't resume/save it twice
       handleSaveToLeaderboardRef.current();
     }
   }, [status, evaluation]);
@@ -91,65 +94,58 @@ export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = []
     }
   }, [audioBlob]);
 
+  const showResult = (view) => {
+    setTranscript(view.transcript || '');
+    setEvaluation(view.result);
+    setStatus('graded');
+  };
+
+  const showError = (err) => {
+    if (err?.cancelled) return; // component unmounted; it will resume later
+    console.error(err);
+    setErrorMessage(err?.message || 'An error occurred during evaluation.');
+    setStatus('error');
+  };
+
+  // Resume a submission that was still in progress (page refresh / tab switch)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const pending = await submission.resume();
+      if (!pending || cancelled) return;
+      resultMetaRef.current = pending.meta || {};
+      if (pending.meta?.question) setSelectedQuestion(pending.meta.question);
+      setStatus('processing');
+      try {
+        const view = await pending.promise;
+        if (!cancelled) showResult(view);
+      } catch (err) {
+        if (!cancelled) showError(err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const processAudio = async (blob) => {
     if (blob.size < 2000) {
       setErrorMessage("Recording was too short. Please speak clearly for at least 2 seconds.");
       setStatus('error');
       return;
     }
-    setStatus('transcribing');
+    setStatus('processing');
+    setErrorMessage('');
+    resultMetaRef.current = { question: selectedQuestion, material_title: selectedQuestion.topic };
     try {
-      // 1. Send audio blob to /transcribe with the correct file extension based on mimeType
-      const extension = blob.type ? (blob.type.includes('mp4') ? 'mp4' : blob.type.includes('ogg') ? 'ogg' : blob.type.includes('wav') ? 'wav' : 'webm') : 'webm';
-      const formData = new FormData();
-      formData.append('file', blob, `recording.${extension}`);
-
-      // 1. Send audio blob to /transcribe
-      const transcribeRes = await fetchWithRetry(`${apiBase}/transcribe`, {
-        method: 'POST',
-        body: formData,
+      const view = await submission.run({
+        mode: 'qa',
+        blob,
+        params: { question: selectedQuestion.prompt },
+        duration: recordingTime,
+        meta: resultMetaRef.current,
       });
-
-      if (!transcribeRes.ok) {
-        const errMsg = await parseError(transcribeRes, 'Failed to transcribe audio.');
-        throw new Error(errMsg);
-      }
-
-      const { job_id: transcribeJobId } = await transcribeRes.json();
-      setQueueStatus('');
-      const { text } = await pollJobStatus(apiBase, transcribeJobId, {}, 2500, 600000, setQueueStatus);
-      setTranscript(text);
-
-      if (!text || text.trim().length === 0) {
-        throw new Error("No speech was detected. Please try speaking again and check your microphone input.");
-      }
-
-      // 2. Send transcript + question to /grade
-      setStatus('grading');
-      const gradeRes = await fetchWithRetry(`${apiBase}/grade`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: 'qa',
-          transcript: text,
-          question: selectedQuestion.prompt
-        })
-      });
-
-      if (!gradeRes.ok) {
-        const errMsg = await parseError(gradeRes, 'Failed to grade your response.');
-        throw new Error(errMsg);
-      }
-
-      const { job_id: gradeJobId } = await gradeRes.json();
-      setQueueStatus('');
-      const gradeData = await pollJobStatus(apiBase, gradeJobId, {}, 2500, 600000, setQueueStatus);
-      setEvaluation(gradeData);
-      setStatus('graded');
+      showResult(view);
     } catch (err) {
-      console.error(err);
-      setErrorMessage(err.message || 'An error occurred during evaluation.');
-      setStatus('error');
+      showError(err);
     }
   };
 
@@ -166,39 +162,19 @@ export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = []
     }
   };
 
-  const handleRetryGrading = async () => {
-    if (!transcript) return;
-    setStatus('grading');
+  // Continue from where it stopped - never needs a new recording
+  const handleRetry = async () => {
+    setStatus('processing');
     setErrorMessage('');
     try {
-      const gradeRes = await fetchWithRetry(`${apiBase}/grade`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: 'qa',
-          transcript: transcript,
-          question: selectedQuestion.prompt
-        })
-      });
-
-      if (!gradeRes.ok) {
-        const errMsg = await parseError(gradeRes, 'Failed to grade your response.');
-        throw new Error(errMsg);
-      }
-
-      const { job_id: gradeJobId } = await gradeRes.json();
-      setQueueStatus('');
-      const gradeData = await pollJobStatus(apiBase, gradeJobId, {}, 2500, 600000, setQueueStatus);
-      setEvaluation(gradeData);
-      setStatus('graded');
+      showResult(await submission.retry());
     } catch (err) {
-      console.error(err);
-      setErrorMessage(err.message || 'An error occurred during evaluation.');
-      setStatus('error');
+      showError(err);
     }
   };
 
   const handleRestart = () => {
+    submission.clear();
     clearAudio();
     setTranscript('');
     setEvaluation(null);
@@ -211,7 +187,8 @@ export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = []
     setIsSaving(true);
     setSaveStatus('');
     try {
-      await onSaveScore('qa', { ...evaluation, material_title: selectedQuestion.topic });
+      const title = resultMetaRef.current?.material_title || selectedQuestion.topic;
+      await onSaveScore('qa', { ...evaluation, material_title: title });
       setSaveStatus('success');
     } catch (err) {
       setSaveStatus('error');
@@ -295,17 +272,8 @@ export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = []
         </div>
       )}
 
-      {/* Loading states */}
-      {status === 'transcribing' && <Spinner message="Whisper-large-v3 is transcribing your speech..." />}
-      {status === 'grading' && (
-        <div className="space-y-4">
-          <div className="p-4 bg-slate-900/40 border border-slate-800 rounded-xl">
-            <span className="block text-xs text-indigo-400 font-semibold tracking-wider uppercase mb-1">Whisper Speech Transcript</span>
-            <p className="text-sm italic text-slate-300">"{transcript}"</p>
-          </div>
-          <Spinner message="IELTS Examiner (Gemini) is analyzing lexical range, grammar, and pronunciation..." />
-        </div>
-      )}
+      {/* Loading state */}
+      {status === 'processing' && <SubmissionProgress progress={submission.progress} transcriptLabel="Your Speech Transcript" />}
 
       {/* Evaluated Score Card */}
       {status === 'graded' && (
@@ -332,31 +300,28 @@ export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = []
             <MicOff className="w-6 h-6" />
           </div>
           <div className="space-y-1">
-            <h4 className="text-lg font-bold text-white">Assessment Interrupted</h4>
+            <h4 className="text-lg font-bold text-white">
+              {submission.progress?.retryable ? 'Not finished yet' : 'Assessment Interrupted'}
+            </h4>
             <p className="text-sm text-rose-300">{errorMessage}</p>
+            {submission.progress?.retryable && (
+              <p className="text-xs text-slate-400">Your recording is saved. Tap Retry - you do not need to record again.</p>
+            )}
           </div>
           <div className="flex flex-wrap justify-center gap-3">
-            {audioBlob && transcript && (
+            {submission.progress?.retryable && submission.hasRecording() && (
               <button 
-                onClick={handleRetryGrading}
+                onClick={handleRetry}
                 className="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
               >
-                Retry Evaluation
-              </button>
-            )}
-            {audioBlob && (
-              <button 
-                onClick={() => processAudio(audioBlob)}
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
-              >
-                {transcript ? 'Retry Full Upload' : 'Retry Upload'}
+                Retry
               </button>
             )}
             <button 
               onClick={handleRestart}
               className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer"
             >
-              {audioBlob ? 'Record Again' : 'Try Again'}
+              Record Again
             </button>
           </div>
         </div>

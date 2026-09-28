@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Play, Square, Loader2, Save, Mic, ShieldAlert, CheckCircle2, ChevronRight, XCircle, BrainCircuit, Users, Target, FileText, ArrowRight, Clock, AlertTriangle } from 'lucide-react';
 import Spinner from './UI/Spinner';
-import { fetchWithRetry, parseError, pollJobStatus } from '../utils/api';
+import useSubmission from '../hooks/useSubmission';
+import SubmissionProgress from './UI/SubmissionProgress';
 import { useMediaRecorder } from '../hooks/useMediaRecorder';
 
 const DEFAULT_MOTIONS = [
@@ -36,8 +37,7 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, isSaving
   const [errorMessage, setErrorMessage] = useState('');
   
   const [resultData, setResultData] = useState(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [queueStatus, setQueueStatus] = useState('');
+  const submission = useSubmission(apiBase, 'debate');
 
   const timerIntervalRef = useRef(null);
 
@@ -107,67 +107,76 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, isSaving
     clearInterval(timerIntervalRef.current);
   };
 
-  const handleProcessSpeech = async (audioBlob) => {
-    const url = URL.createObjectURL(audioBlob);
+  const showResult = (view) => {
+    const evalData = view.result;
+    // Calculate overall score (Matter 40%, Manner 40%, Method 20%)
+    const finalScore = (evalData.matter_score * 4) + (evalData.manner_score * 4) + (evalData.method_score * 2);
+    setResultData({ ...evalData, transcript: view.transcript, finalScore });
+    setStep('results');
+  };
+
+  const showError = (err) => {
+    if (err?.cancelled) return; // component unmounted; it will resume later
+    console.error(err);
+    setErrorMessage(err?.message || "Error processing your speech. Please try again.");
+    setStep('error');
+  };
+
+  // Resume a speech that was still being graded (page refresh / tab switch)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const pending = await submission.resume();
+      if (!pending || cancelled) return;
+      const meta = pending.meta || {};
+      if (meta.motion) setMotion(meta.motion);
+      if (meta.role) setRole(meta.role);
+      if (meta.scratchpad) setScratchpad(meta.scratchpad);
+      if (pending.blob) setAudioUrl(URL.createObjectURL(pending.blob));
+      setStep('grading');
+      try {
+        const view = await pending.promise;
+        if (!cancelled) showResult(view);
+      } catch (err) {
+        if (!cancelled) showError(err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleProcessSpeech = async (blob) => {
+    const url = URL.createObjectURL(blob);
     setAudioUrl(url);
-    setIsProcessing(true);
+    setErrorMessage('');
     setStep('grading');
     try {
-      // 1. Transcribe
-      const formData = new FormData();
-      formData.append('file', audioBlob, 'debate_recording.webm');
-      
-      const transcribeRes = await fetchWithRetry(`${apiBase}/transcribe`, {
-        method: 'POST',
-        body: formData
+      const view = await submission.run({
+        mode: 'debate',
+        blob,
+        params: { motion, role },
+        duration: recordingTime,
+        meta: { motion, role, scratchpad },
       });
-      if (!transcribeRes.ok) {
-        const errMsg = await parseError(transcribeRes, "Transcription failed");
-        throw new Error(errMsg);
-      }
-      const { job_id: transcribeJobId } = await transcribeRes.json();
-      setQueueStatus('');
-      const { text: transcript } = await pollJobStatus(apiBase, transcribeJobId, {}, 2500, 600000, setQueueStatus);
-
-      // 2. Grade
-      const gradeRes = await fetchWithRetry(`${apiBase}/grade`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: 'debate',
-          transcript,
-          motion,
-          role
-        })
-      });
-      if (!gradeRes.ok) {
-        const errMsg = await parseError(gradeRes, "Grading failed");
-        throw new Error(errMsg);
-      }
-      const { job_id: gradeJobId } = await gradeRes.json();
-      setQueueStatus('');
-      const evalData = await pollJobStatus(apiBase, gradeJobId, {}, 2500, 600000, setQueueStatus);
-      
-      // Calculate overall score (Matter 40%, Manner 40%, Method 20%)
-      const finalScore = (evalData.matter_score * 4) + (evalData.manner_score * 4) + (evalData.method_score * 2);
-      
-      setResultData({
-        ...evalData,
-        transcript,
-        finalScore
-      });
-      setStep('results');
+      showResult(view);
     } catch (err) {
-      console.error(err);
-      setErrorMessage(err.message || "Error processing your speech. Please try again.");
-      setStep('error');
-    } finally {
-      setIsProcessing(false);
+      showError(err);
+    }
+  };
+
+  // Continue from where it stopped - the speech is never lost
+  const handleRetry = async () => {
+    setErrorMessage('');
+    setStep('grading');
+    try {
+      showResult(await submission.retry());
+    } catch (err) {
+      showError(err);
     }
   };
 
   const handleSaveToLeaderboard = () => {
     if (resultData) {
+      submission.clear();
       onSaveScore('debate', {
         ...resultData,
         material_title: motion,
@@ -178,6 +187,7 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, isSaving
   };
 
   const handleReset = () => {
+    submission.clear();
     clearAudio();
     setErrorMessage('');
     setStep('setup');
@@ -185,6 +195,15 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, isSaving
     setScratchpad('');
     setAudioUrl(null);
     setResultData(null);
+  };
+
+  const handleBackToSpeech = () => {
+    submission.clear();
+    clearAudio();
+    setErrorMessage('');
+    setAudioUrl(null);
+    setStep('recording');
+    setTimer(435);
   };
 
   const formatTime = (seconds) => {
@@ -388,15 +407,36 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, isSaving
           <AlertTriangle className="w-6 h-6" />
         </div>
         <div className="space-y-1">
-          <h4 className="text-lg font-bold text-white">Error</h4>
+          <h4 className="text-lg font-bold text-white">
+            {submission.progress?.retryable ? 'Not finished yet' : 'Error'}
+          </h4>
           <p className="text-sm text-rose-300">{errorMessage}</p>
+          {submission.progress?.retryable && (
+            <p className="text-xs text-slate-400">Your speech is saved. Tap Retry - you do not need to deliver it again.</p>
+          )}
         </div>
-        <div className="flex justify-center mt-4">
+        <div className="flex flex-wrap justify-center gap-3 mt-4">
+          {submission.progress?.retryable && submission.hasRecording() && (
+            <button 
+              onClick={handleRetry}
+              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+            >
+              Retry
+            </button>
+          )}
+          {motion && (
+            <button 
+              onClick={handleBackToSpeech}
+              className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+            >
+              Record Speech Again
+            </button>
+          )}
           <button 
             onClick={handleReset}
             className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer"
           >
-            Try Again
+            Start Over
           </button>
         </div>
       </div>
@@ -410,10 +450,13 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, isSaving
            <div className="absolute inset-0 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin"></div>
            <BrainCircuit className="w-8 h-8 text-indigo-400" />
         </div>
-        <h3 className="text-xl font-bold text-white mb-2">{queueStatus ? `[${queueStatus.toUpperCase()}] ` : ''}Analyzing your speech...</h3>
-        <p className="text-slate-400 text-sm max-w-md text-center">
-          Whisper is transcribing the audio and Gemini 2.5 is adjudicating your speech based on strict matter, manner, and method rubrics. This may take a minute.
+        <h3 className="text-xl font-bold text-white mb-2">Adjudicating your speech</h3>
+        <p className="text-slate-400 text-sm max-w-md text-center mb-2">
+          Your speech is transcribed and then judged on Matter, Manner and Method.
         </p>
+        <div className="w-full max-w-xl">
+          <SubmissionProgress progress={submission.progress} transcriptLabel="Speech Transcript" />
+        </div>
       </div>
     );
   }

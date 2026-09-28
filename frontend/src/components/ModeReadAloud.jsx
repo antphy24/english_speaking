@@ -3,7 +3,8 @@ import { useMediaRecorder } from '../hooks/useMediaRecorder';
 import ScoreCard from './UI/ScoreCard';
 import Spinner from './UI/Spinner';
 import { Mic, Info, RefreshCw, Volume2 } from 'lucide-react';
-import { fetchWithRetry, parseError, pollJobStatus } from '../utils/api';
+import useSubmission from '../hooks/useSubmission';
+import SubmissionProgress from './UI/SubmissionProgress';
 
 const PARAGRAPHS = [
   {
@@ -43,13 +44,12 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
     }
   }, [customParagraphs]);
 
-  const [status, setStatus] = useState('idle'); // 'idle' | 'transcribing' | 'grading' | 'graded' | 'error'
+  const [status, setStatus] = useState('idle'); // 'idle' | 'processing' | 'graded' | 'error'
   const [errorMessage, setErrorMessage] = useState('');
   const [transcript, setTranscript] = useState('');
   const [evaluation, setEvaluation] = useState(null);
-  const [resultData, setResultData] = useState(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [queueStatus, setQueueStatus] = useState('');
+  const submission = useSubmission(apiBase, 'read_aloud');
+  const resultMetaRef = useRef({});
 
   const pointerDownTimeRef = useRef(0);
   const [isToggleRecording, setIsToggleRecording] = useState(false);
@@ -128,6 +128,7 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
   // Auto-save score when grading completes
   useEffect(() => {
     if (status === 'graded' && evaluation) {
+      submission.clear(); // result is in hand; don't resume/save it twice
       handleSaveToLeaderboardRef.current();
     }
   }, [status, evaluation]);
@@ -139,100 +140,74 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
     }
   }, [audioBlob]);
 
+  const showResult = (view) => {
+    setTranscript(view.transcript || '');
+    setEvaluation(view.result);
+    setStatus('graded');
+  };
+
+  const showError = (err) => {
+    if (err?.cancelled) return; // component unmounted; it will resume later
+    console.error(err);
+    setErrorMessage(err?.message || 'An error occurred during speech evaluation.');
+    setStatus('error');
+  };
+
+  // Resume a submission that was still in progress (page refresh / tab switch)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const pending = await submission.resume();
+      if (!pending || cancelled) return;
+      resultMetaRef.current = pending.meta || {};
+      if (pending.meta?.paragraph) setSelectedParagraph(pending.meta.paragraph);
+      setStatus('processing');
+      try {
+        const view = await pending.promise;
+        if (!cancelled) showResult(view);
+      } catch (err) {
+        if (!cancelled) showError(err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const processAudio = async (blob) => {
     if (blob.size < 2000) {
       setErrorMessage("Recording was too short. Please hold down the button and speak clearly.");
       setStatus('error');
       return;
     }
-    setStatus('transcribing');
+    setStatus('processing');
+    setErrorMessage('');
+    resultMetaRef.current = { paragraph: selectedParagraph, material_title: selectedParagraph.title };
     try {
-      // 1. Send audio blob to /transcribe with the correct file extension based on mimeType
-      const extension = blob.type ? (blob.type.includes('mp4') ? 'mp4' : blob.type.includes('ogg') ? 'ogg' : blob.type.includes('wav') ? 'wav' : 'webm') : 'webm';
-      const formData = new FormData();
-      formData.append('file', blob, `recording.${extension}`);
-
-      const transcribeRes = await fetchWithRetry(`${apiBase}/transcribe`, {
-        method: 'POST',
-        body: formData,
+      const view = await submission.run({
+        mode: 'read_aloud',
+        blob,
+        params: { source_text: selectedParagraph.text },
+        duration: recordingTime,
+        meta: resultMetaRef.current,
       });
-
-      if (!transcribeRes.ok) {
-        const errMsg = await parseError(transcribeRes, 'Failed to transcribe audio.');
-        throw new Error(errMsg);
-      }
-
-      const { job_id: transcribeJobId } = await transcribeRes.json();
-      setQueueStatus('');
-      const { text } = await pollJobStatus(apiBase, transcribeJobId, {}, 2500, 600000, setQueueStatus);
-      setTranscript(text);
-
-      if (!text || text.trim().length === 0) {
-        throw new Error("No speech was detected. Make sure your microphone is working and speak clearly.");
-      }
-
-      // 2. Send transcript + original text to /grade
-      setStatus('grading');
-      const gradeRes = await fetchWithRetry(`${apiBase}/grade`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: 'read_aloud',
-          transcript: text,
-          source_text: selectedParagraph.text
-        })
-      });
-
-      if (!gradeRes.ok) {
-        const errMsg = await parseError(gradeRes, 'Failed to evaluate reading.');
-        throw new Error(errMsg);
-      }
-
-      const { job_id: gradeJobId } = await gradeRes.json();
-      setQueueStatus('');
-      const gradeData = await pollJobStatus(apiBase, gradeJobId, {}, 2500, 600000, setQueueStatus);
-      setEvaluation(gradeData);
-      setStatus('graded');
+      showResult(view);
     } catch (err) {
-      console.error(err);
-      setErrorMessage(err.message || 'An error occurred during speech evaluation.');
-      setStatus('error');
+      showError(err);
     }
   };
 
-  const handleRetryGrading = async () => {
-    if (!transcript) return;
-    setStatus('grading');
+  // Continue from where it stopped - never needs a new recording
+  const handleRetry = async () => {
+    setStatus('processing');
     setErrorMessage('');
     try {
-      const gradeRes = await fetchWithRetry(`${apiBase}/grade`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: 'read_aloud',
-          transcript: transcript,
-          source_text: selectedParagraph.text
-        })
-      });
-
-      if (!gradeRes.ok) {
-        const errMsg = await parseError(gradeRes, 'Failed to evaluate reading.');
-        throw new Error(errMsg);
-      }
-
-      const { job_id: gradeJobId } = await gradeRes.json();
-      setQueueStatus('');
-      const gradeData = await pollJobStatus(apiBase, gradeJobId, {}, 2500, 600000, setQueueStatus);
-      setEvaluation(gradeData);
-      setStatus('graded');
+      showResult(await submission.retry());
     } catch (err) {
-      console.error(err);
-      setErrorMessage(err.message || 'An error occurred during speech evaluation.');
-      setStatus('error');
+      showError(err);
     }
   };
 
   const handleRestart = () => {
+    submission.clear();
     clearAudio();
     setTranscript('');
     setEvaluation(null);
@@ -246,7 +221,8 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
     setIsSaving(true);
     setSaveStatus('');
     try {
-      await onSaveScore('read_aloud', { ...evaluation, material_title: selectedParagraph.title });
+      const title = resultMetaRef.current?.material_title || selectedParagraph.title;
+      await onSaveScore('read_aloud', { ...evaluation, material_title: title });
       setSaveStatus('success');
     } catch (err) {
       setSaveStatus('error');
@@ -360,17 +336,8 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
         </div>
       )}
 
-      {/* Loading States */}
-      {status === 'transcribing' && <Spinner message={queueStatus ? `[${queueStatus.toUpperCase()}] Transcribing...` : "Sending audio to Whisper for transcription..."} />}
-      {status === 'grading' && (
-        <div className="space-y-4">
-          <div className="p-4 bg-slate-900/40 border border-slate-800 rounded-xl">
-            <span className="block text-xs text-indigo-400 font-semibold tracking-wider uppercase mb-1">Whisper Transcript</span>
-            <p className="text-sm italic text-white">"{transcript}"</p>
-          </div>
-          <Spinner message="Comparing transcript to source and grading with Gemini..." />
-        </div>
-      )}
+      {/* Loading State */}
+      {status === 'processing' && <SubmissionProgress progress={submission.progress} />}
 
       {/* Evaluated Score Card */}
       {status === 'graded' && (
@@ -397,36 +364,28 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
             <Mic className="w-6 h-6" />
           </div>
           <div className="space-y-1">
-            <h3 className="text-xl font-bold text-white mb-2">
-              {queueStatus ? `[${queueStatus.toUpperCase()}] ` : ''}Analyzing your speech...
-            </h3>
             <h4 className="text-lg font-bold text-white">
-              {queueStatus ? `[${queueStatus.toUpperCase()}] ` : ''}Recording Failed
+              {submission.progress?.retryable ? 'Not finished yet' : 'Recording Failed'}
             </h4>
             <p className="text-sm text-rose-300">{errorMessage}</p>
+            {submission.progress?.retryable && (
+              <p className="text-xs text-slate-400">Your recording is saved. Tap Retry - you do not need to record again.</p>
+            )}
           </div>
           <div className="flex flex-wrap justify-center gap-3">
-            {audioBlob && transcript && (
+            {submission.progress?.retryable && submission.hasRecording() && (
               <button 
-                onClick={handleRetryGrading}
+                onClick={handleRetry}
                 className="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
               >
-                Retry Evaluation
-              </button>
-            )}
-            {audioBlob && (
-              <button 
-                onClick={() => processAudio(audioBlob)}
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
-              >
-                {transcript ? 'Retry Full Upload' : 'Retry Upload'}
+                Retry
               </button>
             )}
             <button 
               onClick={handleRestart}
               className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer"
             >
-              {audioBlob ? 'Record Again' : 'Try Again'}
+              Record Again
             </button>
           </div>
         </div>

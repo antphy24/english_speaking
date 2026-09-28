@@ -4,7 +4,9 @@ import ScoreCard from './UI/ScoreCard';
 import Spinner from './UI/Spinner';
 import { useConfirm } from './UI/ConfirmModal';
 import { Mic, MicOff, Info, Send, Volume2, VolumeX, User, Bot, AlertTriangle } from 'lucide-react';
-import { fetchWithRetry, parseError, pollJobStatus } from '../utils/api';
+import { getChatReplyWithRetry } from '../utils/api';
+import useSubmission from '../hooks/useSubmission';
+import SubmissionProgress from './UI/SubmissionProgress';
 
 const DEFAULT_GREETINGS = [
   { id: 'def-1', title: "General Chat", content: "Hello {studentName}! I am your AI English conversation partner. What is a topic you would like to chat about today? Or we can talk about your hobbies!" },
@@ -41,8 +43,13 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
   const [errorMessage, setErrorMessage] = useState('');
   const [evaluation, setEvaluation] = useState(null);
   const [ttsEnabled, setTtsEnabled] = useState(true);
-  const [errorType, setErrorType] = useState(null); // null | 'turn' | 'grading'
-  const [queueStatus, setQueueStatus] = useState('');
+  const [errorType, setErrorType] = useState(null); // null | 'turn' | 'reply' | 'grading'
+  const [tutorBusy, setTutorBusy] = useState(false);
+  // Each spoken turn is transcribed through the queue (priority lane);
+  // the final evaluation is a separate, resumable submission.
+  const turn = useSubmission(apiBase, 'conversation_turn', { persist: false });
+  const grader = useSubmission(apiBase, 'conversation');
+  const topicRef = useRef(null);
   useEffect(() => {
     return () => {
       if ('speechSynthesis' in window) {
@@ -86,9 +93,36 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
   // Auto-save score when grading completes
   useEffect(() => {
     if (status === 'graded' && evaluation) {
+      grader.clear(); // result is in hand; don't resume/save it twice
       handleSaveToLeaderboardRef.current?.();
     }
   }, [status, evaluation]);
+
+  // Resume an evaluation that was still running (page refresh / tab switch)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const pending = await grader.resume();
+      if (!pending || cancelled) return;
+      const meta = pending.meta || {};
+      hasGreetedRef.current = true;
+      if (meta.topic) { setSelectedTopic(meta.topic); topicRef.current = meta.topic; }
+      if (meta.messages) setMessages(meta.messages);
+      setStep('chatting');
+      setStatus('grading');
+      try {
+        const view = await pending.promise;
+        if (!cancelled) { setEvaluation(view.result); setStatus('graded'); }
+      } catch (err) {
+        if (!cancelled && !err?.cancelled) {
+          setErrorMessage(err.message || 'An error occurred during evaluation.');
+          setErrorType('grading');
+          setStatus('error');
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Handle when audio is recorded
   useEffect(() => {
@@ -140,66 +174,68 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
     window.speechSynthesis.speak(utterance);
   };
 
+  const requestTutorReply = async (history) => {
+    setStatus('bot_replying');
+    setTutorBusy(false);
+    try {
+      const reply = await getChatReplyWithRetry(apiBase, history, { onBusy: () => setTutorBusy(true) });
+      setMessages([...history, { role: 'assistant', content: reply }]);
+      speakText(reply);
+      setStatus('idle');
+    } catch (err) {
+      console.error(err);
+      setErrorMessage(err.message || 'The tutor could not reply.');
+      setErrorType('reply');
+      setStatus('error');
+    } finally {
+      setTutorBusy(false);
+    }
+  };
+
+  const continueWithTranscript = async (text) => {
+    if (!text || text.trim().length === 0) {
+      setErrorMessage("No speech was detected. Please make sure your mic is working and try again.");
+      setErrorType('turn');
+      setStatus('error');
+      return;
+    }
+    const updatedMessages = [...messages, { role: 'user', content: text }];
+    setMessages(updatedMessages);
+    turn.clear();
+    await requestTutorReply(updatedMessages);
+  };
+
+  const handleTurnError = (err) => {
+    if (err?.cancelled) return;
+    console.error(err);
+    setErrorMessage(err?.message || 'An error occurred during dialogue.');
+    setErrorType('turn');
+    setStatus('error');
+  };
+
   const processAudio = async (blob) => {
     if (blob.size < 2000) {
       setErrorMessage("Recording was too short. Please speak clearly for at least 2 seconds.");
+      setErrorType('turn');
       setStatus('error');
       return;
     }
     setStatus('transcribing');
     try {
-      // 1. Send audio blob to /transcribe with the correct file extension based on mimeType
-      const extension = blob.type ? (blob.type.includes('mp4') ? 'mp4' : blob.type.includes('ogg') ? 'ogg' : blob.type.includes('wav') ? 'wav' : 'webm') : 'webm';
-      const formData = new FormData();
-      formData.append('file', blob, `recording.${extension}`);
-
-      // 1. Send audio blob to /transcribe
-      const transcribeRes = await fetchWithRetry(`${apiBase}/transcribe`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!transcribeRes.ok) {
-        const errMsg = await parseError(transcribeRes, 'Failed to transcribe audio.');
-        throw new Error(errMsg);
-      }
-
-      const { job_id: transcribeJobId } = await transcribeRes.json();
-      setQueueStatus('');
-      const { text } = await pollJobStatus(apiBase, transcribeJobId, {}, 2500, 600000, setQueueStatus);
-
-      if (!text || text.trim().length === 0) {
-        throw new Error("No speech was detected. Please make sure your mic is working and try again.");
-      }
-
-      // 2. Append user message to history
-      const updatedMessages = [...messages, { role: 'user', content: text }];
-      setMessages(updatedMessages);
-
-      // 3. Request Qwen 3.6-27B response
-      setStatus('bot_replying');
-      const chatRes = await fetchWithRetry(`${apiBase}/chat_reply`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: updatedMessages })
-      });
-
-      if (!chatRes.ok) {
-        const errMsg = await parseError(chatRes, 'Failed to get a response from AI tutor.');
-        throw new Error(errMsg);
-      }
-
-      const { reply } = await chatRes.json();
-      setMessages([...updatedMessages, { role: 'assistant', content: reply }]);
-      
-      // 4. Speak response aloud
-      speakText(reply);
-      setStatus('idle');
+      const view = await turn.run({ mode: 'transcribe', blob, duration: recordingTime });
+      await continueWithTranscript(view.result?.text || view.transcript);
     } catch (err) {
-      console.error(err);
-      setErrorMessage(err.message || 'An error occurred during dialogue.');
-      setErrorType('turn');
-      setStatus('error');
+      handleTurnError(err);
+    }
+  };
+
+  const handleRetryTurn = async () => {
+    setStatus('transcribing');
+    try {
+      const view = await turn.retry();
+      await continueWithTranscript(view.result?.text || view.transcript);
+    } catch (err) {
+      handleTurnError(err);
     }
   };
 
@@ -234,36 +270,49 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
       window.speechSynthesis.cancel();
     }
 
+    await runGrading();
+  };
+
+  const showGradingError = (err) => {
+    if (err?.cancelled) return;
+    console.error(err);
+    setErrorMessage(err?.message || 'An error occurred during evaluation.');
+    setErrorType('grading');
+    setStatus('error');
+  };
+
+  const runGrading = async () => {
     setStatus('grading');
+    topicRef.current = selectedTopic;
     try {
-      const gradeRes = await fetchWithRetry(`${apiBase}/grade`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: 'conversation',
-          messages: messages
-        })
+      const view = await grader.run({
+        mode: 'conversation',
+        textBody: { messages },
+        meta: { messages, topic: selectedTopic },
       });
-
-      if (!gradeRes.ok) {
-        const errMsg = await parseError(gradeRes, 'Failed to evaluate conversation.');
-        throw new Error(errMsg);
-      }
-
-      const { job_id: gradeJobId } = await gradeRes.json();
-      setQueueStatus('');
-      const gradeData = await pollJobStatus(apiBase, gradeJobId, {}, 2500, 600000, setQueueStatus);
-      setEvaluation(gradeData);
+      setEvaluation(view.result);
       setStatus('graded');
     } catch (err) {
-      console.error(err);
-      setErrorMessage(err.message || 'An error occurred during evaluation.');
-      setErrorType('grading');
-      setStatus('error');
+      showGradingError(err);
+    }
+  };
+
+  // Continue the evaluation from where it stopped (conversation is kept)
+  const handleRetryGrading = async () => {
+    setStatus('grading');
+    try {
+      const view = grader.hasRecording() ? await grader.retry() : null;
+      if (!view) return runGrading();
+      setEvaluation(view.result);
+      setStatus('graded');
+    } catch (err) {
+      showGradingError(err);
     }
   };
 
   const handleRestart = () => {
+    grader.clear();
+    turn.clear();
     setStep('setup');
     setMessages([]);
     hasGreetedRef.current = false;
@@ -278,7 +327,8 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
     setIsSaving(true);
     setSaveStatus('');
     try {
-      await onSaveScore('conversation', { ...evaluation, material_title: selectedTopic.title });
+      const title = (topicRef.current || selectedTopic)?.title;
+      await onSaveScore('conversation', { ...evaluation, material_title: title });
       setSaveStatus('success');
     } catch (err) {
       setSaveStatus('error');
@@ -439,7 +489,15 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
                   <div className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
                   <div className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce"></div>
                 </div>
-                <span>Tutor is transcribing your voice message...</span>
+                <span>
+                  {turn.progress?.offline
+                    ? 'Connection problem - retrying...'
+                    : turn.progress?.position
+                      ? `Waiting to transcribe your message (#${turn.progress.position} in line)...`
+                      : turn.progress?.phase === 'waiting'
+                        ? 'The server is busy - your message is saved, please wait...'
+                        : 'Tutor is transcribing your voice message...'}
+                </span>
               </div>
             )}
 
@@ -451,7 +509,7 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
                   <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
                   <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce"></div>
                 </div>
-                <span>Tutor is thinking of a response...</span>
+                <span>{tutorBusy ? 'The tutor is busy with other students - retrying, please wait...' : 'Tutor is thinking of a response...'}</span>
               </div>
             )}
 
@@ -500,7 +558,7 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
       )}
 
       {/* Evaluation Loading Screen */}
-      {status === 'grading' && <Spinner message="Gemini is analyzing the dialogue history and grading your conversational abilities..." />}
+      {status === 'grading' && <SubmissionProgress progress={grader.progress} />}
 
       {/* Evaluated Score Card */}
       {status === 'graded' && (
@@ -532,7 +590,7 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
             {errorType === 'grading' && (
               <>
                 <button 
-                  onClick={handleEndConversation}
+                  onClick={handleRetryGrading}
                   className="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
                 >
                   Retry Evaluation
@@ -545,18 +603,26 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
                 </button>
               </>
             )}
+            {errorType === 'reply' && (
+              <button 
+                onClick={() => requestTutorReply(messages)}
+                className="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+              >
+                Retry Tutor Reply
+              </button>
+            )}
             {errorType === 'turn' && (
               <>
-                {audioBlob && (
+                {turn.progress?.retryable && turn.hasRecording() && (
                   <button 
-                    onClick={() => processAudio(audioBlob)}
+                    onClick={handleRetryTurn}
                     className="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
                   >
                     Retry Sending Message
                   </button>
                 )}
                 <button 
-                  onClick={() => { setStatus('idle'); setErrorType(null); clearAudio(); }}
+                  onClick={() => { setStatus('idle'); setErrorType(null); clearAudio(); turn.clear(); }}
                   className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
                 >
                   Record Message Again

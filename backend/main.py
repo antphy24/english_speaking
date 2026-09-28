@@ -20,36 +20,33 @@ from slowapi.errors import RateLimitExceeded
 import base64
 import json
 import redis
-from rq import Queue, Retry
+from rq import Queue
 from rq.job import Job
 
 # Import utilities
-from utils.ai import (
-    transcribe_audio_bytes,
-    transcribe_audio_from_file,
-    get_chat_reply,
-    evaluate_read_aloud,
-    evaluate_qa,
-    evaluate_conversation,
-    evaluate_debate
-)
+from utils.ai import get_chat_reply, AIBusyError, AITransientError
+from utils import pipeline
 
 load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
+AUDIO_MAX_AGE = 12 * 3600  # keep uploaded audio until processed (max 12h)
+
 async def temp_file_reaper():
-    """Periodically clean up orphaned temp audio files."""
+    """Periodically clean up orphaned audio files.
+
+    Files are normally deleted as soon as they are transcribed. This only removes
+    leftovers. (It used to delete files after 10 minutes, which destroyed the
+    recordings of students still waiting in a long queue.)
+    """
     while True:
-        await asyncio.sleep(300)  # Every 5 minutes
-        temp_dir = tempfile.gettempdir()
+        await asyncio.sleep(600)
         now = time.time()
-        for f in glob.glob(os.path.join(temp_dir, "tmp*.webm")) + \
-                 glob.glob(os.path.join(temp_dir, "tmp*.mp4")) + \
-                 glob.glob(os.path.join(temp_dir, "tmp*.ogg")):
+        for f in glob.glob(os.path.join(pipeline.AUDIO_DIR, "*")):
             try:
-                if now - os.path.getmtime(f) > 600:  # 10 min old
+                if now - os.path.getmtime(f) > AUDIO_MAX_AGE:
                     os.unlink(f)
             except OSError:
                 pass
@@ -249,17 +246,13 @@ def ai_status():
     """
     Check the availability of the AI backend based on rate limits and queue length.
     """
-    is_exhausted = redis_conn.get("ai_quota_exhausted")
-    
-    grade_queue_length = len(grade_queue)
-    transcribe_queue_length = len(transcribe_queue)
-    
-    if is_exhausted:
-        return {"status": "exhausted", "message": "AI quota reached. Please wait a minute."}
-    elif grade_queue_length >= 5:
-        return {"status": "busy", "message": f"AI is busy processing requests ({grade_queue_length} in queue)."}
-    else:
-        return {"status": "ready", "message": "AI is ready."}
+    from utils import ai as ai_mod
+    waiting = sum(len(q) for q in pipeline.queues.values())
+    if ai_mod.limiter.all_cooling(ai_mod.GRADE_MODELS) or ai_mod.limiter.all_cooling(ai_mod.TRANSCRIBE_MODELS):
+        return {"status": "busy", "message": f"AI is at its limit - submissions wait in line ({waiting} waiting)."}
+    if waiting >= 5:
+        return {"status": "busy", "message": f"AI is busy ({waiting} submissions in line). Yours will still be graded."}
+    return {"status": "ready", "message": "AI is ready."}
 
 async def _enroll_student(client, student, classId, classCode, headers):
     sanitized_school_id = "".join(c for c in student.schoolId if c.isalnum())
@@ -546,7 +539,7 @@ async def transcribe(request: Request, file: UploadFile = File(...), user: dict 
         
         # Write to temp file to avoid passing large bytes through Redis
         suffix = os.path.splitext(filename)[1] or ".webm"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, dir=pipeline.AUDIO_DIR) as tmp:
             tmp.write(content)
             temp_path = tmp.name
         
@@ -556,7 +549,7 @@ async def transcribe(request: Request, file: UploadFile = File(...), user: dict 
             "utils.ai.transcribe_audio_from_file", 
             temp_path, 
             filename, 
-            result_ttl=3600
+            result_ttl=3600, job_timeout=3600
         )
         return {"job_id": job.get_id()}
     except ValueError as ve:
@@ -575,30 +568,26 @@ async def grade(request: Request, grade_data: GradeRequest, user: dict = Depends
     Returns schema-specific JSON based on the selected mode.
     """
     try:
-        # Circuit breaker: if we know Gemini is rate-limited, don't even enqueue the job
-        if redis_conn.get("ai_quota_exhausted"):
-            raise HTTPException(status_code=429, detail="AI quota is temporarily exhausted. Please wait a moment.")
-
-        retry_policy = Retry(max=3, interval=60)
+        retry_policy = None  # jobs wait for AI capacity themselves now
         if grade_data.mode == "read_aloud":
             if not grade_data.source_text or not grade_data.transcript:
                 raise HTTPException(status_code=400, detail="read_aloud requires 'source_text' and 'transcript'")
-            job = await asyncio.to_thread(grade_queue.enqueue, "utils.ai.evaluate_read_aloud", grade_data.source_text, grade_data.transcript, result_ttl=3600, retry=retry_policy)
+            job = await asyncio.to_thread(grade_queue.enqueue, "utils.ai.evaluate_read_aloud", grade_data.source_text, grade_data.transcript, result_ttl=3600, job_timeout=3600, retry=retry_policy)
             
         elif grade_data.mode == "qa":
             if not grade_data.question or not grade_data.transcript:
                 raise HTTPException(status_code=400, detail="qa requires 'question' and 'transcript'")
-            job = await asyncio.to_thread(grade_queue.enqueue, "utils.ai.evaluate_qa", grade_data.question, grade_data.transcript, result_ttl=3600, retry=retry_policy)
+            job = await asyncio.to_thread(grade_queue.enqueue, "utils.ai.evaluate_qa", grade_data.question, grade_data.transcript, result_ttl=3600, job_timeout=3600, retry=retry_policy)
             
         elif grade_data.mode == "conversation":
             if not grade_data.messages or len(grade_data.messages) == 0:
                 raise HTTPException(status_code=400, detail="conversation requires 'messages'")
-            job = await asyncio.to_thread(grade_queue.enqueue, "utils.ai.evaluate_conversation", grade_data.messages, result_ttl=3600, retry=retry_policy)
+            job = await asyncio.to_thread(grade_queue.enqueue, "utils.ai.evaluate_conversation", grade_data.messages, result_ttl=3600, job_timeout=3600, retry=retry_policy)
             
         elif grade_data.mode == "debate":
             if not grade_data.motion or not grade_data.role or not grade_data.transcript:
                 raise HTTPException(status_code=400, detail="debate requires 'motion', 'role', and 'transcript'")
-            job = await asyncio.to_thread(grade_queue.enqueue, "utils.ai.evaluate_debate", grade_data.motion, grade_data.role, grade_data.transcript, result_ttl=3600, retry=retry_policy)
+            job = await asyncio.to_thread(grade_queue.enqueue, "utils.ai.evaluate_debate", grade_data.motion, grade_data.role, grade_data.transcript, result_ttl=3600, job_timeout=3600, retry=retry_policy)
             
         else:
             raise HTTPException(status_code=400, detail=f"Invalid mode: {grade_data.mode}")
@@ -622,6 +611,9 @@ async def chat_reply(request: Request, chat_data: ChatReplyRequest, user: dict =
     try:
         reply = await asyncio.to_thread(get_chat_reply, chat_data.messages)
         return {"reply": reply}
+    except (AIBusyError, AITransientError):
+        # The frontend retries automatically on this status.
+        raise HTTPException(status_code=503, detail="AI_BUSY: The tutor is busy, retrying...")
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except HTTPException as he:
@@ -629,6 +621,172 @@ async def chat_reply(request: Request, chat_data: ChatReplyRequest, user: dict =
     except Exception as e:
         print(f"Chat reply error: {e}")
         raise HTTPException(status_code=500, detail="Chat generation failed. Please try again later.")
+
+
+# ---------------------------------------------------------------------------
+# Submission API (v2): one call per submission, results kept for 48h,
+# resumable after refresh, retry without re-recording.
+# ---------------------------------------------------------------------------
+
+MAX_AUDIO_BYTES = 15 * 1024 * 1024
+ALLOWED_AUDIO_EXT = {".webm", ".mp4", ".m4a", ".ogg", ".wav", ".mp3", ".mpeg", ".mpga", ".flac"}
+
+
+def _user_id(user: dict) -> str:
+    return str(user.get("id") or "anonymous")
+
+
+def _idempotent_lookup(user_id: str, client_id: Optional[str]):
+    if not client_id:
+        return None
+    existing = redis_conn.get(f"idem:{user_id}:{client_id}")
+    if existing:
+        sub = pipeline.load(existing.decode() if isinstance(existing, bytes) else existing)
+        if sub:
+            return sub
+    return None
+
+
+def _remember_idempotency(user_id: str, client_id: Optional[str], sub_id: str):
+    if client_id:
+        redis_conn.setex(f"idem:{user_id}:{client_id}", pipeline.SUB_TTL, sub_id)
+
+
+def _validate_params(mode: str, params: dict):
+    if mode == "read_aloud" and not params.get("source_text"):
+        raise HTTPException(status_code=400, detail="read_aloud requires 'source_text'")
+    if mode == "qa" and not params.get("question"):
+        raise HTTPException(status_code=400, detail="qa requires 'question'")
+    if mode == "debate" and not (params.get("motion") and params.get("role")):
+        raise HTTPException(status_code=400, detail="debate requires 'motion' and 'role'")
+    if mode == "conversation" and not params.get("messages"):
+        raise HTTPException(status_code=400, detail="conversation requires 'messages'")
+
+
+@app.post("/submit")
+@limiter.limit("20/minute")
+async def submit_audio(
+    request: Request,
+    file: UploadFile = File(...),
+    mode: str = Form(...),
+    client_id: Optional[str] = Form(None),
+    duration: Optional[float] = Form(None),
+    source_text: Optional[str] = Form(None),
+    question: Optional[str] = Form(None),
+    motion: Optional[str] = Form(None),
+    role: Optional[str] = Form(None),
+    user: dict = Depends(verify_authenticated),
+):
+    """Upload a recording once. It is transcribed and (unless mode='transcribe') graded."""
+    if mode not in pipeline.AUDIO_MODES:
+        raise HTTPException(status_code=400, detail=f"Invalid mode: {mode}")
+    user_id = _user_id(user)
+
+    existing = await asyncio.to_thread(_idempotent_lookup, user_id, client_id)
+    if existing:  # same upload retried after a network hiccup
+        return pipeline.public_view(existing)
+
+    params = {"source_text": source_text, "question": question, "motion": motion, "role": role}
+    params = {k: v for k, v in params.items() if v}
+    _validate_params(mode, params)
+
+    content = await file.read()
+    if len(content) > MAX_AUDIO_BYTES:
+        raise HTTPException(status_code=413, detail="Recording is too large (max 15MB). Please record a shorter answer.")
+    if len(content) < 2000:
+        raise HTTPException(status_code=400, detail="Recording is too short or empty. Please speak for at least 2 seconds.")
+
+    filename = file.filename or "recording.webm"
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in ALLOWED_AUDIO_EXT:
+        ext = ".webm"
+    path = os.path.join(pipeline.AUDIO_DIR, f"{secrets.token_hex(12)}{ext}")
+    with open(path, "wb") as f:
+        f.write(content)
+
+    def create():
+        sub = pipeline.new_submission(user_id, mode, params, audio_path=path,
+                                      filename=f"recording{ext}", duration=duration)
+        _remember_idempotency(user_id, client_id, sub["id"])
+        return pipeline.public_view(pipeline.enqueue_stage(sub))
+
+    return await asyncio.to_thread(create)
+
+
+class TextSubmitRequest(BaseModel):
+    mode: str
+    client_id: Optional[str] = None
+    transcript: Optional[str] = None
+    source_text: Optional[str] = None
+    question: Optional[str] = None
+    messages: Optional[List[dict]] = None
+    motion: Optional[str] = None
+    role: Optional[str] = None
+
+
+@app.post("/submit-text")
+@limiter.limit("20/minute")
+async def submit_text(request: Request, body: TextSubmitRequest, user: dict = Depends(verify_authenticated)):
+    """Grade something that is already text (conversation history, or a saved transcript)."""
+    if body.mode not in pipeline.GRADED_MODES:
+        raise HTTPException(status_code=400, detail=f"Invalid mode: {body.mode}")
+    if body.mode != "conversation" and not (body.transcript or "").strip():
+        raise HTTPException(status_code=400, detail="transcript is required")
+    user_id = _user_id(user)
+    existing = await asyncio.to_thread(_idempotent_lookup, user_id, body.client_id)
+    if existing:
+        return pipeline.public_view(existing)
+    params = {k: v for k, v in {
+        "source_text": body.source_text, "question": body.question, "messages": body.messages,
+        "motion": body.motion, "role": body.role,
+    }.items() if v}
+    _validate_params(body.mode, params)
+
+    def create():
+        sub = pipeline.new_submission(user_id, body.mode, params, transcript=body.transcript)
+        _remember_idempotency(user_id, body.client_id, sub["id"])
+        return pipeline.public_view(pipeline.enqueue_stage(sub))
+
+    return await asyncio.to_thread(create)
+
+
+def _owned_submission(sub_id: str, user: dict):
+    sub = pipeline.load(sub_id)
+    if not sub:
+        raise HTTPException(status_code=404, detail="Submission not found (it may have expired or the server restarted).")
+    if sub.get("user_id") != _user_id(user):
+        raise HTTPException(status_code=404, detail="Submission not found.")
+    return sub
+
+
+@app.get("/submission/{sub_id}")
+async def get_submission(sub_id: str, user: dict = Depends(verify_authenticated)):
+    def read():
+        sub = _owned_submission(sub_id, user)
+        sub = pipeline.detect_lost_job(sub)
+        return pipeline.public_view(sub)
+    return await asyncio.to_thread(read)
+
+
+@app.post("/submission/{sub_id}/retry")
+@limiter.limit("20/minute")
+async def retry_submission(request: Request, sub_id: str, user: dict = Depends(verify_authenticated)):
+    """Continue a failed submission from the step where it stopped."""
+    def retry():
+        sub = _owned_submission(sub_id, user)
+        if sub["status"] in pipeline.ACTIVE or sub["status"] == "completed":
+            return pipeline.public_view(sub)
+        if sub.get("transcript") and sub["mode"] in pipeline.GRADED_MODES:
+            sub["stage"] = "grade"
+        elif sub.get("mode") == "conversation":
+            sub["stage"] = "grade"
+        elif sub.get("audio_path") and os.path.exists(sub["audio_path"]):
+            sub["stage"] = "transcribe"
+        else:
+            raise HTTPException(status_code=410, detail="The recording is no longer on the server. Please upload it again.")
+        sub["needs_rerecord"] = False
+        return pipeline.public_view(pipeline.enqueue_stage(sub))
+    return await asyncio.to_thread(retry)
 
 @app.get("/job/{job_id}")
 async def get_job_status(job_id: str):
