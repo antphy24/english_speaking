@@ -13,6 +13,7 @@ AI calls (Groq) with free-tier friendly behaviour:
 """
 import difflib
 import json
+import random
 import os
 import re
 import time
@@ -24,7 +25,7 @@ from pydantic import BaseModel, BeforeValidator, ValidationError
 
 load_dotenv()
 
-from utils.ratelimit import RateLimiter  # noqa: E402
+from utils.ratelimit import RateLimiter, cap_output  # noqa: E402
 
 redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
 redis_kwargs = {"socket_keepalive": True, "health_check_interval": 30}
@@ -51,6 +52,14 @@ class AIBusyError(Exception):
     """All models stayed busy / rate-limited until the deadline. Safe to retry later."""
 
 
+class AIDailyLimitError(AIBusyError):
+    """Every model has used up today's free quota. Retry after the reset."""
+
+    def __init__(self, msg, retry_after=0):
+        super().__init__(msg)
+        self.retry_after = retry_after
+
+
 class AITransientError(Exception):
     """Repeated network/server/output errors. Safe to retry later."""
 
@@ -70,6 +79,10 @@ class _ModelUnusable(Exception):
     """Model rejected the request (not found, bad parameter, no access)."""
 
 
+class _TooLarge(Exception):
+    """This request can never fit this model's per-request limits; use another model."""
+
+
 class _Transient(Exception):
     """Network error, 5xx, timeout, or invalid JSON from the model."""
 
@@ -77,6 +90,10 @@ class _Transient(Exception):
 # --- Groq client ----------------------------------------------------------------
 
 _client = None
+
+# Patient jobs (student submissions) wait at most this long in total as a safety net.
+PATIENT_MAX_WAIT = int(os.getenv("PATIENT_MAX_WAIT_SECONDS", str(6 * 3600)))
+DAILY_WINDOWS = {"rpd", "tpd", "asd"}
 
 
 def get_client():
@@ -114,6 +131,8 @@ def _classify(exc, kind):
     """Turn a Groq SDK exception into one of our internal categories."""
     import groq
     text = str(exc)
+    if isinstance(exc, groq.RateLimitError) and "request too large" in text.lower():
+        return _TooLarge(text)  # not a 'wait and retry' 429: it will never fit
     if isinstance(exc, groq.RateLimitError):
         daily = "per day" in text.lower() or "(rpd)" in text.lower() or "(tpd)" in text.lower() or "(asd)" in text.lower()
         return _RateLimited(_parse_retry_after(exc) + 1, daily=daily, msg=text)
@@ -136,44 +155,71 @@ def run_with_fallback(
     models: List[str],
     call: Callable[[str], tuple],
     *,
-    deadline: float,
+    deadline: Optional[float],
     est_tokens: int = 0,
     audio_seconds: int = 0,
     on_wait: Optional[Callable[[float], None]] = None,
     max_transient: int = 6,
+    max_output: int = 0,
 ):
     """
     Try `call(model)` on the first model that has free capacity.
-    `call` must return (result, tokens_used). Waits (sleeps) while every model
-    is busy, until `deadline` (a time.time() timestamp).
+    `call` must return (result, tokens_used).
+
+    deadline: a time.time() timestamp to give up at (AIBusyError), or None to be
+    *patient*: keep waiting through per-minute and per-hour limits (keeping the
+    student's place in line) and only stop when every model has used up its
+    DAILY quota (AIDailyLimitError) or after PATIENT_MAX_WAIT as a safety net.
     """
+    patient = deadline is None
+    if patient:
+        deadline = time.time() + PATIENT_MAX_WAIT
+        max_transient = max(max_transient, 10)
     transient_errors = 0
     last_error = None
+    skip = set()  # models that can never serve this particular request
     while True:
         waits = []
-        for model in models:
+        daily_blocked = {}  # model -> seconds until its daily quota resets
+        usable = [m for m in models if m not in skip]
+        if not usable:
+            raise AITransientError(f"No {kind} model can serve this request. Last error: {last_error}")
+        for model in usable:
             cool = limiter.cooldown_remaining(model)
             if cool > 0:
                 waits.append(cool)
+                if limiter.cooldown_reason(model).startswith("daily"):
+                    daily_blocked[model] = cool
                 continue
-            ok, wait = limiter.try_acquire(model, tokens=est_tokens, audio_seconds=audio_seconds)
+            ok, wait, window = limiter.try_acquire_ex(
+                model, tokens=est_tokens, audio_seconds=audio_seconds,
+                output_tokens=cap_output(model, max_output) if max_output else 0)
             if not ok:
                 waits.append(wait)
+                if window in DAILY_WINDOWS:
+                    daily_blocked[model] = wait
                 continue
             try:
                 result, used = call(model)
                 limiter.adjust_tokens(model, est_tokens, used or est_tokens)
                 return result
             except Exception as raw:  # noqa: BLE001
-                err = raw if isinstance(raw, (_RateLimited, _ModelUnusable, _Transient, BadAudioError)) else _classify(raw, kind)
+                err = raw if isinstance(raw, (_RateLimited, _ModelUnusable, _Transient, _TooLarge, BadAudioError)) else _classify(raw, kind)
                 last_error = err
                 if isinstance(err, BadAudioError):
                     raise err
+                if isinstance(err, _TooLarge):
+                    limiter.adjust_tokens(model, est_tokens, 0)
+                    skip.add(model)
+                    print(f"[{kind}] {model} cannot take this request size, using other models: {str(err)[:160]}")
+                    continue
                 if isinstance(err, _RateLimited):
                     # Groq refused: the reserved tokens were not used.
                     limiter.adjust_tokens(model, est_tokens, 0)
                     limiter.cooldown(model, err.retry_after, "daily quota" if err.daily else "429")
                     waits.append(err.retry_after)
+                    if err.daily:
+                        daily_blocked[model] = err.retry_after
                 elif isinstance(err, _ModelUnusable):
                     limiter.cooldown(model, 600, f"unusable: {str(err)[:120]}")
                 else:
@@ -182,13 +228,19 @@ def run_with_fallback(
                     if transient_errors >= max_transient:
                         raise AITransientError(str(err)) from raw
                     waits.append(min(2 ** transient_errors, 20))
+        usable = [m for m in models if m not in skip]
+        if usable and all(m in daily_blocked for m in usable):
+            reset_in = min(daily_blocked.values())
+            raise AIDailyLimitError(f"All {kind} models used up today's quota (resets in ~{int(reset_in)}s)",
+                                    retry_after=reset_in)
         now = time.time()
         if now >= deadline:
             raise AIBusyError(f"All {kind} models busy until deadline. Last error: {last_error}")
-        sleep_for = max(1.0, min(min(waits) if waits else 5.0, 20.0, deadline - now))
+        next_free = min(waits) if waits else 5.0
+        sleep_for = max(1.0, min(next_free, 20.0, deadline - now))
         if on_wait:
             try:
-                on_wait(sleep_for)
+                on_wait(next_free)  # how long until some model frees up (for the student's ETA)
             except Exception:
                 pass
         time.sleep(sleep_for)
@@ -204,6 +256,8 @@ def _extra_params(model: str) -> dict:
     """Model-specific knobs. gpt-oss models think less with reasoning_effort=low."""
     if model.startswith("openai/gpt-oss"):
         return {"reasoning_effort": "low"}
+    if model.startswith("qwen/"):
+        return {"reasoning_effort": "none"}  # no hidden thinking: saves scarce output tokens
     return {}
 
 
@@ -257,7 +311,7 @@ def _chat_json(model: str, system: str, user: str, max_tokens: int):
         model=model,
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
         temperature=0.2,
-        max_tokens=max_tokens,
+        max_tokens=cap_output(model, max_tokens),
     )
     resp = _create_chat(model, params, json_mode=True)
     content = resp.choices[0].message.content
@@ -289,6 +343,7 @@ def _grade_with_schema(prompt: str, schema, *, deadline, on_wait, models=None, m
         "grade", models, call,
         deadline=deadline, on_wait=on_wait,
         est_tokens=_estimate_tokens(JSON_SYSTEM + prompt, 700),
+        max_output=max_tokens,
     )
 
 
@@ -312,6 +367,7 @@ class ReadAloudEvaluation(BaseModel):
     skipped_words: List[str]
     mispronounced_words: List[str]
     feedback: Text
+    feedback_source: str = "ai"   # "ai" or "standard" (template, used when the AI queue is busy)
 
 
 class QAEvaluation(BaseModel):
@@ -368,7 +424,7 @@ def transcribe_file(file_path: str, filename: str, duration_seconds: Optional[fl
 
     return run_with_fallback(
         "transcribe", TRANSCRIBE_MODELS, call,
-        deadline=deadline or time.time() + 1800,
+        deadline=deadline,
         audio_seconds=audio_seconds, on_wait=on_wait,
     )
 
@@ -390,7 +446,7 @@ def get_chat_reply(messages: List[dict], max_wait_seconds: float = 25) -> str:
     prompt_text = "".join(m["content"] for m in formatted)
 
     def call(model):
-        params = dict(model=model, messages=formatted, temperature=0.7, max_tokens=500)
+        params = dict(model=model, messages=formatted, temperature=0.7, max_tokens=cap_output(model, 500))
         resp = _create_chat(model, params, json_mode=False)
         reply = _strip_reasoning(resp.choices[0].message.content or "")
         if not reply:
@@ -401,7 +457,7 @@ def get_chat_reply(messages: List[dict], max_wait_seconds: float = 25) -> str:
     return run_with_fallback(
         "chat", CHAT_MODELS, call,
         deadline=time.time() + max_wait_seconds,
-        est_tokens=_estimate_tokens(prompt_text, 250), max_transient=3,
+        est_tokens=_estimate_tokens(prompt_text, 250), max_transient=3, max_output=500,
     )
 
 
@@ -417,9 +473,10 @@ def _words(text: str) -> List[str]:
 def compare_read_aloud(source_text: str, transcript: str) -> dict:
     src, hyp = _words(source_text), _words(transcript)
     matcher = difflib.SequenceMatcher(a=src, b=hyp, autojunk=False)
-    skipped, substituted = [], []
+    skipped, substituted, extra = [], [], []
     subs = dels = ins = correct = 0
-    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+    opcodes = matcher.get_opcodes()
+    for tag, i1, i2, j1, j2 in opcodes:
         if tag == "equal":
             correct += i2 - i1
         elif tag == "delete":
@@ -427,6 +484,7 @@ def compare_read_aloud(source_text: str, transcript: str) -> dict:
             skipped += src[i1:i2]
         elif tag == "insert":
             ins += j2 - j1
+            extra += hyp[j1:j2]
         elif tag == "replace":
             n_src, n_hyp = i2 - i1, j2 - j1
             subs += min(n_src, n_hyp)
@@ -436,6 +494,11 @@ def compare_read_aloud(source_text: str, transcript: str) -> dict:
                 skipped += src[i1 + n_hyp:i2]
             else:
                 ins += n_hyp - n_src
+                extra += hyp[j1 + n_src:j2]
+    # Words missing at the very end usually mean the student stopped early.
+    stopped_early = 0
+    if opcodes and opcodes[-1][0] == "delete" and opcodes[-1][2] == len(src):
+        stopped_early = opcodes[-1][2] - opcodes[-1][1]
     n = max(1, len(src))
     wer = round((subs + dels + ins) / n, 3)
     accuracy = _clamp(100 * correct / n, 0, 100)
@@ -445,25 +508,91 @@ def compare_read_aloud(source_text: str, transcript: str) -> dict:
         "skipped_words": skipped[:30],
         "mispronounced_words": substituted[:30],
         "_counts": {"words": len(src), "correct": correct, "substituted": subs,
-                    "skipped": dels, "extra": ins},
+                    "skipped": dels, "extra": ins, "stopped_early": stopped_early,
+                    "extra_words": extra[:10]},
     }
 
 
-def _template_read_aloud_feedback(m: dict) -> str:
+def _unique(words):
+    seen, out = set(), []
+    for w in words:
+        if w not in seen:
+            seen.add(w)
+            out.append(w)
+    return out
+
+
+def _fmt_words(words, limit=6):
+    words = _unique(words)
+    shown = ", ".join(f'"{w}"' for w in words[:limit])
+    return shown + (f" and {len(words) - limit} more" if len(words) > limit else "")
+
+
+def _template_read_aloud_feedback(m: dict, counts: dict) -> str:
+    """Standard feedback built from the exact comparison. Used when the AI is busy."""
     acc = m["accuracy_score"]
-    if acc >= 90:
-        opening = f"Excellent reading! You read {acc}% of the words correctly."
+    total = max(1, counts["words"])
+    skipped, unclear = m["skipped_words"], m["mispronounced_words"]
+    stopped = counts.get("stopped_early", 0)
+    n_extra = counts.get("extra", 0)
+
+    if acc >= 95:
+        opening = random.choice([
+            f"Excellent reading! You read {acc}% of the words correctly.",
+            f"Outstanding - {acc}% of the words were read correctly.",
+            f"Great job! You read almost everything correctly ({acc}%).",
+        ])
+    elif acc >= 85:
+        opening = random.choice([
+            f"Very good reading - you got {acc}% of the words right.",
+            f"Well done! {acc}% of the words were read correctly, with only a few slips.",
+        ])
     elif acc >= 70:
-        opening = f"Good effort - you read {acc}% of the words correctly."
+        opening = random.choice([
+            f"Good effort - you read {acc}% of the words correctly.",
+            f"You are getting there: {acc}% of the words were correct.",
+        ])
+    elif acc >= 50:
+        opening = f"You read {acc}% of the words correctly. With some practice this will improve quickly."
     else:
-        opening = f"You read {acc}% of the words correctly, so keep practising this passage."
+        opening = f"You read {acc}% of the words correctly, so this passage needs more practice."
     parts = [opening]
-    if m["skipped_words"]:
-        parts.append("You skipped: " + ", ".join(m["skipped_words"][:8]) + ".")
-    if m["mispronounced_words"]:
-        parts.append("Practise these words, which did not come out clearly: "
-                     + ", ".join(m["mispronounced_words"][:8]) + ".")
-    parts.append("Read slowly and clearly, and use 'Hear Sample' to compare your pronunciation.")
+
+    # Specific findings, most important first
+    main_issue = None
+    if stopped >= max(3, total * 0.2):
+        parts.append(f"You stopped before the end - the last {stopped} words were not heard. "
+                     "Read the whole passage before you release the button.")
+        main_issue = "stopped"
+    if skipped and main_issue != "stopped":
+        parts.append(f"Words you skipped: {_fmt_words(skipped)}.")
+        main_issue = main_issue or ("skipped" if len(skipped) >= 3 else None)
+    if unclear:
+        parts.append(f"Words that did not come out clearly: {_fmt_words(unclear)}. "
+                     "Listen with 'Hear Sample' and practise each word on its own.")
+        main_issue = main_issue or ("unclear" if len(unclear) >= 3 else None)
+    if n_extra >= 3:
+        parts.append("You also added some words that are not in the text (repeats or fillers like 'um'). "
+                     "If you make a mistake, just keep reading.")
+        main_issue = main_issue or "extra"
+
+    # One focused tip
+    if acc >= 95 and not skipped and not unclear:
+        parts.append("Next challenge: read with natural rhythm and expression, or try a harder passage.")
+    elif main_issue == "skipped":
+        parts.append("Tip: read a little slower and follow each word with your finger so nothing is missed.")
+    elif main_issue is None:
+        parts.append("Tip: read slowly and clearly, then try the passage again to beat your score.")
+
+    # Short Indonesian hint for students who are struggling
+    if acc < 70:
+        hint = {
+            "stopped": "Pastikan kamu membaca seluruh teks sampai selesai sebelum melepas tombol rekam.",
+            "skipped": "Baca lebih pelan dan ikuti setiap kata dengan jari agar tidak ada kata yang terlewat.",
+            "unclear": "Tekan 'Hear Sample' untuk mendengarkan contoh, lalu ulangi kata-kata yang sulit satu per satu.",
+            "extra": "Usahakan tidak mengulang kata atau menambahkan 'um/eh'; jika salah, lanjutkan saja membaca.",
+        }.get(main_issue, "Latih teks ini beberapa kali lagi dengan tempo pelan dan jelas.")
+        parts.append(f"(Tips: {hint})")
     return " ".join(parts)
 
 
@@ -476,7 +605,8 @@ def evaluate_read_aloud(source_text: str, student_transcript: str, *, deadline=N
         f"What the student said: \"{student_transcript}\"\n"
         f"Accuracy: {metrics['accuracy_score']}%. Words: {counts['words']}, skipped: {counts['skipped']}, "
         f"substituted: {counts['substituted']}, extra: {counts['extra']}.\n"
-        f"Skipped words: {metrics['skipped_words'][:15]}. Unclear/substituted words: {metrics['mispronounced_words'][:15]}.\n"
+        f"Skipped words: {metrics['skipped_words'][:15]}. Unclear/substituted words: {metrics['mispronounced_words'][:15]}. "
+        f"Extra words said: {counts['extra_words']}. Words missing at the end: {counts['stopped_early']}.\n"
         "Write short, encouraging, actionable feedback (3-4 sentences) on accuracy and pronunciation.\n"
         'Return JSON: {"feedback": string}'
     )
@@ -486,10 +616,12 @@ def evaluate_read_aloud(source_text: str, student_transcript: str, *, deadline=N
             deadline=deadline or time.time() + 600, on_wait=on_wait,
         )
         metrics["feedback"] = out["feedback"]
+        metrics["feedback_source"] = "ai"
     except (AIBusyError, AITransientError) as e:
-        # Never fail a read-aloud: the scores are exact, only the prose is templated.
-        print(f"[read_aloud] AI feedback unavailable, using template: {e}")
-        metrics["feedback"] = _template_read_aloud_feedback(metrics)
+        # Never fail or delay a read-aloud: the scores are exact, only the prose is standard.
+        print(f"[read_aloud] AI feedback unavailable, using standard feedback: {str(e)[:120]}")
+        metrics["feedback"] = _template_read_aloud_feedback(metrics, counts)
+        metrics["feedback_source"] = "standard"
     return ReadAloudEvaluation(**metrics).model_dump()
 
 
@@ -504,7 +636,7 @@ def evaluate_qa(question: str, student_transcript: str, *, deadline=None, on_wai
         'Return JSON: {"fluency": int, "lexical_resource": int, "grammatical_range": int, '
         '"pronunciation": int, "feedback": string}'
     )
-    return _grade_with_schema(prompt, QAEvaluation, deadline=deadline or time.time() + 1800, on_wait=on_wait)
+    return _grade_with_schema(prompt, QAEvaluation, deadline=deadline, on_wait=on_wait)
 
 
 def evaluate_conversation(messages: List[dict], *, deadline=None, on_wait=None) -> dict:
@@ -522,7 +654,7 @@ def evaluate_conversation(messages: List[dict], *, deadline=None, on_wait=None) 
         'Return JSON: {"fluency_and_coherence": int, "lexical_resource": int, "grammatical_range": int, '
         '"pronunciation": int, "interactive_communication": int, "feedback": string}'
     )
-    return _grade_with_schema(prompt, ConversationEvaluation, deadline=deadline or time.time() + 1800, on_wait=on_wait)
+    return _grade_with_schema(prompt, ConversationEvaluation, deadline=deadline, on_wait=on_wait)
 
 
 def evaluate_debate(motion: str, role: str, student_transcript: str, *, deadline=None, on_wait=None) -> dict:
@@ -542,7 +674,7 @@ def evaluate_debate(motion: str, role: str, student_transcript: str, *, deadline
         'Return JSON: {"matter_score": int, "manner_score": int, "method_score": int, '
         '"matter_feedback": string, "manner_feedback": string, "method_feedback": string, "overall_feedback": string}'
     )
-    return _grade_with_schema(prompt, DebateEvaluation, deadline=deadline or time.time() + 1800,
+    return _grade_with_schema(prompt, DebateEvaluation, deadline=deadline,
                               on_wait=on_wait, max_tokens=2000)
 
 

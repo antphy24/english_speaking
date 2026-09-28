@@ -9,7 +9,7 @@ function formatDuration(totalSeconds) {
   return `${minutes}m`;
 }
 
-export function OverviewTab({ classesList, allStudents, allAssessments, activityData, formatScoreDetails }) {
+export function OverviewTab({ classesList, allStudents, allAssessments, activityData, formatScoreDetails, assessmentsCapped = false }) {
   const totalPracticeTime = activityData ? activityData.reduce((acc, log) => acc + log.active_seconds, 0) : 0;
   return (
     <div className="space-y-8">
@@ -38,7 +38,7 @@ export function OverviewTab({ classesList, allStudents, allAssessments, activity
         <div className="glass-panel p-6 rounded-2xl border border-slate-800 flex justify-between items-center">
           <div>
             <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Assessments</span>
-            <span className="text-3xl font-extrabold text-white mt-1 block">{allAssessments.length}</span>
+            <span className="text-3xl font-extrabold text-white mt-1 block">{allAssessments.length.toLocaleString()}{assessmentsCapped ? '+' : ''}</span>
           </div>
           <div className="p-3 bg-pink-600/10 text-pink-400 border border-pink-500/20 rounded-2xl">
             <BookOpen className="w-6 h-6" />

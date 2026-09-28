@@ -18,6 +18,8 @@ import time
 
 # --- Free-plan limits per model -------------------------------------------------
 # rpm/rpd = requests per minute/day, tpm/tpd = tokens per minute/day,
+# otpm = OUTPUT tokens per minute (Groq counts the max_tokens we request),
+# max_output = largest max_tokens we will ask this model for,
 # ash/asd = audio seconds per hour/day (Whisper only).
 _CHAT_FREE = {"rpm": 30, "rpd": 1000, "tpm": 8000, "tpd": 200000}
 _WHISPER_FREE = {"rpm": 20, "rpd": 2000, "ash": 7200, "asd": 28800}
@@ -25,7 +27,9 @@ _WHISPER_FREE = {"rpm": 20, "rpd": 2000, "ash": 7200, "asd": 28800}
 DEFAULT_LIMITS = {
     "openai/gpt-oss-120b": dict(_CHAT_FREE),
     "openai/gpt-oss-20b": dict(_CHAT_FREE),
-    "qwen/qwen3.8-27b": dict(_CHAT_FREE),
+    # Free Qwen also has an output-tokens-per-minute cap of 1000, so requests must
+    # ask for fewer output tokens, and only ~1 grade per minute fits.
+    "qwen/qwen3.8-27b": dict(_CHAT_FREE, otpm=1000, max_output=800),
     "whisper-large-v3": dict(_WHISPER_FREE),
     "whisper-large-v3-turbo": dict(_WHISPER_FREE),
 }
@@ -51,7 +55,7 @@ LIMITS = _load_limits()
 
 # Window name -> (seconds per window, TTL for the counter key)
 _WINDOWS = {
-    "rpm": (60, 130), "tpm": (60, 130),
+    "rpm": (60, 130), "tpm": (60, 130), "otpm": (60, 130),
     "ash": (3600, 3700),
     "rpd": (86400, 90000), "tpd": (86400, 90000), "asd": (86400, 90000),
 }
@@ -79,6 +83,12 @@ return 0
 """
 
 
+def cap_output(model, requested):
+    """Clamp max_tokens to what this model accepts in a single request."""
+    cap = LIMITS.get(model, {}).get("max_output")
+    return min(int(requested), int(cap)) if cap else int(requested)
+
+
 class RateLimiter:
     def __init__(self, redis_conn):
         self.r = redis_conn
@@ -99,13 +109,19 @@ class RateLimiter:
         return max(1.0, size - (now % size))
 
     # ---- public API ---------------------------------------------------------
-    def try_acquire(self, model, tokens=0, audio_seconds=0):
+    def try_acquire(self, model, tokens=0, audio_seconds=0, output_tokens=0):
         """Reserve capacity for one call. Returns (ok, seconds_to_wait)."""
+        ok, wait, _ = self.try_acquire_ex(model, tokens, audio_seconds, output_tokens)
+        return ok, wait
+
+    def try_acquire_ex(self, model, tokens=0, audio_seconds=0, output_tokens=0):
+        """Like try_acquire, but also returns which window blocked (e.g. 'rpm', 'ash', 'tpd')."""
         limits = LIMITS.get(model, {})
         now = time.time()
         wanted = {
             "rpm": 1, "rpd": 1,
             "tpm": int(tokens), "tpd": int(tokens),
+            "otpm": int(output_tokens),
             "ash": int(audio_seconds), "asd": int(audio_seconds),
         }
         keys, args, windows = [], [], []
@@ -120,11 +136,12 @@ class RateLimiter:
             args += [amount, limit, _WINDOWS[window][1]]
             windows.append(window)
         if not keys:
-            return True, 0
+            return True, 0, None
         blocked = int(self._acquire(keys=keys, args=args))
         if blocked == 0:
-            return True, 0
-        return False, self._seconds_until_next(windows[blocked - 1], now)
+            return True, 0, None
+        window = windows[blocked - 1]
+        return False, self._seconds_until_next(window, now), window
 
     def adjust_tokens(self, model, reserved, actual):
         """After a call, replace the token estimate with the real usage."""
@@ -145,6 +162,10 @@ class RateLimiter:
         seconds = int(max(1, min(seconds, 6 * 3600)))
         self.r.setex(f"rl:cooldown:{model}", seconds, reason or "rate_limited")
         print(f"[ratelimit] {model} cooling down for {seconds}s ({reason})")
+
+    def cooldown_reason(self, model):
+        value = self.r.get(f"rl:cooldown:{model}")
+        return value.decode() if isinstance(value, bytes) else (value or "")
 
     def cooldown_remaining(self, model):
         ttl = self.r.ttl(f"rl:cooldown:{model}")

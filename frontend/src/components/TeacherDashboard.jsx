@@ -33,7 +33,7 @@ const formatScoreDetails = (mode, scoreData) => {
         <span className="font-bold text-white text-xs">{Math.round(finalScore)}/100 Debate</span>
         {scoreData.matter_score !== undefined && (
           <span className="text-[10px] text-slate-500">
-            M: {scoreData.matter_score} | M: {scoreData.manner_score} | M: {scoreData.method_score}
+            Matter {scoreData.matter_score} · Manner {scoreData.manner_score} · Method {scoreData.method_score}
           </span>
         )}
       </div>
@@ -209,9 +209,11 @@ export function TeacherDashboard() {
           <div className="animate-fadeIn">
             {activeTab === 'overview' && (
               <OverviewTab
+                assessmentsCapped={data.assessmentsCapped}
                 classesList={data.classesList}
                 allStudents={data.allStudents}
                 allAssessments={data.allAssessments}
+                activityData={data.activityData}
                 formatScoreDetails={formatScoreDetails}
               />
             )}
@@ -284,6 +286,9 @@ export function TeacherDashboard() {
                 setSelectedMaterialFilter={data.setSelectedMaterialFilter}
                 getFilteredAssessments={data.getFilteredAssessments}
                 handleDownloadCSV={data.handleDownloadCSV}
+                handleDownloadExcel={data.handleDownloadExcel}
+                exporting={data.exporting}
+                assessmentsCapped={data.assessmentsCapped}
                 formatScoreDetails={formatScoreDetails}
                 currentPage={data.currentPage}
                 setCurrentPage={data.setCurrentPage}

@@ -23,8 +23,16 @@ from utils import ai
 r = ai.redis_conn
 
 SUB_TTL = 48 * 3600
-TRANSCRIBE_DEADLINE = int(os.getenv("TRANSCRIBE_DEADLINE_SECONDS", str(40 * 60)))
-GRADE_DEADLINE = int(os.getenv("GRADE_DEADLINE_SECONDS", str(45 * 60)))
+# Jobs no longer give up after a fixed time: they keep their place in line through
+# per-minute/per-hour AI limits and only stop when today's quota is used up
+# (safety net: ai.PATIENT_MAX_WAIT, default 6 hours).
+JOB_TIMEOUT = ai.PATIENT_MAX_WAIT + 1800
+DAILY_LIMIT_MESSAGE = ("Today's free AI limit has been reached. Your {what} is saved - "
+                       "tap Retry later (the limit resets within 24 hours).")
+# Read Aloud: seconds to wait for AI-written feedback before using the standard
+# paragraph, and the queue length at which we don't wait at all.
+READ_ALOUD_AI_WAIT = int(os.getenv("READ_ALOUD_AI_WAIT_SECONDS", "60"))
+READ_ALOUD_BUSY_QUEUE = int(os.getenv("READ_ALOUD_BUSY_QUEUE", "5"))
 AUDIO_DIR = os.getenv("AUDIO_DIR", os.path.join(tempfile.gettempdir(), "hrefspeak_audio"))
 os.makedirs(AUDIO_DIR, exist_ok=True)
 
@@ -65,7 +73,7 @@ def update(sub_id, **fields):
 
 
 def new_submission(user_id, mode, params, *, audio_path=None, filename=None,
-                   duration=None, transcript=None):
+                   duration=None, transcript=None, auto_save=True, session_seconds=None):
     sub = {
         "id": uuid.uuid4().hex,
         "user_id": user_id,
@@ -84,6 +92,9 @@ def new_submission(user_id, mode, params, *, audio_path=None, filename=None,
         "attempts": 0,
         "job_id": None,
         "queue": None,
+        "auto_save": bool(auto_save),     # save the score to Supabase as soon as it is graded
+        "session_seconds": session_seconds,
+        "saved": False,
         "created_at": time.time(),
     }
     return save(sub)
@@ -100,8 +111,11 @@ def remove_audio(sub):
 
 # --- queueing ------------------------------------------------------------------
 
-def enqueue_stage(sub):
-    """Put the submission's current stage on the right queue."""
+def enqueue_stage(sub, at_front=False):
+    """Put the submission's current stage on the right queue.
+
+    at_front=True is used for retries so a student who already waited keeps their turn.
+    """
     sub["attempts"] = int(sub.get("attempts") or 0) + 1
     if sub["stage"] == "transcribe":
         qname = Q_TRANSCRIBE_PRIORITY if sub["mode"] == "transcribe" else Q_TRANSCRIBE
@@ -111,12 +125,13 @@ def enqueue_stage(sub):
         func = "utils.pipeline.job_grade"
     job_id = f"{sub['id']}-{sub['stage']}-{sub['attempts']}"
     sub.update(status="queued", queue=qname, job_id=job_id, error=None, retryable=False,
-               message="Waiting in line...")
+               daily_limit=False, wait_seconds=None, message="Waiting in line...")
     save(sub)
     queues[qname].enqueue(
         func, sub["id"], job_id=job_id,
-        job_timeout=max(TRANSCRIBE_DEADLINE, GRADE_DEADLINE) + 600,
+        job_timeout=JOB_TIMEOUT,
         result_ttl=600, failure_ttl=24 * 3600,
+        at_front=at_front,
     )
     return sub
 
@@ -131,15 +146,20 @@ def _record_done(stage):
     pipe.execute()
 
 
-def _fail(sub_id, message, *, retryable, rerecord=False):
+def _fail(sub_id, message, *, retryable, rerecord=False, daily_limit=False):
     update(sub_id, status="failed", error=message, retryable=retryable,
-           needs_rerecord=rerecord, message=message)
+           needs_rerecord=rerecord, daily_limit=daily_limit, message=message)
 
 
 def _waiting(sub_id, what):
     def on_wait(seconds):
-        update(sub_id, status="waiting",
-               message=f"The AI {what} is busy right now. You're still in line - please keep waiting.")
+        if seconds >= 120:
+            minutes = max(2, round(seconds / 60))
+            message = (f"The free AI {what} has reached its limit for this hour. You keep your place in "
+                       f"line - about {minutes} minutes until it continues.")
+        else:
+            message = f"The AI {what} is busy right now. You're still in line - please keep waiting."
+        update(sub_id, status="waiting", message=message, wait_seconds=int(seconds))
     return on_wait
 
 
@@ -158,7 +178,7 @@ def job_transcribe(sub_id):
     try:
         text = ai.transcribe_file(
             path, sub.get("filename") or os.path.basename(path), sub.get("duration"),
-            deadline=time.time() + TRANSCRIBE_DEADLINE,
+            deadline=None,  # patient: wait through minute/hour limits
             on_wait=_waiting(sub_id, "transcriber"),
         )
     except ai.BadAudioError as e:
@@ -166,6 +186,10 @@ def job_transcribe(sub_id):
         remove_audio(sub)
         _fail(sub_id, "This recording could not be processed (the audio file may be empty or damaged). "
                       "Please record again.", retryable=False, rerecord=True)
+        return
+    except ai.AIDailyLimitError as e:
+        print(f"[pipeline] daily transcription quota used up for {sub_id}: {e}")
+        _fail(sub_id, DAILY_LIMIT_MESSAGE.format(what="recording"), retryable=True, daily_limit=True)
         return
     except (ai.AIBusyError, ai.AITransientError) as e:
         print(f"[pipeline] transcription gave up for {sub_id}: {e}")
@@ -207,11 +231,17 @@ def job_grade(sub_id):
     update(sub_id, status="grading", message="Grading your answer...")
     p = sub.get("params") or {}
     transcript = sub.get("transcript") or ""
-    kwargs = dict(deadline=time.time() + GRADE_DEADLINE, on_wait=_waiting(sub_id, "grader"))
+    kwargs = dict(deadline=None, on_wait=_waiting(sub_id, "grader"))  # patient
     try:
         mode = sub["mode"]
         if mode == "read_aloud":
-            result = ai.evaluate_read_aloud(p.get("source_text", ""), transcript, **kwargs)
+            # Hybrid feedback: wait a little for the AI when the line is short; when many
+            # students are waiting, use the standard paragraph immediately so nobody
+            # waits long for prose (the scores themselves are exact either way).
+            busy = len(queues[Q_GRADE]) >= READ_ALOUD_BUSY_QUEUE
+            wait = 0 if busy else READ_ALOUD_AI_WAIT
+            result = ai.evaluate_read_aloud(p.get("source_text", ""), transcript,
+                                            deadline=time.time() + wait, on_wait=kwargs["on_wait"])
         elif mode == "qa":
             result = ai.evaluate_qa(p.get("question", ""), transcript, **kwargs)
         elif mode == "debate":
@@ -221,6 +251,10 @@ def job_grade(sub_id):
         else:
             _fail(sub_id, f"Unknown mode {mode}", retryable=False)
             return
+    except ai.AIDailyLimitError as e:
+        print(f"[pipeline] daily grading quota used up for {sub_id}: {e}")
+        _fail(sub_id, DAILY_LIMIT_MESSAGE.format(what="answer"), retryable=True, daily_limit=True)
+        return
     except (ai.AIBusyError, ai.AITransientError) as e:
         print(f"[pipeline] grading gave up for {sub_id}: {e}")
         _fail(sub_id, "The AI grader has been very busy. Your answer is saved - tap Retry to get your score.",
@@ -233,7 +267,118 @@ def job_grade(sub_id):
         return
 
     _record_done("grade")
-    update(sub_id, status="completed", result=result, message="Done")
+    sub = update(sub_id, result=result) or sub
+    if sub.get("auto_save"):
+        # Saved by the server, so it does not depend on the student's browser
+        # session still being valid (phones sleep, tokens expire, tabs close).
+        save_assessment(sub_id)
+    update(sub_id, status="completed", message="Done")
+
+
+# --- saving the score to Supabase -------------------------------------------------
+
+def compute_score(mode, result):
+    try:
+        if mode == "read_aloud":
+            return round(float(result["accuracy_score"]))
+        if mode == "debate":
+            return round(result["matter_score"] * 4 + result["manner_score"] * 4 + result["method_score"] * 2)
+        keys = (["fluency", "lexical_resource", "grammatical_range", "pronunciation"] if mode == "qa" else
+                ["fluency_and_coherence", "lexical_resource", "grammatical_range", "pronunciation",
+                 "interactive_communication"])
+        return round(sum(float(result[k]) for k in keys) / len(keys))
+    except (KeyError, TypeError, ValueError):
+        return 0
+
+
+def transcript_text(sub):
+    """What the student said. For conversations: the whole dialogue."""
+    if sub["mode"] == "conversation":
+        lines = []
+        for m in (sub.get("params") or {}).get("messages") or []:
+            who = "Student" if m.get("role") == "user" else "Tutor"
+            lines.append(f"{who}: {m.get('content', '')}")
+        return "\n".join(lines) or None
+    return sub.get("transcript") or None
+
+
+def build_feedback(sub):
+    """Same JSON shape the browser used to store, so leaderboards keep working."""
+    result = dict(sub.get("result") or {})
+    p = sub.get("params") or {}
+    mode = sub["mode"]
+    feedback = {**result, "material_title": p.get("material_title") or p.get("motion") or None}
+    if mode == "debate":
+        feedback.update(transcript=sub.get("transcript"), finalScore=compute_score(mode, result),
+                        motion=p.get("motion"), role=p.get("role"))
+    if not feedback["material_title"]:
+        feedback.pop("material_title")
+    return feedback
+
+
+def _supabase_insert(row):
+    import httpx
+    url, key = os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    if not url or not key:
+        raise RuntimeError("SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not configured")
+    force_ipv4 = os.getenv("FORCE_IPV4", "true").lower() == "true"
+    transport = httpx.HTTPTransport(local_address="0.0.0.0", retries=2) if force_ipv4 else None
+    with httpx.Client(timeout=20, transport=transport) as client:
+        resp = client.post(
+            f"{url}/rest/v1/assessments",
+            headers={"apikey": key, "Authorization": f"Bearer {key}",
+                     "Content-Type": "application/json", "Prefer": "return=minimal"},
+            json=row,
+        )
+    if resp.status_code not in (200, 201, 204):
+        raise RuntimeError(f"Supabase insert failed ({resp.status_code}): {resp.text[:300]}")
+
+
+def save_assessment(sub_id):
+    """Insert the graded result into public.assessments exactly once. Returns True if saved."""
+    sub = load(sub_id)
+    if not sub or not sub.get("result"):
+        return False
+    if sub.get("saved"):
+        return True
+    lock = f"saving:{sub_id}"
+    if not r.set(lock, "1", nx=True, ex=60):
+        # someone else is saving right now; wait briefly for them
+        for _ in range(20):
+            time.sleep(1)
+            sub = load(sub_id) or sub
+            if sub.get("saved"):
+                return True
+        return False
+    try:
+        row = {
+            "student_id": sub["user_id"],
+            "mode": sub["mode"],
+            "score": compute_score(sub["mode"], sub["result"]),
+            "feedback": build_feedback(sub),
+        }
+        if sub.get("session_seconds"):
+            row["duration_seconds"] = int(sub["session_seconds"])
+        transcript = transcript_text(sub)
+        if transcript:
+            row["transcript"] = transcript  # what the student said, for teachers to review
+        last = None
+        for attempt in range(4):
+            try:
+                _supabase_insert(row)
+                update(sub_id, saved=True)
+                return True
+            except Exception as e:  # noqa: BLE001
+                last = e
+                if "transcript" in str(e) and "transcript" in row:
+                    # The optional transcript column migration has not been run yet.
+                    row.pop("transcript")
+                    continue
+                time.sleep(2 * (attempt + 1))
+        print(f"[pipeline] could not save assessment for {sub_id}: {last}")
+        return False
+    finally:
+        r.delete(lock)
 
 
 # --- view for the API -------------------------------------------------------------
@@ -290,6 +435,8 @@ def public_view(sub):
             grade_rate = _rate_per_minute("grade")
             if grade_rate > 0:
                 eta = (eta or 30) + int(len(queues[Q_GRADE]) / grade_rate * 60) + 15
+        if sub.get("status") == "waiting" and sub.get("wait_seconds"):
+            eta = max(eta or 0, int(sub["wait_seconds"]) + 15)
     return {
         "id": sub["id"],
         "mode": sub["mode"],
@@ -303,5 +450,7 @@ def public_view(sub):
         "error": sub.get("error"),
         "retryable": bool(sub.get("retryable")),
         "needs_rerecord": bool(sub.get("needs_rerecord")),
+        "daily_limit": bool(sub.get("daily_limit")),
         "has_audio": bool(sub.get("audio_path") and os.path.exists(sub["audio_path"])),
+        "saved": bool(sub.get("saved")),
     }

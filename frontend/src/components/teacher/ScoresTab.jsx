@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Filter, Download } from 'lucide-react';
+import { Search, Filter, Download, FileSpreadsheet, Loader2, Info } from 'lucide-react';
 
 export function ScoresTab({
   classesList,
@@ -14,6 +14,9 @@ export function ScoresTab({
   allAssessments = [],
   getFilteredAssessments,
   handleDownloadCSV,
+  handleDownloadExcel,
+  exporting = false,
+  assessmentsCapped = false,
   formatScoreDetails,
   currentPage,
   setCurrentPage,
@@ -91,16 +94,36 @@ export function ScoresTab({
             </select>
           </div>
 
-          {/* CSV Export Button */}
+          {/* Excel export: all matching records (built on the server) */}
+          <button
+            onClick={handleDownloadExcel}
+            disabled={exporting}
+            title="Download all matching records as an Excel file, with a per-student summary sheet"
+            className="flex items-center space-x-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-xs font-bold rounded-xl shadow-lg shadow-emerald-700/10 active:scale-95 transition cursor-pointer"
+          >
+            {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
+            <span>{exporting ? 'Preparing...' : 'Export Excel'}</span>
+          </button>
           <button
             onClick={handleDownloadCSV}
-            className="flex items-center space-x-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-emerald-700/10 active:scale-95 transition cursor-pointer"
+            title="Quick CSV of the records shown on screen"
+            className="flex items-center space-x-1 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Export CSV</span>
+            <span>CSV</span>
           </button>
         </div>
       </div>
+
+      {assessmentsCapped && (
+        <div className="flex items-start space-x-2 p-3 rounded-xl border border-amber-500/20 bg-amber-500/10 text-amber-200 text-xs">
+          <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <span>
+            Showing the {allAssessments.length.toLocaleString()} most recent records. There are more in this period -
+            use <strong>Export Excel</strong> to get all of them, or choose a shorter period.
+          </span>
+        </div>
+      )}
 
       {/* Score table */}
       <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden flex flex-col">

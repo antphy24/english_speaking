@@ -24,7 +24,7 @@ const PARAGRAPHS = [
   }
 ];
 
-export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagraphs = [] }) {
+export function ModeReadAloud({ studentName, apiBase, onSaveScore, getSessionSeconds, customParagraphs = [] }) {
   const customMapped = (customParagraphs || []).map((m, idx) => ({
     id: m.id,
     title: m.title || `Custom Paragraph ${idx + 1}`,
@@ -140,7 +140,10 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
     }
   }, [audioBlob]);
 
+  const savedOnServerRef = useRef(false);
+
   const showResult = (view) => {
+    savedOnServerRef.current = !!view.saved;
     setTranscript(view.transcript || '');
     setEvaluation(view.result);
     setStatus('graded');
@@ -185,7 +188,7 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
       const view = await submission.run({
         mode: 'read_aloud',
         blob,
-        params: { source_text: selectedParagraph.text },
+        params: { source_text: selectedParagraph.text, material_title: selectedParagraph.title, session_seconds: getSessionSeconds?.() },
         duration: recordingTime,
         meta: resultMetaRef.current,
       });
@@ -222,7 +225,7 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, customParagra
     setSaveStatus('');
     try {
       const title = resultMetaRef.current?.material_title || selectedParagraph.title;
-      await onSaveScore('read_aloud', { ...evaluation, material_title: title });
+      await onSaveScore('read_aloud', { ...evaluation, material_title: title }, { alreadySaved: savedOnServerRef.current });
       setSaveStatus('success');
     } catch (err) {
       setSaveStatus('error');

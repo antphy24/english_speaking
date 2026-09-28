@@ -54,9 +54,14 @@ async def temp_file_reaper():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("FastAPI Application Starting up...")
+    # local_address="0.0.0.0" forces IPv4. Some networks advertise IPv6 but can't
+    # actually route it; browsers fall back to IPv4 silently, Python does not,
+    # which shows up as ConnectTimeout when talking to Supabase.
+    force_ipv4 = os.getenv("FORCE_IPV4", "true").lower() == "true"
     app.state.http_client = httpx.AsyncClient(
         timeout=httpx.Timeout(30.0, connect=10.0),
-        limits=httpx.Limits(max_keepalive_connections=20, max_connections=50)
+        limits=httpx.Limits(max_keepalive_connections=20, max_connections=50),
+        transport=httpx.AsyncHTTPTransport(local_address="0.0.0.0", retries=2) if force_ipv4 else None,
     )
     reaper_task = asyncio.create_task(temp_file_reaper())
     yield
@@ -207,9 +212,13 @@ async def _verify_token(authorization: Optional[str], request: Request):
         return user_info
     except HTTPException as he:
         raise he
+    except httpx.TransportError as e:
+        # Network problem reaching Supabase: temporary, the browser retries automatically.
+        print(f"Auth verification network error: {type(e).__name__}: {e!r}")
+        raise HTTPException(status_code=503, detail="Could not reach the login server. Retrying - your recording is saved.")
     except Exception as e:
-        print(f"Auth verification error: {e}")
-        raise HTTPException(status_code=500, detail=f"Authentication check failed: {type(e).__name__} - {str(e)}")
+        print(f"Auth verification error: {type(e).__name__}: {e!r}")
+        raise HTTPException(status_code=500, detail="Login check failed. Please try again.")
 
 async def verify_authenticated(request: Request, authorization: Optional[str] = Header(None)):
     """Lightweight auth check: verifies JWT is valid, returns user info. Used for student endpoints."""
@@ -628,7 +637,7 @@ async def chat_reply(request: Request, chat_data: ChatReplyRequest, user: dict =
 # resumable after refresh, retry without re-recording.
 # ---------------------------------------------------------------------------
 
-MAX_AUDIO_BYTES = 15 * 1024 * 1024
+MAX_AUDIO_BYTES = 24 * 1024 * 1024  # Groq's free Whisper accepts files up to 25MB (long debate speeches)
 ALLOWED_AUDIO_EXT = {".webm", ".mp4", ".m4a", ".ogg", ".wav", ".mp3", ".mpeg", ".mpga", ".flac"}
 
 
@@ -675,6 +684,9 @@ async def submit_audio(
     question: Optional[str] = Form(None),
     motion: Optional[str] = Form(None),
     role: Optional[str] = Form(None),
+    material_title: Optional[str] = Form(None),
+    session_seconds: Optional[float] = Form(None),
+    auto_save: Optional[bool] = Form(True),
     user: dict = Depends(verify_authenticated),
 ):
     """Upload a recording once. It is transcribed and (unless mode='transcribe') graded."""
@@ -686,13 +698,14 @@ async def submit_audio(
     if existing:  # same upload retried after a network hiccup
         return pipeline.public_view(existing)
 
-    params = {"source_text": source_text, "question": question, "motion": motion, "role": role}
+    params = {"source_text": source_text, "question": question, "motion": motion, "role": role,
+              "material_title": material_title}
     params = {k: v for k, v in params.items() if v}
     _validate_params(mode, params)
 
     content = await file.read()
     if len(content) > MAX_AUDIO_BYTES:
-        raise HTTPException(status_code=413, detail="Recording is too large (max 15MB). Please record a shorter answer.")
+        raise HTTPException(status_code=413, detail="Recording is too large (max 24MB). Please record a shorter answer.")
     if len(content) < 2000:
         raise HTTPException(status_code=400, detail="Recording is too short or empty. Please speak for at least 2 seconds.")
 
@@ -706,7 +719,9 @@ async def submit_audio(
 
     def create():
         sub = pipeline.new_submission(user_id, mode, params, audio_path=path,
-                                      filename=f"recording{ext}", duration=duration)
+                                      filename=f"recording{ext}", duration=duration,
+                                      auto_save=bool(auto_save) and mode != "transcribe",
+                                      session_seconds=session_seconds)
         _remember_idempotency(user_id, client_id, sub["id"])
         return pipeline.public_view(pipeline.enqueue_stage(sub))
 
@@ -722,6 +737,9 @@ class TextSubmitRequest(BaseModel):
     messages: Optional[List[dict]] = None
     motion: Optional[str] = None
     role: Optional[str] = None
+    material_title: Optional[str] = None
+    session_seconds: Optional[float] = None
+    auto_save: bool = True
 
 
 @app.post("/submit-text")
@@ -738,12 +756,13 @@ async def submit_text(request: Request, body: TextSubmitRequest, user: dict = De
         return pipeline.public_view(existing)
     params = {k: v for k, v in {
         "source_text": body.source_text, "question": body.question, "messages": body.messages,
-        "motion": body.motion, "role": body.role,
+        "motion": body.motion, "role": body.role, "material_title": body.material_title,
     }.items() if v}
     _validate_params(body.mode, params)
 
     def create():
-        sub = pipeline.new_submission(user_id, body.mode, params, transcript=body.transcript)
+        sub = pipeline.new_submission(user_id, body.mode, params, transcript=body.transcript,
+                                      auto_save=body.auto_save, session_seconds=body.session_seconds)
         _remember_idempotency(user_id, body.client_id, sub["id"])
         return pipeline.public_view(pipeline.enqueue_stage(sub))
 
@@ -768,6 +787,68 @@ async def get_submission(sub_id: str, user: dict = Depends(verify_authenticated)
     return await asyncio.to_thread(read)
 
 
+# ---------------------------------------------------------------------------
+# Teacher export (Excel) - built on the server so it always has ALL records
+# ---------------------------------------------------------------------------
+
+@app.get("/teacher/export")
+@limiter.limit("10/minute")
+async def export_scores(
+    request: Request,
+    class_id: Optional[str] = None,
+    mode: Optional[str] = None,
+    material: Optional[str] = None,
+    days: Optional[int] = None,
+    search: Optional[str] = None,
+    tz: int = 0,
+    teacher: dict = Depends(verify_teacher),
+):
+    from fastapi.responses import Response
+    from utils import export as export_mod
+
+    if mode and mode != "all" and mode not in export_mod.MODE_LABELS:
+        raise HTTPException(status_code=400, detail="Invalid mode")
+    if days is not None and not (1 <= days <= 3650):
+        raise HTTPException(status_code=400, detail="Invalid period")
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        raise HTTPException(status_code=500, detail="Supabase environment configuration missing.")
+
+    try:
+        classes, students, assessments = await asyncio.to_thread(
+            export_mod.fetch_export_data, teacher.get("id"), class_id, mode, days)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        print(f"Export failed: {e}")
+        raise HTTPException(status_code=502, detail="Could not read scores from the database. Please try again.")
+
+    teacher_name = (teacher.get("user_metadata") or {}).get("full_name") or teacher.get("email") or ""
+    content, count = await asyncio.to_thread(
+        export_mod.build_workbook, classes, students, assessments,
+        mode=mode, material=material, search=search, days=days,
+        tz_offset_minutes=tz, teacher_name=teacher_name)
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="hrefspeak_scores.xlsx"',
+                 "X-Record-Count": str(count),
+                 "Access-Control-Expose-Headers": "X-Record-Count"},
+    )
+
+
+@app.post("/submission/{sub_id}/save")
+@limiter.limit("20/minute")
+async def save_submission(request: Request, sub_id: str, user: dict = Depends(verify_authenticated)):
+    """Save a graded submission's score (used by modes that save on request, e.g. debate)."""
+    sub = await asyncio.to_thread(_owned_submission, sub_id, user)
+    if sub.get("status") != "completed":
+        raise HTTPException(status_code=409, detail="This submission has not been graded yet.")
+    ok = await asyncio.to_thread(pipeline.save_assessment, sub_id)
+    if not ok:
+        raise HTTPException(status_code=502, detail="Could not save the score right now. Please try again.")
+    return {"saved": True}
+
+
 @app.post("/submission/{sub_id}/retry")
 @limiter.limit("20/minute")
 async def retry_submission(request: Request, sub_id: str, user: dict = Depends(verify_authenticated)):
@@ -785,7 +866,8 @@ async def retry_submission(request: Request, sub_id: str, user: dict = Depends(v
         else:
             raise HTTPException(status_code=410, detail="The recording is no longer on the server. Please upload it again.")
         sub["needs_rerecord"] = False
-        return pipeline.public_view(pipeline.enqueue_stage(sub))
+        # Retrying students go to the front: they already waited their turn.
+        return pipeline.public_view(pipeline.enqueue_stage(sub, at_front=True))
     return await asyncio.to_thread(retry)
 
 @app.get("/job/{job_id}")

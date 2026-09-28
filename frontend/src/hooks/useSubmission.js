@@ -65,6 +65,16 @@ export function useSubmission(apiBase, storageKey, { persist = true } = {}) {
           await retrySubmissionOnServer(apiBase, record.subId);
         }
         if (!record.subId) {
+          // Never upload a student's recording under a different account. All tabs
+          // of one browser share a single login, so signing in as another student
+          // in another tab switches this tab too.
+          const uid = await getCurrentUserId();
+          if (record.userId && uid && uid !== record.userId) {
+            throw new SubmissionError(
+              'You signed in as a different student in another tab. Sign in again as the original student, then press Retry.',
+              { accountChanged: true },
+            );
+          }
           if (record.kind === 'audio' && !blob) {
             blob = await loadRecording(record.clientId);
             if (!blob) {
@@ -115,7 +125,9 @@ export function useSubmission(apiBase, storageKey, { persist = true } = {}) {
           remember(record);
         }
 
-        const canAuto = (error.retryable || error.lost) && !error.needsRerecord && autoRetries < AUTO_RETRIES;
+        const dailyLimit = !!error.view?.daily_limit; // retrying now can't help; the student retries later
+        const canAuto = (error.retryable || error.lost) && !error.needsRerecord && !dailyLimit
+          && autoRetries < AUTO_RETRIES;
         if (canAuto) {
           autoRetries += 1;
           update({ phase: 'queued', message: 'Hit a snag - retrying automatically...', offline: false });
@@ -127,7 +139,7 @@ export function useSubmission(apiBase, storageKey, { persist = true } = {}) {
         update({
           phase: 'failed',
           error: error.message,
-          retryable: !error.needsRerecord,
+          retryable: !error.needsRerecord,  // account-changed: Retry works after signing back in
           needsRerecord: !!error.needsRerecord,
         });
         if (error.needsRerecord) {
@@ -196,8 +208,9 @@ export function useSubmission(apiBase, storageKey, { persist = true } = {}) {
   }, [persist, storageKey]);
 
   const hasRecording = useCallback(() => !!currentRef.current, []);
+  const currentId = useCallback(() => currentRef.current?.record?.subId || null, []);
 
-  return { progress, run, retry, resume, clear, hasRecording };
+  return { progress, run, retry, resume, clear, hasRecording, currentId };
 }
 
 export default useSubmission;

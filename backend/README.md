@@ -30,5 +30,16 @@ This is the backend for the Hrefspeak English learning platform. It runs FastAPI
   browsers then re-upload their saved recording automatically.
 - Model lists can be changed without code changes: `TRANSCRIBE_MODELS`, `GRADE_MODELS`,
   `FEEDBACK_MODELS`, `CHAT_MODELS` (comma-separated). Limits: `GROQ_LIMITS_JSON`.
+- Read Aloud feedback is hybrid: AI-written when the queue is short, otherwise an instant standard
+  paragraph built from the exact word comparison (scores are identical either way). Tune with
+  `READ_ALOUD_AI_WAIT_SECONDS` (default 60) and `READ_ALOUD_BUSY_QUEUE` (default 5 waiting jobs).
+  Each saved result has `feedback_source: "ai" | "standard"`.
+- Submissions never time out while the AI is only busy (per-minute / per-hour limits): they keep their
+  place in line. They stop only when every model has used today's free quota, with a clear
+  "try again later" message (recording/transcript kept). Safety net: `PATIENT_MAX_WAIT_SECONDS` (6h).
+- Teachers' "Export Excel" (`GET /teacher/export`) is built on the server with openpyxl and contains all
+  matching records: a per-student Summary sheet, an All attempts sheet (numeric scores, sub-scores,
+  transcript) and an About sheet. Run `supabase/migrations/20260928_assessment_transcript.sql` once so
+  transcripts are stored (everything still works before you run it, just without transcripts).
 - Run `python check_groq.py` to check that every model works with your key.
 - Make sure `ALLOW_MOCK_TOKENS` is **not** `true` in production.

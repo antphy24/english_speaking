@@ -25,3 +25,6 @@ frontend/.env
 .idea/
 .DS_Store
 *.log
+venv_linux/
+test_env/
+.test_venv/

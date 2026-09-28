@@ -3,6 +3,24 @@ import { useNavigate } from 'react-router-dom';
 import { supabaseTeacher as supabase } from '../utils/supabaseClient';
 import { useConfirm } from '../components/UI/ConfirmModal';
 
+// The dashboard shows up to this many recent records; the Excel export always has everything.
+const MAX_DASHBOARD_ASSESSMENTS = 5000;
+const MAX_ACTIVITY_LOGS = 10000;
+const PAGE_SIZE = 1000;
+
+// Supabase returns at most 1000 rows per request, so read page by page.
+async function fetchAllPages(buildQuery, maxRows) {
+  const rows = [];
+  for (let from = 0; from < maxRows; from += PAGE_SIZE) {
+    const to = Math.min(from + PAGE_SIZE, maxRows) - 1;
+    const { data, error } = await buildQuery().range(from, to);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < to - from + 1) return { rows, capped: false };
+  }
+  return { rows, capped: rows.length >= maxRows };
+}
+
 export function useTeacherData(dateFilter = '30days') {
   const navigate = useNavigate();
   const confirm = useConfirm();
@@ -19,6 +37,8 @@ export function useTeacherData(dateFilter = '30days') {
   const [customMaterials, setCustomMaterials] = useState([]);
   const [activityData, setActivityData] = useState([]);
   const [loadingData, setLoadingData] = useState(false);
+  const [assessmentsCapped, setAssessmentsCapped] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   // Activity monitor state
   const [selectedActivityClass, setSelectedActivityClass] = useState('all');
@@ -136,23 +156,23 @@ export function useTeacherData(dateFilter = '30days') {
         }
 
         if (studentIds.length > 0) {
-          let assessQuery = supabase
-            .from('assessments')
-            .select('*, student:students(full_name, school_id, class:classes(class_name))')
-            .in('student_id', studentIds)
-            .order('created_at', { ascending: false })
-            .limit(1000);
-            
-          if (dateLimit) {
-            assessQuery = assessQuery.gte('created_at', dateLimit.toISOString());
-          }
-          
-          const { data: assessmentsData, error: assessErr } = await assessQuery;
-            
-          if (assessErr) throw assessErr;
-          setAllAssessments(assessmentsData);
+          // Filter by class (short request) instead of listing every student ID, which
+          // breaks with hundreds of students. The transcript column is left out to keep
+          // the dashboard light; it is included in the Excel export.
+          const { rows: assessmentsData, capped } = await fetchAllPages(() => {
+            let q = supabase
+              .from('assessments')
+              .select('id, student_id, mode, score, feedback, created_at, duration_seconds, students!inner(full_name, school_id, class_id, class:classes(class_name))')
+              .in('students.class_id', classIds)
+              .order('created_at', { ascending: false });
+            if (dateLimit) q = q.gte('created_at', dateLimit.toISOString());
+            return q;
+          }, MAX_DASHBOARD_ASSESSMENTS);
+          setAllAssessments(assessmentsData.map(({ students, ...rest }) => ({ ...rest, student: students })));
+          setAssessmentsCapped(capped);
         } else {
           setAllAssessments([]);
+          setAssessmentsCapped(false);
         }
 
         // 4. Fetch Custom Materials
@@ -178,20 +198,15 @@ export function useTeacherData(dateFilter = '30days') {
 
         // 5. Fetch Activity Logs
         if (studentIds.length > 0) {
-          let activityQuery = supabase
-            .from('activity_logs')
-            .select('*')
-            .in('student_id', studentIds)
-            .order('created_at', { ascending: false })
-            .limit(1000);
-            
-          if (dateLimit) {
-            activityQuery = activityQuery.gte('created_at', dateLimit.toISOString());
-          }
-
-          const { data: activityLogsData, error: activityErr } = await activityQuery;
-
-          if (activityErr) throw activityErr;
+          const { rows: activityLogsData } = await fetchAllPages(() => {
+            let q = supabase
+              .from('activity_logs')
+              .select('*')
+              .in('class_id', classIds)
+              .order('created_at', { ascending: false });
+            if (dateLimit) q = q.gte('created_at', dateLimit.toISOString());
+            return q;
+          }, MAX_ACTIVITY_LOGS);
           setActivityData(activityLogsData || []);
         } else {
           setActivityData([]);
@@ -767,7 +782,56 @@ export function useTeacherData(dateFilter = '30days') {
     });
   }, [allAssessments, searchQuery, selectedClassFilter, selectedModeFilter, selectedMaterialFilter]);
 
-  // Export Assessment Records to CSV
+  // Export to Excel: built on the server so it contains ALL matching records
+  // (not only the ones loaded on screen), with a per-student summary sheet.
+  const handleDownloadExcel = useCallback(async () => {
+    setExporting(true);
+    setActionError('');
+    const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Teacher session expired. Please log in again.');
+
+      const params = new URLSearchParams();
+      const cls = classesList.find(c => c.class_name === selectedClassFilter);
+      if (cls) params.set('class_id', cls.id);
+      if (selectedModeFilter !== 'all') params.set('mode', selectedModeFilter);
+      if (selectedMaterialFilter !== 'all') params.set('material', selectedMaterialFilter);
+      if (dateFilter === '7days') params.set('days', '7');
+      if (dateFilter === '30days') params.set('days', '30');
+      if (searchQuery.trim()) params.set('search', searchQuery.trim());
+      params.set('tz', String(new Date().getTimezoneOffset()));
+
+      const response = await fetch(`${API_BASE}/teacher/export?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (!response.ok) {
+        let msg = 'Export failed. Please try again.';
+        try { msg = (await response.json()).detail || msg; } catch (_) {}
+        throw new Error(msg);
+      }
+      const blob = await response.blob();
+      const parts = ['hrefspeak_scores'];
+      if (cls) parts.push(cls.class_name.replace(/[^\w-]+/g, '_'));
+      if (selectedModeFilter !== 'all') parts.push(selectedModeFilter);
+      parts.push(new Date().toISOString().slice(0, 10));
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${parts.join('_')}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Excel export failed:', err);
+      setActionError(err.message || 'Export failed.');
+    } finally {
+      setExporting(false);
+    }
+  }, [classesList, selectedClassFilter, selectedModeFilter, selectedMaterialFilter, dateFilter, searchQuery]);
+
+  // Quick CSV of the records loaded on screen (fallback; the Excel export is complete).
   const handleDownloadCSV = useCallback(() => {
     const records = getFilteredAssessments();
     if (records.length === 0) {
@@ -775,35 +839,28 @@ export function useTeacherData(dateFilter = '30days') {
       return;
     }
 
-    const headers = ["Student Name", "School ID", "Class Name", "Date/Time", "Mode", "Overall Score", "Feedback text"];
-    
-    const rows = records.map(record => {
-      let scoreStr = "";
-      if (record.mode === 'read_aloud') {
-        scoreStr = `${record.score}% Accuracy`;
-      } else if (record.mode === 'debate') {
-        scoreStr = `${Math.round(record.score)}/100 Debate`;
-      } else {
-        scoreStr = `${Math.round(record.score)}/100 Score`;
-      }
-      
-      const escapeCSV = (val) => `"${String(val ?? '').replace(/"/g, '""')}"`;
-      
-      return [
-        escapeCSV(record.student?.full_name),
-        escapeCSV(record.student?.school_id),
-        escapeCSV(record.student?.class?.class_name),
-        escapeCSV(new Date(record.created_at).toLocaleString()),
-        escapeCSV(record.mode),
-        escapeCSV(scoreStr),
-        escapeCSV(record.feedback?.feedback || record.feedback)
-      ];
-    });
+    const headers = ["Student Name", "School ID", "Class Name", "Date/Time", "Mode", "Material", "Score (0-100)", "Feedback"];
+    const escapeCSV = (val) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+    const pad = (n) => String(n).padStart(2, '0');
+    const fmtDate = (iso) => {
+      const d = new Date(iso);
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
 
-    const csvContent = [
-      headers.join(","),
-      ...rows.map(e => e.join(","))
-    ].join("\n");
+    const rows = records.map(record => [
+      escapeCSV(record.student?.full_name),
+      escapeCSV(record.student?.school_id),
+      escapeCSV(record.student?.class?.class_name),
+      escapeCSV(fmtDate(record.created_at)),
+      escapeCSV(record.mode),
+      escapeCSV(record.feedback?.material_title || record.feedback?.motion || 'Default Material'),
+      Math.round(record.score),
+      escapeCSV(record.feedback?.feedback || record.feedback?.overall_feedback || ''),
+    ]);
+
+    // BOM so Excel reads names/feedback as UTF-8. (For Excel, prefer the .xlsx export:
+    // it opens correctly regardless of regional settings.)
+    const csvContent = '\uFEFF' + [headers.join(","), ...rows.map(e => e.join(","))].join("\r\n");
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -897,5 +954,8 @@ export function useTeacherData(dateFilter = '30days') {
     handleDeleteMaterialGroup,
     getFilteredAssessments,
     handleDownloadCSV,
+    handleDownloadExcel,
+    exporting,
+    assessmentsCapped,
   };
 }

@@ -24,7 +24,7 @@ const QUESTIONS = [
   }
 ];
 
-export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = [] }) {
+export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, customQuestions = [] }) {
   const customMapped = (customQuestions || []).map((m, idx) => ({
     id: m.id,
     topic: m.title || `Custom Topic ${idx + 1}`,
@@ -94,7 +94,10 @@ export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = []
     }
   }, [audioBlob]);
 
+  const savedOnServerRef = useRef(false);
+
   const showResult = (view) => {
+    savedOnServerRef.current = !!view.saved;
     setTranscript(view.transcript || '');
     setEvaluation(view.result);
     setStatus('graded');
@@ -139,7 +142,7 @@ export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = []
       const view = await submission.run({
         mode: 'qa',
         blob,
-        params: { question: selectedQuestion.prompt },
+        params: { question: selectedQuestion.prompt, material_title: selectedQuestion.topic, session_seconds: getSessionSeconds?.() },
         duration: recordingTime,
         meta: resultMetaRef.current,
       });
@@ -188,7 +191,7 @@ export function ModeQA({ studentName, apiBase, onSaveScore, customQuestions = []
     setSaveStatus('');
     try {
       const title = resultMetaRef.current?.material_title || selectedQuestion.topic;
-      await onSaveScore('qa', { ...evaluation, material_title: title });
+      await onSaveScore('qa', { ...evaluation, material_title: title }, { alreadySaved: savedOnServerRef.current });
       setSaveStatus('success');
     } catch (err) {
       setSaveStatus('error');

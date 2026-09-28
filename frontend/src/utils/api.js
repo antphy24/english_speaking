@@ -143,9 +143,10 @@ export async function pollJobStatus(apiBase, jobId, options = {}, initialDelayMs
 // ---------------------------------------------------------------------------
 
 export class SubmissionError extends Error {
-  constructor(message, { retryable = false, needsRerecord = false, lost = false, view = null, cancelled = false } = {}) {
+  constructor(message, { retryable = false, needsRerecord = false, lost = false, view = null, cancelled = false, accountChanged = false } = {}) {
     super(message);
     this.cancelled = cancelled;
+    this.accountChanged = accountChanged;
     this.retryable = retryable;
     this.needsRerecord = needsRerecord;
     this.lost = lost; // server no longer has it -> re-upload the saved recording
@@ -211,6 +212,12 @@ export async function submitText(apiBase, body) {
     body: JSON.stringify(body),
   }, 6, 2000);
   return readJsonOrThrow(response, 'Could not send your answer for grading.');
+}
+
+/** Ask the server to save a graded submission's score (idempotent). */
+export async function saveSubmissionOnServer(apiBase, subId) {
+  const response = await fetchWithRetry(`${apiBase}/submission/${subId}/save`, { method: 'POST' }, 4, 2000);
+  return readJsonOrThrow(response, 'Could not save the score.');
 }
 
 export async function retrySubmissionOnServer(apiBase, subId) {

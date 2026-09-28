@@ -14,7 +14,7 @@ const DEFAULT_GREETINGS = [
   { id: 'def-3', title: "Travel & Tourism", content: "Hi {studentName}! Imagine we just met at a hostel in Tokyo. What brings you to Japan?" }
 ];
 
-export function ModeConversation({ studentName, apiBase, onSaveScore, customGreetings = [] }) {
+export function ModeConversation({ studentName, apiBase, onSaveScore, getSessionSeconds, customGreetings = [] }) {
   const confirm = useConfirm();
   const [step, setStep] = useState('setup'); // setup -> chatting
   const availableGreetings = [
@@ -50,6 +50,7 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
   const turn = useSubmission(apiBase, 'conversation_turn', { persist: false });
   const grader = useSubmission(apiBase, 'conversation');
   const topicRef = useRef(null);
+  const savedOnServerRef = useRef(false);
   useEffect(() => {
     return () => {
       if ('speechSynthesis' in window) {
@@ -112,7 +113,7 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
       setStatus('grading');
       try {
         const view = await pending.promise;
-        if (!cancelled) { setEvaluation(view.result); setStatus('graded'); }
+        if (!cancelled) { savedOnServerRef.current = !!view.saved; setEvaluation(view.result); setStatus('graded'); }
       } catch (err) {
         if (!cancelled && !err?.cancelled) {
           setErrorMessage(err.message || 'An error occurred during evaluation.');
@@ -287,9 +288,10 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
     try {
       const view = await grader.run({
         mode: 'conversation',
-        textBody: { messages },
+        textBody: { messages, material_title: selectedTopic.title, session_seconds: getSessionSeconds?.() },
         meta: { messages, topic: selectedTopic },
       });
+      savedOnServerRef.current = !!view.saved;
       setEvaluation(view.result);
       setStatus('graded');
     } catch (err) {
@@ -303,6 +305,7 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
     try {
       const view = grader.hasRecording() ? await grader.retry() : null;
       if (!view) return runGrading();
+      savedOnServerRef.current = !!view.saved;
       setEvaluation(view.result);
       setStatus('graded');
     } catch (err) {
@@ -328,7 +331,7 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, customGree
     setSaveStatus('');
     try {
       const title = (topicRef.current || selectedTopic)?.title;
-      await onSaveScore('conversation', { ...evaluation, material_title: title });
+      await onSaveScore('conversation', { ...evaluation, material_title: title }, { alreadySaved: savedOnServerRef.current });
       setSaveStatus('success');
     } catch (err) {
       setSaveStatus('error');

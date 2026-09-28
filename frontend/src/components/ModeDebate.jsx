@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Play, Square, Loader2, Save, Mic, ShieldAlert, CheckCircle2, ChevronRight, XCircle, BrainCircuit, Users, Target, FileText, ArrowRight, Clock, AlertTriangle } from 'lucide-react';
 import Spinner from './UI/Spinner';
 import useSubmission from '../hooks/useSubmission';
+import { saveSubmissionOnServer } from '../utils/api';
 import SubmissionProgress from './UI/SubmissionProgress';
 import { useMediaRecorder } from '../hooks/useMediaRecorder';
 
@@ -12,7 +13,7 @@ const DEFAULT_MOTIONS = [
   "This House regrets the rise of cancel culture."
 ];
 
-export default function ModeDebate({ studentName, apiBase, onSaveScore, isSaving, saveStatus, customMotions = [] }) {
+export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessionSeconds, isSaving, saveStatus, customMotions = [] }) {
   const [step, setStep] = useState('setup'); // setup -> case_building -> recording -> grading -> results
   
   const [motion, setMotion] = useState('');
@@ -153,7 +154,8 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, isSaving
       const view = await submission.run({
         mode: 'debate',
         blob,
-        params: { motion, role },
+        // Debate scores are logged only when the student presses the save button.
+        params: { motion, role, auto_save: 'false', session_seconds: getSessionSeconds?.() },
         duration: recordingTime,
         meta: { motion, role, scratchpad },
       });
@@ -174,16 +176,21 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, isSaving
     }
   };
 
-  const handleSaveToLeaderboard = () => {
-    if (resultData) {
-      submission.clear();
-      onSaveScore('debate', {
-        ...resultData,
-        material_title: motion,
-        motion,
-        role
-      });
+  const handleSaveToLeaderboard = async () => {
+    if (!resultData) return;
+    const scoreData = { ...resultData, material_title: motion, motion, role };
+    const subId = submission.currentId();
+    try {
+      // The server saves it with the student's verified identity (works even if
+      // the browser's login session has expired while waiting).
+      if (!subId) throw new Error('no submission id');
+      await saveSubmissionOnServer(apiBase, subId);
+      await onSaveScore('debate', scoreData, { alreadySaved: true });
+    } catch (err) {
+      console.warn('Server save failed, saving from the browser instead', err);
+      await onSaveScore('debate', scoreData);
     }
+    submission.clear();
   };
 
   const handleReset = () => {

@@ -114,8 +114,16 @@ export function PracticeArea() {
     }
   };
 
-  // Direct write to Supabase Database
-  const handleSaveScore = async (mode, scoreData) => {
+  const getSessionSeconds = () => Math.round((Date.now() - sessionStartTimeRef.current) / 1000);
+
+  // Scores are normally saved by the server right after grading ({ alreadySaved: true }).
+  // The direct browser write below is only a fallback.
+  const handleSaveScore = async (mode, scoreData, { alreadySaved = false } = {}) => {
+    if (alreadySaved) {
+      setSaveStatus('success');
+      sessionStartTimeRef.current = Date.now();
+      return;
+    }
     setIsSaving(true);
     setSaveStatus('saving');
     try {
@@ -131,34 +139,30 @@ export function PracticeArea() {
         const subScores = mode === 'qa'
           ? [scoreData.fluency, scoreData.lexical_resource, scoreData.grammatical_range, scoreData.pronunciation]
           : [scoreData.fluency_and_coherence, scoreData.lexical_resource, scoreData.grammatical_range, scoreData.pronunciation, scoreData.interactive_communication];
-        
-        const rawAvg = subScores.reduce((a, b) => a + b, 0) / subScores.length;
-        rawScore = rawAvg; // Store raw average directly (PostgreSQL will cast if float/numeric, or round if int. Our schema has score as INT, so PostgreSQL will round it automatically)
+        rawScore = subScores.reduce((a, b) => a + b, 0) / subScores.length;
       }
 
-      const roundedScore = Math.round(rawScore);
-      
-      const durationSeconds = Math.round((Date.now() - sessionStartTimeRef.current) / 1000);
+      const row = {
+        student_id: student.id,
+        mode: mode,
+        score: Math.round(rawScore),
+        feedback: scoreData,
+        duration_seconds: getSessionSeconds(),
+      };
 
-      const { error } = await supabase
-        .from('assessments')
-        .insert({
-          student_id: student.id,
-          mode: mode,
-          score: roundedScore,
-          feedback: scoreData, // Full Gemini JSON structure
-          duration_seconds: durationSeconds
-        });
-
+      let { error } = await supabase.from('assessments').insert(row);
+      if (error) {
+        // Usually an expired login in a background tab: refresh it and try once more.
+        await supabase.auth.refreshSession();
+        ({ error } = await supabase.from('assessments').insert(row));
+      }
       if (error) throw error;
       setSaveStatus('success');
-      
-      // Reset timer for next attempt
       sessionStartTimeRef.current = Date.now();
     } catch (err) {
       console.error('Failed to log score to database:', err);
       setSaveStatus('error');
-      alert(`Error saving assessment score. Details: ${err.message || JSON.stringify(err)}`);
+      alert(`Your result is shown, but saving it to the leaderboard failed. Please sign out and sign in again, then press the save button. (${err.message || JSON.stringify(err)})`);
     } finally {
       setIsSaving(false);
     }
@@ -335,6 +339,7 @@ export function PracticeArea() {
               isSaving={isSaving}
               saveStatus={saveStatus}
               customParagraphs={readAloudMaterials}
+              getSessionSeconds={getSessionSeconds}
             />
           )}
           {activeTab === 'qa' && (
@@ -345,6 +350,7 @@ export function PracticeArea() {
               isSaving={isSaving}
               saveStatus={saveStatus}
               customQuestions={qaMaterials}
+              getSessionSeconds={getSessionSeconds}
             />
           )}
           {activeTab === 'conversation' && (
@@ -355,6 +361,7 @@ export function PracticeArea() {
               isSaving={isSaving}
               saveStatus={saveStatus}
               customGreetings={conversationMaterials}
+              getSessionSeconds={getSessionSeconds}
             />
           )}
           {activeTab === 'debate' && (
@@ -365,6 +372,7 @@ export function PracticeArea() {
               isSaving={isSaving}
               saveStatus={saveStatus}
               customMotions={debateMaterials}
+              getSessionSeconds={getSessionSeconds}
             />
           )}
           {activeTab === 'leaderboard' && (

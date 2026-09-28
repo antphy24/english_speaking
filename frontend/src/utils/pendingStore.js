@@ -88,8 +88,12 @@ export function loadPending(mode) {
 
 export function clearPending(mode, record = null) {
   try {
-    const current = record || JSON.parse(localStorage.getItem(META_PREFIX + mode) || 'null');
-    localStorage.removeItem(META_PREFIX + mode);
+    const stored = JSON.parse(localStorage.getItem(META_PREFIX + mode) || 'null');
+    const current = record || stored;
+    // Only forget the stored entry if it is ours (another tab may have replaced it).
+    if (!record || !stored || stored.clientId === record.clientId) {
+      localStorage.removeItem(META_PREFIX + mode);
+    }
     if (current?.clientId) deleteRecording(current.clientId);
   } catch {
     /* ignore */
