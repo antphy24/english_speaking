@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Trash2, Edit2, X, Check } from 'lucide-react';
+import ReadingLengthHint from '../UI/ReadingLengthHint';
 
 export function MaterialsTab({
   teacher,
@@ -233,6 +234,7 @@ export function MaterialsTab({
               }
               className="w-full px-4 py-3 bg-slate-900 border border-slate-800 rounded-xl text-white placeholder-slate-755 focus:outline-none focus:border-indigo-500 transition text-xs font-medium leading-relaxed"
             />
+            {materialMode === 'read_aloud' && <ReadingLengthHint text={materialContent} />}
           </div>
 
           <button
@@ -271,6 +273,7 @@ export function MaterialsTab({
                       onChange={e => setEditContent(e.target.value)}
                       className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white text-xs focus:border-indigo-500 outline-none"
                     />
+                    {group.mode === 'read_aloud' && <ReadingLengthHint text={editContent} />}
                     
                     {!group.isGlobal && (
                       <div className="space-y-1">
