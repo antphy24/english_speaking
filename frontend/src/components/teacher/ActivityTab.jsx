@@ -54,6 +54,7 @@ export function ActivityTab({
           qa: 0,
           conversation: 0,
           debate: 0,
+          mattering: 0,
           other: 0
         },
         todayActiveSeconds: 0,
@@ -240,6 +241,7 @@ export function ActivityTab({
                             <div className="bg-indigo-500" style={{ width: getWidth(row.modeBreakdown.qa) }} title="Q&A" />
                             <div className="bg-pink-500" style={{ width: getWidth(row.modeBreakdown.conversation) }} title="Conversation" />
                             <div className="bg-amber-500" style={{ width: getWidth(row.modeBreakdown.debate) }} title="Debate" />
+                            <div className="bg-teal-500" style={{ width: getWidth(row.modeBreakdown.mattering) }} title="Mattering" />
                           </div>
                         ) : (
                           <div className="text-xs text-slate-600">No activity</div>

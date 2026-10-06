@@ -39,6 +39,15 @@ export function useTeacherData(dateFilter = '30days') {
   const [loadingData, setLoadingData] = useState(false);
   const [assessmentsCapped, setAssessmentsCapped] = useState(false);
   const [exporting, setExporting] = useState(false);
+  // Pass mark for the colour-coded score matrix (remembered on this device)
+  const [passMark, setPassMarkState] = useState(() => {
+    try { return Number(localStorage.getItem('hrefspeak_pass_mark')) || 75; } catch { return 75; }
+  });
+  const setPassMark = (value) => {
+    const n = Math.max(0, Math.min(100, Number(value) || 0));
+    setPassMarkState(n);
+    try { localStorage.setItem('hrefspeak_pass_mark', String(n)); } catch { /* ignore */ }
+  };
 
   // Activity monitor state
   const [selectedActivityClass, setSelectedActivityClass] = useState('all');
@@ -784,7 +793,8 @@ export function useTeacherData(dateFilter = '30days') {
 
   // Export to Excel: built on the server so it contains ALL matching records
   // (not only the ones loaded on screen), with a per-student summary sheet.
-  const handleDownloadExcel = useCallback(async () => {
+  // layout: 'detailed' (summary + all attempts) or 'matrix' (students x materials, colour-coded)
+  const handleDownloadExcel = useCallback(async (layout = 'detailed') => {
     setExporting(true);
     setActionError('');
     const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
@@ -801,6 +811,10 @@ export function useTeacherData(dateFilter = '30days') {
       if (dateFilter === '30days') params.set('days', '30');
       if (searchQuery.trim()) params.set('search', searchQuery.trim());
       params.set('tz', String(new Date().getTimezoneOffset()));
+      if (layout === 'matrix') {
+        params.set('layout', 'matrix');
+        params.set('threshold', String(passMark));
+      }
 
       const response = await fetch(`${API_BASE}/teacher/export?${params.toString()}`, {
         headers: { Authorization: `Bearer ${session.access_token}` },
@@ -811,7 +825,7 @@ export function useTeacherData(dateFilter = '30days') {
         throw new Error(msg);
       }
       const blob = await response.blob();
-      const parts = ['hrefspeak_scores'];
+      const parts = [layout === 'matrix' ? 'hrefspeak_score_matrix' : 'hrefspeak_scores'];
       if (cls) parts.push(cls.class_name.replace(/[^\w-]+/g, '_'));
       if (selectedModeFilter !== 'all') parts.push(selectedModeFilter);
       parts.push(new Date().toISOString().slice(0, 10));
@@ -829,7 +843,7 @@ export function useTeacherData(dateFilter = '30days') {
     } finally {
       setExporting(false);
     }
-  }, [classesList, selectedClassFilter, selectedModeFilter, selectedMaterialFilter, dateFilter, searchQuery]);
+  }, [classesList, selectedClassFilter, selectedModeFilter, selectedMaterialFilter, dateFilter, searchQuery, passMark]);
 
   // Quick CSV of the records loaded on screen (fallback; the Excel export is complete).
   const handleDownloadCSV = useCallback(() => {
@@ -956,6 +970,8 @@ export function useTeacherData(dateFilter = '30days') {
     handleDownloadCSV,
     handleDownloadExcel,
     exporting,
+    passMark,
+    setPassMark,
     assessmentsCapped,
   };
 }

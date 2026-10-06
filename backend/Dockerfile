@@ -14,6 +14,13 @@ COPY requirements.txt /code/requirements.txt
 # Install python dependencies
 RUN pip install --no-cache-dir -r /code/requirements.txt
 
+# Backup transcriber: download the open-source Whisper model at build time so the
+# first student does not wait for a download (used when Groq's free quota runs out).
+ENV LOCAL_WHISPER_DIR=/models
+RUN mkdir -p /models \
+    && python -c "from faster_whisper import WhisperModel; WhisperModel('base.en', device='cpu', compute_type='int8', download_root='/models')" \
+    && chmod -R 777 /models
+
 # Copy the rest of the backend files
 COPY . /code
 

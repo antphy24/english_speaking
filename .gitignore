@@ -28,3 +28,6 @@ frontend/.env
 venv_linux/
 test_env/
 .test_venv/
+
+# Backup transcriber model downloaded by check_local_asr.py
+backend/models/

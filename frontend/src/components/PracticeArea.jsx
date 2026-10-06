@@ -5,13 +5,15 @@ import ModeReadAloud from './ModeReadAloud';
 import ModeQA from './ModeQA';
 import ModeConversation from './ModeConversation';
 import ModeDebate from './ModeDebate';
+import ModeMattering from './ModeMattering';
 import Leaderboard from './Leaderboard';
-import { BookOpen, HelpCircle, MessageSquare, Award, UserCheck, LogOut, Sparkles, Gavel } from 'lucide-react';
+import { BookOpen, HelpCircle, MessageSquare, Award, UserCheck, LogOut, Sparkles, Gavel, Lightbulb, History, Loader2 } from 'lucide-react';
 import Spinner from './UI/Spinner';
 import { useConfirm } from './UI/ConfirmModal';
 import useActivityTracker from '../hooks/useActivityTracker';
 import useBeforeUnload from '../hooks/useBeforeUnload';
 import AIStatusBadge from './AIStatusBadge';
+import SubmissionReview from './UI/SubmissionReview';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
@@ -21,12 +23,16 @@ export function PracticeArea() {
 
   const [student, setStudent] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
-  const [activeTab, setActiveTab] = useState('read_aloud'); // 'read_aloud' | 'qa' | 'conversation' | 'debate' | 'leaderboard'
+  const [activeTab, setActiveTab] = useState('read_aloud'); // 'read_aloud' | 'qa' | 'conversation' | 'debate' | 'mattering' | 'leaderboard'
   const [customMaterials, setCustomMaterials] = useState([]);
 
   // Verification state for scores saving
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState(''); // '' | 'saving' | 'success' | 'error'
+
+  // "My last submission" review panel: null (closed) or { assessment, message }
+  const [lastSubmission, setLastSubmission] = useState(null);
+  const [loadingLast, setLoadingLast] = useState(false);
 
   const sessionStartTimeRef = React.useRef(Date.now());
 
@@ -49,6 +55,7 @@ export function PracticeArea() {
   const qaMaterials = useMemo(() => customMaterials.filter(m => m.mode === 'qa'), [customMaterials]);
   const conversationMaterials = useMemo(() => customMaterials.filter(m => m.mode === 'conversation'), [customMaterials]);
   const debateMaterials = useMemo(() => customMaterials.filter(m => m.mode === 'debate'), [customMaterials]);
+  const matteringMaterials = useMemo(() => customMaterials.filter(m => m.mode === 'mattering'), [customMaterials]);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -114,6 +121,28 @@ export function PracticeArea() {
     }
   };
 
+  // Latest saved attempt of the mode the student is looking at
+  const openLastSubmission = async () => {
+    if (!student?.id || loadingLast) return;
+    setLoadingLast(true);
+    try {
+      const { data, error } = await supabase
+        .from('assessments')
+        .select('*')
+        .eq('student_id', student.id)
+        .eq('mode', activeTab)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (error) throw error;
+      setLastSubmission({ assessment: data?.[0] || null });
+    } catch (err) {
+      console.error('Failed to load the last submission:', err);
+      setLastSubmission({ assessment: null, message: 'Could not load your last submission. Check your connection and try again.' });
+    } finally {
+      setLoadingLast(false);
+    }
+  };
+
   const getSessionSeconds = () => Math.round((Date.now() - sessionStartTimeRef.current) / 1000);
 
   // Scores are normally saved by the server right after grading ({ alreadySaved: true }).
@@ -133,6 +162,8 @@ export function PracticeArea() {
       let rawScore = 0;
       if (mode === 'read_aloud') {
         rawScore = scoreData.accuracy_score;
+      } else if (mode === 'mattering') {
+        rawScore = scoreData.speaker_score; // debate speaker scale, 69-81 (75 = average)
       } else if (mode === 'debate') {
         rawScore = scoreData.finalScore; // pre-calculated 100-point scale in frontend component
       } else {
@@ -270,6 +301,21 @@ export function PracticeArea() {
               <span>4. Debate Mode</span>
             </button>
 
+            <button
+              onClick={() => {
+                setActiveTab('mattering');
+                setSaveStatus('');
+              }}
+              className={`flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition-all duration-200 ${
+                activeTab === 'mattering'
+                  ? 'bg-purple-600/15 border border-purple-500/20 text-white font-extrabold'
+                  : 'border border-transparent text-slate-400 hover:bg-slate-900/40 hover:text-slate-200'
+              }`}
+            >
+              <Lightbulb className="w-4 h-4" />
+              <span>5. Mattering Drill</span>
+            </button>
+
             <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mt-4 mb-2 px-1">Analytics</span>
             
             <button
@@ -316,6 +362,7 @@ export function PracticeArea() {
               {activeTab === 'qa' && 'IELTS Q&A Assessment'}
               {activeTab === 'conversation' && 'AI Conversation Partner'}
               {activeTab === 'debate' && 'Debate Adjudication'}
+              {activeTab === 'mattering' && 'Mattering Drill'}
               {activeTab === 'leaderboard' && 'Leaderboard Logs'}
             </h2>
             <p className="text-xs text-slate-400 mt-1">
@@ -323,10 +370,24 @@ export function PracticeArea() {
               {activeTab === 'qa' && 'Express your thoughts on the prompt. Gemini evaluates against IELTS standards.'}
               {activeTab === 'conversation' && 'Hold a conversation with the AI tutor. Whisper and Gemini evaluate dialogue performance.'}
               {activeTab === 'debate' && 'Practice case building and speech delivery. Gemini acts as a strict debate adjudicator.'}
+              {activeTab === 'mattering' && 'Break an issue down, deliver one argument, then rebut the other side. Scored on the debate speaker scale.'}
               {activeTab === 'leaderboard' && 'Logs and scores saved in the Supabase classroom database.'}
             </p>
           </div>
-          <AIStatusBadge apiBase={API_BASE} />
+          <div className="flex items-center gap-3 shrink-0">
+            {activeTab !== 'leaderboard' && (
+              <button
+                onClick={openLastSubmission}
+                disabled={loadingLast}
+                title="Listen to your latest recording for this mode and see its transcript, score and feedback"
+                className="flex items-center space-x-1.5 px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-xs font-bold text-slate-300 hover:text-white transition disabled:opacity-60 cursor-pointer"
+              >
+                {loadingLast ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <History className="w-3.5 h-3.5" />}
+                <span>My last submission</span>
+              </button>
+            )}
+            <AIStatusBadge apiBase={API_BASE} />
+          </div>
         </header>
 
         {/* Tab Components */}
@@ -375,11 +436,31 @@ export function PracticeArea() {
               getSessionSeconds={getSessionSeconds}
             />
           )}
+          {activeTab === 'mattering' && (
+            <ModeMattering
+              apiBase={API_BASE}
+              onSaveScore={handleSaveScore}
+              isSaving={isSaving}
+              saveStatus={saveStatus}
+              customIssues={matteringMaterials}
+              getSessionSeconds={getSessionSeconds}
+            />
+          )}
           {activeTab === 'leaderboard' && (
             <Leaderboard student={student} />
           )}
         </div>
       </main>
+
+      {lastSubmission && (
+        <SubmissionReview
+          assessment={lastSubmission.assessment}
+          apiBase={API_BASE}
+          heading="My last submission"
+          emptyMessage={lastSubmission.message || 'You have no saved attempt in this mode yet. Finish one and it will appear here.'}
+          onClose={() => setLastSubmission(null)}
+        />
+      )}
     </div>
   );
 }

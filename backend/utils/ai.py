@@ -397,14 +397,93 @@ class DebateEvaluation(BaseModel):
     overall_feedback: Text
 
 
+# Mattering drill: one speaker score on the debate speaker scale (75 = average).
+SPEAKER_MIN, SPEAKER_MAX = 69, 81
+SpeakerScore = Annotated[int, BeforeValidator(lambda v: _clamp(v, SPEAKER_MIN, SPEAKER_MAX))]
+MATTERING_BANDS = [
+    (70, "No real contribution"),
+    (72, "Minimal contribution"),
+    (74, "Below average"),
+    (75, "Average"),
+    (77, "Slightly above average"),
+    (79, "Strong"),
+    (80, "Superior"),
+    (81, "Exceptional"),
+]
+
+
+def mattering_band(score) -> str:
+    for top, label in MATTERING_BANDS:
+        if score <= top:
+            return label
+    return MATTERING_BANDS[-1][1]
+
+
+class MatteringEvaluation(BaseModel):
+    speaker_score: SpeakerScore
+    argument_feedback: Text
+    rebuttal_feedback: Text = ""
+    knowledge_gaps: Text
+    overall_feedback: Text
+
+
 class _FeedbackOnly(BaseModel):
     feedback: Text
 
 
 # --- Transcription ----------------------------------------------------------------------
 
+# Switch to the on-server backup transcriber when Groq would make the student wait
+# longer than this (or is out of its daily allowance / keeps failing).
+LOCAL_ASR_SWITCH_AFTER = int(os.getenv("LOCAL_ASR_SWITCH_AFTER_SECONDS", "90"))
+
+
 def transcribe_file(file_path: str, filename: str, duration_seconds: Optional[float] = None,
-                    *, deadline: Optional[float] = None, on_wait=None) -> str:
+                    *, deadline: Optional[float] = None, on_wait=None, info: Optional[dict] = None,
+                    on_backup=None) -> str:
+    """
+    Transcribe with Groq Whisper; fall back to the server's own Whisper copy when
+    Groq is out of quota, keeps failing, or is too busy. `info["transcriber"]`
+    records which one was used.
+    """
+    from utils import local_asr
+    info = info if info is not None else {}
+    if not local_asr.available():
+        return _transcribe_groq(file_path, filename, duration_seconds, deadline=deadline,
+                                on_wait=on_wait, info=info)
+
+    groq_deadline = time.time() + LOCAL_ASR_SWITCH_AFTER
+    if deadline is not None:
+        groq_deadline = min(groq_deadline, deadline)
+    try:
+        return _transcribe_groq(file_path, filename, duration_seconds, deadline=groq_deadline,
+                                on_wait=on_wait, info=info)
+    except BadAudioError:
+        raise
+    except (AIBusyError, AITransientError) as groq_error:
+        daily = isinstance(groq_error, AIDailyLimitError)
+        print(f"[transcribe] using backup transcriber ({'daily limit' if daily else 'Groq busy/failing'}): "
+              f"{str(groq_error)[:120]}")
+        if on_backup:
+            try:
+                on_backup()
+            except Exception:
+                pass
+        try:
+            text = local_asr.transcribe(file_path, redis_conn, on_wait=on_backup)
+            info["transcriber"] = f"server:{local_asr.MODEL_NAME}"
+            return text
+        except Exception as local_error:
+            print(f"[transcribe] backup transcriber failed: {local_error}")
+            if daily or deadline is not None:
+                raise groq_error
+            # Last resort: keep waiting patiently for Groq.
+            return _transcribe_groq(file_path, filename, duration_seconds, deadline=None,
+                                    on_wait=on_wait, info=info)
+
+
+def _transcribe_groq(file_path: str, filename: str, duration_seconds: Optional[float] = None,
+                     *, deadline: Optional[float] = None, on_wait=None, info: Optional[dict] = None) -> str:
     with open(file_path, "rb") as f:
         audio_bytes = f.read()
     if duration_seconds and duration_seconds > 0:
@@ -420,6 +499,8 @@ def transcribe_file(file_path: str, filename: str, duration_seconds: Optional[fl
             language="en",
             response_format="json",
         )
+        if info is not None:
+            info["transcriber"] = f"groq:{model}"
         return (resp.text or "").strip(), 0
 
     return run_with_fallback(
@@ -676,6 +757,96 @@ def evaluate_debate(motion: str, role: str, student_transcript: str, *, deadline
     )
     return _grade_with_schema(prompt, DebateEvaluation, deadline=deadline,
                               on_wait=on_wait, max_tokens=2000)
+
+
+# --- Mattering drill (issue breakdown -> one argument -> rebuttal) ---------------------------
+
+OPPOSITION_SYSTEM = (
+    "You are a sparring partner in a school debate training drill. You speak for the side OPPOSITE to the "
+    "student. Give ONE clear counter-argument that directly attacks the student's argument: say which part "
+    "you are answering, why it is wrong or not enough, and what follows. Use simple English, 3-4 sentences, "
+    "plain text only, no headings or lists. Do not praise or coach the student."
+)
+
+
+def get_mattering_opposition(motion: str, role: str, argument: str, max_wait_seconds: float = 25) -> str:
+    """The opposing argument the student has to rebut in the second round."""
+    user = (
+        f"Motion: \"{str(motion)[:500]}\"\n"
+        f"The student speaks for the {role} side. You speak for the other side.\n"
+        f"The student's argument (speech transcript): \"{str(argument)[:4000]}\""
+    )
+    formatted = [{"role": "system", "content": OPPOSITION_SYSTEM}, {"role": "user", "content": user}]
+
+    def call(model):
+        params = dict(model=model, messages=formatted, temperature=0.6, max_tokens=cap_output(model, 400))
+        resp = _create_chat(model, params, json_mode=False)
+        reply = _strip_reasoning(resp.choices[0].message.content or "")
+        if not reply:
+            raise _Transient("Empty opposing argument")
+        used = getattr(resp.usage, "total_tokens", None) if resp.usage else None
+        return reply, used
+
+    return run_with_fallback(
+        "chat", CHAT_MODELS, call,
+        deadline=time.time() + max_wait_seconds,
+        est_tokens=_estimate_tokens(OPPOSITION_SYSTEM + user, 200), max_transient=3, max_output=400,
+    )
+
+
+def evaluate_mattering(motion: str, role: str, notes: str, argument: str, opposition: str = "",
+                       rebuttal: str = "", *, deadline=None, on_wait=None) -> dict:
+    notes = (notes or "").strip()
+    opposition = (opposition or "").strip()
+    rebuttal = (rebuttal or "").strip()
+    if opposition and rebuttal:
+        round_two = (f"Opposing argument the student was asked to answer: \"{opposition}\"\n"
+                     f"Student's rebuttal (speech transcript): \"{rebuttal}\"\n")
+    elif opposition:
+        round_two = (f"Opposing argument the student was asked to answer: \"{opposition}\"\n"
+                     "The student chose NOT to give a rebuttal, so there is no engagement to credit.\n")
+    else:
+        round_two = "There was no rebuttal round; judge the argument alone.\n"
+    prompt = (
+        "Act as an experienced school debate adjudicator marking a training drill. The student analysed an "
+        "issue, then delivered ONE argument, then answered an opposing argument.\n"
+        f"Motion: \"{motion}\"\nStudent's side: \"{role}\"\n"
+        f"Student's written issue breakdown (context only, do NOT score it): \"{notes or 'none'}\"\n"
+        f"Student's argument (speech transcript): \"{argument}\"\n"
+        + round_two +
+        "\nGive ONE speaker score using this scale exactly (whole numbers 69-81):\n"
+        "69-70: just stands and says hello; no contribution, no attempt to respond or engage; no points, or "
+        "points very irrelevant to the debate.\n"
+        "71-72: slightly better; a minimal contribution; points not relevant, many unexplained logical gaps; "
+        "unstructured and hard to understand; attempts to respond are weak and hard to follow.\n"
+        "73-74: below average; fairly relevant contribution but still visible logic gaps; the speech can be "
+        "understood and the role is acceptably fulfilled; engagement and response are weak and less effective.\n"
+        "75: average; fulfils the role quite well; only minor logical gaps; structure clear and easy to follow; "
+        "explanations quite clear and complete; engagement sufficient.\n"
+        "76-77: slightly above average; fulfils the role well; uses relevant analysis, rebuttals and examples; "
+        "persuasive and well delivered.\n"
+        "78-79: brings relevant arguments and contributes well; easy-to-understand delivery; arguments and "
+        "rebuttals reinforced with relevant context or examples; uses strategies such as framing, "
+        "contextualisation or pushing a burden of proof onto the opposing team.\n"
+        "80: superior; often unorthodox responses or arguments that are very significant in the debate; hard "
+        "to find faults.\n"
+        "81: an amazing performance you will never forget.\n"
+        "75 is a competent, ordinary speech. Do not cluster every speech at 75: match the descriptors honestly, "
+        "go below 73 for thin or irrelevant speeches and above 77 only when the descriptors are clearly met. "
+        "It is a transcript, so ignore accent and small transcription errors.\n"
+        "argument_feedback: the claim, reasoning, evidence and link back to the motion - what is missing. "
+        "rebuttal_feedback: how well the opposing argument was answered (empty string if there was no rebuttal). "
+        "knowledge_gaps: stakeholders, facts, examples or principles about this issue the student did not use "
+        "and should read up on. overall_feedback: why this score, and the one thing to fix next time.\n"
+        'Return JSON: {"speaker_score": int, "argument_feedback": string, "rebuttal_feedback": string, '
+        '"knowledge_gaps": string, "overall_feedback": string}'
+    )
+    result = _grade_with_schema(prompt, MatteringEvaluation, deadline=deadline,
+                                on_wait=on_wait, max_tokens=2000)
+    if not rebuttal:
+        result["rebuttal_feedback"] = ""
+    result["band"] = mattering_band(result["speaker_score"])
+    return result
 
 
 # --- Backwards-compatible entry points (old /transcribe and /grade endpoints) -------------

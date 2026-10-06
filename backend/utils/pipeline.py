@@ -18,7 +18,7 @@ import uuid
 
 from rq import Queue
 
-from utils import ai
+from utils import ai, storage
 
 r = ai.redis_conn
 
@@ -41,7 +41,7 @@ Q_TRANSCRIBE = "transcribe"
 Q_GRADE = "grade"
 queues = {name: Queue(name, connection=r) for name in (Q_TRANSCRIBE_PRIORITY, Q_TRANSCRIBE, Q_GRADE)}
 
-GRADED_MODES = {"read_aloud", "qa", "debate", "conversation"}
+GRADED_MODES = {"read_aloud", "qa", "debate", "conversation", "mattering"}
 AUDIO_MODES = {"read_aloud", "qa", "debate", "transcribe"}  # "transcribe" = conversation turn
 
 ACTIVE = {"queued", "transcribing", "grading", "waiting"}
@@ -73,13 +73,16 @@ def update(sub_id, **fields):
 
 
 def new_submission(user_id, mode, params, *, audio_path=None, filename=None,
-                   duration=None, transcript=None, auto_save=True, session_seconds=None):
+                   duration=None, transcript=None, auto_save=True, session_seconds=None,
+                   audio_slot=None):
     sub = {
         "id": uuid.uuid4().hex,
         "user_id": user_id,
         "mode": mode,
         "params": params,
         "audio_path": audio_path,
+        "audio_slot": audio_slot,         # where to keep this recording for later review (utils.storage)
+        "audio_stored": False,
         "filename": filename,
         "duration": duration,
         "transcript": transcript,
@@ -175,11 +178,18 @@ def job_transcribe(sub_id):
               retryable=True)
         return
     update(sub_id, status="transcribing", message="Transcribing your recording...")
+    info = {}
+
+    def on_backup():
+        update(sub_id, status="transcribing",
+               message="Transcribing on the backup server - this can take a little longer.")
+
     try:
         text = ai.transcribe_file(
             path, sub.get("filename") or os.path.basename(path), sub.get("duration"),
             deadline=None,  # patient: wait through minute/hour limits
             on_wait=_waiting(sub_id, "transcriber"),
+            info=info, on_backup=on_backup,
         )
     except ai.BadAudioError as e:
         print(f"[pipeline] bad audio for {sub_id}: {e}")
@@ -203,10 +213,20 @@ def job_transcribe(sub_id):
         return
 
     _record_done("transcribe")
+    stored = False
+    if sub.get("audio_slot"):
+        # Keep the recording so the student and teacher can listen to it again.
+        # Best effort: a storage problem must never cost the student their grade.
+        try:
+            stored = storage.store_pending(sub["user_id"], sub["audio_slot"], sub_id, path, sub.get("filename"))
+        except Exception as e:  # noqa: BLE001
+            print(f"[pipeline] could not keep the recording for {sub_id}: {str(e)[:200]}")
     remove_audio(sub)
     sub = load(sub_id) or sub
     sub["audio_path"] = None
+    sub["audio_stored"] = stored
     sub["transcript"] = text
+    sub["transcriber"] = info.get("transcriber")
 
     if not text.strip():
         sub.update(status="failed", retryable=False, needs_rerecord=True,
@@ -248,6 +268,10 @@ def job_grade(sub_id):
             result = ai.evaluate_debate(p.get("motion", ""), p.get("role", ""), transcript, **kwargs)
         elif mode == "conversation":
             result = ai.evaluate_conversation(p.get("messages") or [], **kwargs)
+        elif mode == "mattering":
+            # transcript = the argument speech; the rebuttal round travels in params
+            result = ai.evaluate_mattering(p.get("motion", ""), p.get("role", ""), p.get("notes", ""),
+                                           transcript, p.get("opposition", ""), p.get("rebuttal", ""), **kwargs)
         else:
             _fail(sub_id, f"Unknown mode {mode}", retryable=False)
             return
@@ -281,6 +305,8 @@ def compute_score(mode, result):
     try:
         if mode == "read_aloud":
             return round(float(result["accuracy_score"]))
+        if mode == "mattering":
+            return round(float(result["speaker_score"]))  # debate speaker scale, 69-81 (75 = average)
         if mode == "debate":
             return round(result["matter_score"] * 4 + result["manner_score"] * 4 + result["method_score"] * 2)
         keys = (["fluency", "lexical_resource", "grammatical_range", "pronunciation"] if mode == "qa" else
@@ -299,6 +325,13 @@ def transcript_text(sub):
             who = "Student" if m.get("role") == "user" else "Tutor"
             lines.append(f"{who}: {m.get('content', '')}")
         return "\n".join(lines) or None
+    if sub["mode"] == "mattering":
+        p = sub.get("params") or {}
+        parts = [f"Argument: {sub.get('transcript') or ''}"]
+        if p.get("opposition"):
+            parts.append(f"Opposing argument (AI): {p['opposition']}")
+            parts.append(f"Rebuttal: {p.get('rebuttal') or '(skipped)'}")
+        return "\n\n".join(parts)
     return sub.get("transcript") or None
 
 
@@ -308,12 +341,47 @@ def build_feedback(sub):
     p = sub.get("params") or {}
     mode = sub["mode"]
     feedback = {**result, "material_title": p.get("material_title") or p.get("motion") or None}
+    if sub.get("transcriber"):
+        feedback["transcriber"] = sub["transcriber"]
     if mode == "debate":
         feedback.update(transcript=sub.get("transcript"), finalScore=compute_score(mode, result),
                         motion=p.get("motion"), role=p.get("role"))
+    if mode == "mattering":
+        feedback.update(transcript=sub.get("transcript"), motion=p.get("motion"), role=p.get("role"),
+                        notes=p.get("notes"), opposition=p.get("opposition"),
+                        rebuttal_transcript=p.get("rebuttal"))
     if not feedback["material_title"]:
         feedback.pop("material_title")
     return feedback
+
+
+def keep_audio(sub):
+    """
+    Make this submission's recording(s) the student's saved "latest" for its mode
+    and return {slot: storage path}. Done once per submission; never raises.
+    """
+    if sub.get("audio") is not None:
+        return sub["audio"]
+    kept = {}
+    refs = (sub.get("params") or {}).get("audio_subs") or {}
+    for slot in storage.MODE_SLOTS.get(sub["mode"], []):
+        source = None
+        if slot == sub["mode"] and sub.get("audio_stored"):
+            source = sub["id"]
+        elif refs.get(slot):
+            # mattering: each speech was transcribed as its own submission
+            turn = load(str(refs[slot]))
+            if turn and turn.get("user_id") == sub["user_id"] and turn.get("audio_stored") \
+                    and turn.get("audio_slot") == slot:
+                source = turn["id"]
+        try:
+            path = storage.promote(sub["user_id"], slot, source)
+            if path:
+                kept[slot] = path
+        except Exception as e:  # noqa: BLE001
+            print(f"[pipeline] could not keep the {slot} recording for {sub['id']}: {str(e)[:200]}")
+    update(sub["id"], audio=kept)
+    return kept
 
 
 def _supabase_insert(row):
@@ -357,6 +425,9 @@ def save_assessment(sub_id):
             "score": compute_score(sub["mode"], sub["result"]),
             "feedback": build_feedback(sub),
         }
+        audio = keep_audio(sub)
+        if audio:
+            row["feedback"]["audio"] = audio  # storage paths of the recording(s) for this attempt
         if sub.get("session_seconds"):
             row["duration_seconds"] = int(sub["session_seconds"])
         transcript = transcript_text(sub)

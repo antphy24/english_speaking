@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../utils/supabaseClient';
-import { Award, BookOpen, HelpCircle, MessageSquare, Gavel, RefreshCw, Calendar, User } from 'lucide-react';
+import { Award, BookOpen, HelpCircle, MessageSquare, Gavel, Lightbulb, RefreshCw, Calendar, User } from 'lucide-react';
 import Spinner from './UI/Spinner';
 
 export function Leaderboard({ student }) {
@@ -87,6 +87,8 @@ export function Leaderboard({ student }) {
         return <MessageSquare className="w-4 h-4 text-pink-400" />;
       case 'debate':
         return <Gavel className="w-4 h-4 text-amber-400" />;
+      case 'mattering':
+        return <Lightbulb className="w-4 h-4 text-teal-400" />;
       default:
         return <Award className="w-4 h-4 text-slate-400" />;
     }
@@ -98,6 +100,7 @@ export function Leaderboard({ student }) {
       case 'qa': return 'Q&A IELTS Mock';
       case 'conversation': return 'Dialogue Practice';
       case 'debate': return 'Debate Practice';
+      case 'mattering': return 'Mattering Drill';
       default: return mode;
     }
   };
@@ -137,6 +140,14 @@ export function Leaderboard({ student }) {
           {feedback?.word_error_rate !== undefined && (
             <span className="text-[10px] text-slate-400">WER: {(feedback.word_error_rate * 100).toFixed(0)}%</span>
           )}
+        </div>
+      );
+    }
+    if (mode === 'mattering') {
+      return (
+        <div className="flex flex-col">
+          <span className="text-white font-bold text-sm">{Math.round(score)} Speaker Score</span>
+          <span className="text-[10px] text-slate-400">{feedback?.band || 'Scale 69-81'}</span>
         </div>
       );
     }
@@ -215,7 +226,7 @@ export function Leaderboard({ student }) {
               <div>
                 <div className="flex flex-col sm:flex-row border-b border-slate-850 bg-slate-900/20 px-6 sm:items-center justify-between gap-4 py-2 sm:py-0">
                   <div className="flex overflow-x-auto no-scrollbar">
-                    {['read_aloud', 'qa', 'conversation', 'debate'].map(mode => (
+                    {['read_aloud', 'qa', 'conversation', 'debate', 'mattering'].map(mode => (
                       <button
                         key={mode}
                         onClick={() => setActiveModeTab(mode)}

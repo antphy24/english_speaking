@@ -41,5 +41,9 @@ This is the backend for the Hrefspeak English learning platform. It runs FastAPI
   matching records: a per-student Summary sheet, an All attempts sheet (numeric scores, sub-scores,
   transcript) and an About sheet. Run `supabase/migrations/20260928_assessment_transcript.sql` once so
   transcripts are stored (everything still works before you run it, just without transcripts).
+- Backup transcription: when Groq's free Whisper allowance is used up, keeps failing, or would make a
+  student wait more than `LOCAL_ASR_SWITCH_AFTER_SECONDS` (default 90), recordings are transcribed on this
+  server with open-source Whisper (faster-whisper, `LOCAL_WHISPER_MODEL`, default `base.en`), one at a
+  time. Disable with `LOCAL_ASR_ENABLED=false`. Check it with `python check_local_asr.py`.
 - Run `python check_groq.py` to check that every model works with your key.
 - Make sure `ALLOW_MOCK_TOKENS` is **not** `true` in production.

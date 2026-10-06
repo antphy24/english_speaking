@@ -24,8 +24,8 @@ from rq import Queue
 from rq.job import Job
 
 # Import utilities
-from utils.ai import get_chat_reply, AIBusyError, AITransientError
-from utils import pipeline
+from utils.ai import get_chat_reply, get_mattering_opposition, AIBusyError, AITransientError
+from utils import pipeline, storage
 
 load_dotenv()
 
@@ -146,6 +146,12 @@ class GradeRequest(BaseModel):
 
 class ChatReplyRequest(BaseModel):
     messages: List[dict]
+
+
+class MatteringOppositionRequest(BaseModel):
+    motion: str
+    role: str
+    argument: str
 
 class StudentEnrollInfo(BaseModel):
     fullName: str
@@ -632,6 +638,26 @@ async def chat_reply(request: Request, chat_data: ChatReplyRequest, user: dict =
         raise HTTPException(status_code=500, detail="Chat generation failed. Please try again later.")
 
 
+@app.post("/mattering/opposition")
+@limiter.limit("15/minute")
+async def mattering_opposition(request: Request, body: MatteringOppositionRequest,
+                               user: dict = Depends(verify_authenticated)):
+    """Mattering drill, round 2: an opposing argument for the student to rebut."""
+    if not body.motion.strip() or not body.role.strip() or not body.argument.strip():
+        raise HTTPException(status_code=400, detail="motion, role and argument are required")
+    try:
+        text = await asyncio.to_thread(get_mattering_opposition, body.motion, body.role, body.argument)
+        return {"opposition": text}
+    except (AIBusyError, AITransientError):
+        # The frontend retries automatically on this status.
+        raise HTTPException(status_code=503, detail="AI_BUSY: The sparring partner is busy, retrying...")
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        print(f"Mattering opposition error: {e}")
+        raise HTTPException(status_code=500, detail="Could not prepare the opposing argument. Please try again.")
+
+
 # ---------------------------------------------------------------------------
 # Submission API (v2): one call per submission, results kept for 48h,
 # resumable after refresh, retry without re-recording.
@@ -668,6 +694,8 @@ def _validate_params(mode: str, params: dict):
         raise HTTPException(status_code=400, detail="qa requires 'question'")
     if mode == "debate" and not (params.get("motion") and params.get("role")):
         raise HTTPException(status_code=400, detail="debate requires 'motion' and 'role'")
+    if mode == "mattering" and not (params.get("motion") and params.get("role")):
+        raise HTTPException(status_code=400, detail="mattering requires 'motion' and 'role'")
     if mode == "conversation" and not params.get("messages"):
         raise HTTPException(status_code=400, detail="conversation requires 'messages'")
 
@@ -687,6 +715,7 @@ async def submit_audio(
     material_title: Optional[str] = Form(None),
     session_seconds: Optional[float] = Form(None),
     auto_save: Optional[bool] = Form(True),
+    keep_as: Optional[str] = Form(None),   # "transcribe" turns only: keep the recording for review
     user: dict = Depends(verify_authenticated),
 ):
     """Upload a recording once. It is transcribed and (unless mode='transcribe') graded."""
@@ -702,6 +731,13 @@ async def submit_audio(
               "material_title": material_title}
     params = {k: v for k, v in params.items() if v}
     _validate_params(mode, params)
+
+    if mode in storage.MODE_SLOTS:
+        audio_slot = mode
+    elif mode == "transcribe" and keep_as in storage.TURN_SLOTS:
+        audio_slot = keep_as
+    else:
+        audio_slot = None
 
     content = await file.read()
     if len(content) > MAX_AUDIO_BYTES:
@@ -720,6 +756,7 @@ async def submit_audio(
     def create():
         sub = pipeline.new_submission(user_id, mode, params, audio_path=path,
                                       filename=f"recording{ext}", duration=duration,
+                                      audio_slot=audio_slot,
                                       auto_save=bool(auto_save) and mode != "transcribe",
                                       session_seconds=session_seconds)
         _remember_idempotency(user_id, client_id, sub["id"])
@@ -738,6 +775,10 @@ class TextSubmitRequest(BaseModel):
     motion: Optional[str] = None
     role: Optional[str] = None
     material_title: Optional[str] = None
+    notes: Optional[str] = None            # mattering: the student's written issue breakdown
+    opposition: Optional[str] = None       # mattering: the opposing argument they had to answer
+    rebuttal: Optional[str] = None         # mattering: transcript of their rebuttal
+    audio_subs: Optional[Dict[str, str]] = None  # mattering: {slot: id of the turn that recorded it}
     session_seconds: Optional[float] = None
     auto_save: bool = True
 
@@ -757,6 +798,9 @@ async def submit_text(request: Request, body: TextSubmitRequest, user: dict = De
     params = {k: v for k, v in {
         "source_text": body.source_text, "question": body.question, "messages": body.messages,
         "motion": body.motion, "role": body.role, "material_title": body.material_title,
+        "notes": (body.notes or "")[:4000], "opposition": (body.opposition or "")[:3000],
+        "rebuttal": (body.rebuttal or "")[:8000],
+        "audio_subs": {k: str(v)[:64] for k, v in (body.audio_subs or {}).items() if k in storage.TURN_SLOTS},
     }.items() if v}
     _validate_params(body.mode, params)
 
@@ -788,6 +832,74 @@ async def get_submission(sub_id: str, user: dict = Depends(verify_authenticated)
 
 
 # ---------------------------------------------------------------------------
+# Review a saved attempt: transcript + temporary links to its recording(s).
+# Allowed for the student who made it and for the teacher of that student's class.
+# ---------------------------------------------------------------------------
+
+async def _fetch_assessment_for_review(client, assessment_id: str):
+    # Uses the app's shared HTTP client: its connection to Supabase stays open, so
+    # this does not pay for a new TLS handshake on every review.
+    headers = {"apikey": SUPABASE_SERVICE_ROLE_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"}
+    resp = None
+    for columns in ("id,student_id,mode,feedback,transcript", "id,student_id,mode,feedback"):
+        resp = await client.get(f"{SUPABASE_URL}/rest/v1/assessments", headers=headers, params={
+            "id": f"eq.{assessment_id}", "limit": 1,
+            "select": f"{columns},student:students(class_id,class:classes(teacher_id))"})
+        if resp.status_code == 200:
+            rows = resp.json()
+            return rows[0] if rows else None
+        # 400 the first time usually means the optional transcript column is missing
+    raise RuntimeError(f"Supabase query failed ({resp.status_code}): {resp.text[:200]}")
+
+
+@app.get("/assessment/{assessment_id}/review")
+@limiter.limit("60/minute")
+async def review_assessment(request: Request, assessment_id: str, user: dict = Depends(verify_authenticated)):
+    if not re.fullmatch(r"[A-Za-z0-9-]{1,64}", assessment_id):
+        raise HTTPException(status_code=400, detail="Invalid assessment id")
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        raise HTTPException(status_code=500, detail="Supabase environment configuration missing.")
+    client = request.app.state.http_client
+    try:
+        row = await _fetch_assessment_for_review(client, assessment_id)
+    except Exception as e:
+        print(f"Review lookup failed: {e}")
+        raise HTTPException(status_code=502, detail="Could not load this attempt right now. Please try again.")
+    if not row:
+        raise HTTPException(status_code=404, detail="Attempt not found.")
+
+    student_id = str(row.get("student_id"))
+    teacher_id = (((row.get("student") or {}).get("class")) or {}).get("teacher_id")
+    uid = _user_id(user)
+    if uid != student_id and not (teacher_id and uid == str(teacher_id)):
+        raise HTTPException(status_code=403, detail="You cannot view this attempt.")
+
+    feedback = row.get("feedback") if isinstance(row.get("feedback"), dict) else {}
+    paths = feedback.get("audio") if isinstance(feedback.get("audio"), dict) else {}
+    # only ever sign recordings that belong to this attempt's own student
+    wanted = {slot: path for slot, path in paths.items()
+              if isinstance(path, str) and path.startswith(f"{student_id}/") and ".." not in path}
+
+    async def sign(path):
+        try:
+            return await storage.signed_url_async(client, path)
+        except Exception as e:  # noqa: BLE001
+            print(f"Signing recording failed: {e}")
+            return None
+
+    urls = await asyncio.gather(*(sign(path) for path in wanted.values()))  # all clips at once
+    audio = {slot: url for slot, url in zip(wanted.keys(), urls) if url}
+    return {
+        "id": row.get("id"),
+        "mode": row.get("mode"),
+        "transcript": row.get("transcript") or feedback.get("transcript"),
+        "audio": audio,
+        # recordings that existed for this attempt but were replaced by a newer one
+        "audio_replaced": bool(paths) and len(audio) < len(paths),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Teacher export (Excel) - built on the server so it always has ALL records
 # ---------------------------------------------------------------------------
 
@@ -801,6 +913,8 @@ async def export_scores(
     days: Optional[int] = None,
     search: Optional[str] = None,
     tz: int = 0,
+    layout: str = "detailed",      # "detailed" (summary + all attempts) or "matrix"
+    threshold: int = 75,           # pass mark for the matrix colours
     teacher: dict = Depends(verify_teacher),
 ):
     from fastapi.responses import Response
@@ -821,6 +935,24 @@ async def export_scores(
     except Exception as e:
         print(f"Export failed: {e}")
         raise HTTPException(status_code=502, detail="Could not read scores from the database. Please try again.")
+
+    if layout == "matrix":
+        try:
+            material_created = await asyncio.to_thread(export_mod.fetch_material_dates, classes)
+        except Exception as e:
+            # Only affects column order: fall back to "first used" order.
+            print(f"Could not read material dates for the matrix: {e}")
+            material_created = {}
+        content, count = await asyncio.to_thread(
+            export_mod.build_matrix_workbook, classes, students, assessments,
+            mode=mode, material=material, search=search, days=days,
+            tz_offset_minutes=tz, threshold=max(0, min(100, threshold)),
+            material_created=material_created)
+        return Response(
+            content=content,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": 'attachment; filename="hrefspeak_score_matrix.xlsx"'},
+        )
 
     teacher_name = (teacher.get("user_metadata") or {}).get("full_name") or teacher.get("email") or ""
     content, count = await asyncio.to_thread(

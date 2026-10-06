@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Filter, Download, FileSpreadsheet, Loader2, Info } from 'lucide-react';
+import { Search, Filter, Download, FileSpreadsheet, Loader2, Info, Grid3x3, Headphones } from 'lucide-react';
 
 export function ScoresTab({
   classesList,
@@ -17,7 +17,10 @@ export function ScoresTab({
   handleDownloadExcel,
   exporting = false,
   assessmentsCapped = false,
+  passMark = 75,
+  setPassMark = () => {},
   formatScoreDetails,
+  onReview,
   currentPage,
   setCurrentPage,
   itemsPerPage,
@@ -76,6 +79,7 @@ export function ScoresTab({
               <option value="qa">Q&A Mock</option>
               <option value="conversation">AI Dialogue</option>
               <option value="debate">Debate</option>
+              <option value="mattering">Mattering</option>
             </select>
           </div>
 
@@ -96,7 +100,7 @@ export function ScoresTab({
 
           {/* Excel export: all matching records (built on the server) */}
           <button
-            onClick={handleDownloadExcel}
+            onClick={() => handleDownloadExcel('detailed')}
             disabled={exporting}
             title="Download all matching records as an Excel file, with a per-student summary sheet"
             className="flex items-center space-x-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-xs font-bold rounded-xl shadow-lg shadow-emerald-700/10 active:scale-95 transition cursor-pointer"
@@ -104,6 +108,29 @@ export function ScoresTab({
             {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
             <span>{exporting ? 'Preparing...' : 'Export Excel'}</span>
           </button>
+          {/* Score matrix: students x materials, highest score, colour-coded by pass mark */}
+          <div className="flex items-center rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
+            <label className="flex items-center gap-1.5 pl-3 pr-2 text-[11px] text-slate-400" title="Scores at or above the pass mark are green, below are red. You can also change it inside the Excel file.">
+              Pass mark
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={passMark}
+                onChange={e => setPassMark(e.target.value)}
+                className="w-12 px-1.5 py-1 bg-slate-950 border border-slate-800 rounded-md text-white text-xs text-center focus:outline-none focus:border-indigo-500"
+              />
+            </label>
+            <button
+              onClick={() => handleDownloadExcel('matrix')}
+              disabled={exporting}
+              title="Excel with one row per student and one column per material (highest score), colour-coded by the pass mark"
+              className="flex items-center space-x-1 px-3 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white text-xs font-bold transition cursor-pointer"
+            >
+              <Grid3x3 className="w-3.5 h-3.5" />
+              <span>Score Matrix</span>
+            </button>
+          </div>
           <button
             onClick={handleDownloadCSV}
             title="Quick CSV of the records shown on screen"
@@ -136,18 +163,28 @@ export function ScoresTab({
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-900/60 border-b border-slate-850 text-slate-400 font-semibold uppercase tracking-wider">
+                  <th className="py-3.5 pl-6 pr-2">Review</th>
                   <th className="py-3.5 px-6">Student</th>
                   <th className="py-3.5 px-6">School ID</th>
                   <th className="py-3.5 px-6">Class</th>
                   <th className="py-3.5 px-6">Material Title</th>
                   <th className="py-3.5 px-6">Date</th>
                   <th className="py-3.5 px-6">Score details</th>
-                  <th className="py-3.5 px-6">Examiner Feedback</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-850 text-slate-300">
                 {filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map(record => (
                   <tr key={record.id} className="hover:bg-slate-900/10 transition">
+                    <td className="py-4 pl-6 pr-2">
+                      <button
+                        onClick={() => onReview?.(record)}
+                        title="Open the transcript and full feedback. The recording can be played for each student's latest attempt per mode."
+                        className="flex items-center space-x-1 px-2.5 py-1.5 bg-indigo-600/20 hover:bg-indigo-600 border border-indigo-500/30 text-indigo-200 hover:text-white rounded-lg text-[11px] font-semibold transition cursor-pointer"
+                      >
+                        <Headphones className="w-3.5 h-3.5" />
+                        <span>Review</span>
+                      </button>
+                    </td>
                     <td className="py-4 px-6 font-bold text-white">{record.student?.full_name}</td>
                     <td className="py-4 px-6 font-mono text-[10px]">{record.student?.school_id}</td>
                     <td className="py-4 px-6">{record.student?.class?.class_name}</td>
@@ -159,9 +196,6 @@ export function ScoresTab({
                     </td>
                     <td className="py-4 px-6">
                       {formatScoreDetails(record.mode, record.feedback)}
-                    </td>
-                    <td className="py-4 px-6 max-w-xs truncate italic text-slate-400" title={record.feedback?.feedback || record.feedback?.overall_feedback || (typeof record.feedback === 'string' ? record.feedback : 'See detailed scores')}>
-                      {record.feedback?.feedback || record.feedback?.overall_feedback || (typeof record.feedback === 'string' ? record.feedback : 'See detailed scores')}
                     </td>
                   </tr>
                 ))}

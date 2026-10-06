@@ -192,6 +192,7 @@ export function MaterialsTab({
               <option value="qa">2. Q&A Mock Prompt</option>
               <option value="conversation">3. AI Conversation</option>
               <option value="debate">4. Debate Motion</option>
+              <option value="mattering">5. Mattering Issue</option>
             </select>
           </div>
 
@@ -204,7 +205,7 @@ export function MaterialsTab({
                 required
                 value={materialTitle}
                 onChange={e => setMaterialTitle(e.target.value)}
-                placeholder={materialMode === 'read_aloud' ? "e.g. Tech Essay (Hard)" : materialMode === 'debate' ? "e.g. AI in Education" : "e.g. Hobbies Topic"}
+                placeholder={materialMode === 'read_aloud' ? "e.g. Tech Essay (Hard)" : materialMode === 'debate' ? "e.g. AI in Education" : materialMode === 'mattering' ? "e.g. Phones in School" : "e.g. Hobbies Topic"}
                 className="w-full px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white placeholder-slate-650 focus:outline-none focus:border-indigo-500 transition text-xs"
               />
             </div>
@@ -217,6 +218,7 @@ export function MaterialsTab({
               {materialMode === 'qa' && 'IELTS Cue Card Prompt'}
               {materialMode === 'conversation' && 'AI Tutor Greeting & Context'}
               {materialMode === 'debate' && 'Debate Motion Statement'}
+              {materialMode === 'mattering' && 'Motion (first line) + Background (optional)'}
             </label>
             <textarea
               required
@@ -230,11 +232,18 @@ export function MaterialsTab({
                   ? "Describe a memorable journey you went on. You should say where, when, and explain why it made a strong impression..."
                   : materialMode === 'debate'
                   ? "This House would ban the use of AI in educational assessments."
+                  : materialMode === 'mattering'
+                  ? "This House would ban smartphones in schools.\nMany schools now collect phones in the morning. Supporters point to distraction; critics point to safety and digital skills..."
                   : "Hello! Today let's discuss your hobbies. What is something you enjoy doing in your free time?"
               }
               className="w-full px-4 py-3 bg-slate-900 border border-slate-800 rounded-xl text-white placeholder-slate-755 focus:outline-none focus:border-indigo-500 transition text-xs font-medium leading-relaxed"
             />
             {materialMode === 'read_aloud' && <ReadingLengthHint text={materialContent} />}
+            {materialMode === 'mattering' && (
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Put the motion on the first line. Anything on the lines below is shown to students as background reading before they start.
+              </p>
+            )}
           </div>
 
           <button
@@ -316,6 +325,7 @@ export function MaterialsTab({
                         {group.mode === 'qa' && <span className="px-2 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Q&A Mock</span>}
                         {group.mode === 'conversation' && <span className="px-2 py-0.5 bg-pink-500/10 text-pink-400 border border-pink-500/20 rounded text-[9px] font-bold uppercase tracking-wider">AI Dialogue</span>}
                         {group.mode === 'debate' && <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Debate</span>}
+                        {group.mode === 'mattering' && <span className="px-2 py-0.5 bg-teal-500/10 text-teal-400 border border-teal-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Mattering</span>}
                         
                         {group.isGlobal ? (
                           <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">Global: {group.grade_level}</span>

@@ -10,6 +10,9 @@ import { ClassesTab } from './teacher/ClassesTab';
 import { MaterialsTab } from './teacher/MaterialsTab';
 import { ScoresTab } from './teacher/ScoresTab';
 import { ActivityTab } from './teacher/ActivityTab';
+import SubmissionReview from './UI/SubmissionReview';
+
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
 // Helper score structures (Renders accuracy and IELTS details from JSON payload)
 const formatScoreDetails = (mode, scoreData) => {
@@ -22,6 +25,15 @@ const formatScoreDetails = (mode, scoreData) => {
         {scoreData.word_error_rate !== undefined && (
           <span className="text-[10px] text-slate-500">WER: {(scoreData.word_error_rate * 100).toFixed(0)}%</span>
         )}
+      </div>
+    );
+  }
+
+  if (mode === 'mattering') {
+    return (
+      <div className="flex flex-col">
+        <span className="font-bold text-white text-xs">{scoreData.speaker_score ?? '-'} Speaker Score</span>
+        <span className="text-[10px] text-slate-500">{scoreData.band || 'Scale 69-81'}</span>
       </div>
     );
   }
@@ -64,6 +76,7 @@ const formatScoreDetails = (mode, scoreData) => {
 export function TeacherDashboard() {
   const [activeTab, setActiveTab] = useState('overview');
   const [dateFilter, setDateFilter] = useState('30days');
+  const [reviewRecord, setReviewRecord] = useState(null); // score row opened in the review panel
   const data = useTeacherData(dateFilter);
 
   if (data.loadingAuth) {
@@ -85,7 +98,7 @@ export function TeacherDashboard() {
   const TAB_DESCRIPTIONS = {
     overview: 'Aggregated statistics and student assessment summaries.',
     classes: 'Create classrooms, generate class keys, and add students in bulk.',
-    materials: 'Add class-specific custom texts for Read Aloud, prompts for Q&A, or AI conversations.',
+    materials: 'Add class-specific custom texts for Read Aloud, prompts for Q&A, AI conversations, or debate and mattering motions.',
     scores: 'Deep-dive review of individual student speech assessments.',
     activity: 'Track active practice time and monitor idle behavior.',
   };
@@ -288,8 +301,11 @@ export function TeacherDashboard() {
                 handleDownloadCSV={data.handleDownloadCSV}
                 handleDownloadExcel={data.handleDownloadExcel}
                 exporting={data.exporting}
+                passMark={data.passMark}
+                setPassMark={data.setPassMark}
                 assessmentsCapped={data.assessmentsCapped}
                 formatScoreDetails={formatScoreDetails}
+                onReview={setReviewRecord}
                 currentPage={data.currentPage}
                 setCurrentPage={data.setCurrentPage}
                 itemsPerPage={data.itemsPerPage}
@@ -308,6 +324,16 @@ export function TeacherDashboard() {
           </div>
         )}
       </main>
+
+      {reviewRecord && (
+        <SubmissionReview
+          assessment={reviewRecord}
+          apiBase={API_BASE}
+          heading="Attempt review"
+          studentName={reviewRecord.student?.full_name}
+          onClose={() => setReviewRecord(null)}
+        />
+      )}
     </div>
   );
 }

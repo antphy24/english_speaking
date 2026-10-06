@@ -214,6 +214,16 @@ export async function submitText(apiBase, body) {
   return readJsonOrThrow(response, 'Could not send your answer for grading.');
 }
 
+/**
+ * Details for reviewing a saved attempt: its transcript and temporary links to
+ * the recording(s). Works for the student who made it and for their teacher.
+ */
+export async function getAssessmentReview(apiBase, assessmentId) {
+  const response = await fetchWithRetry(`${apiBase}/assessment/${assessmentId}/review`, {}, 3, 1500);
+  if (!response.ok) throw new Error(await parseError(response, 'Could not load this attempt.'));
+  return response.json();
+}
+
 /** Ask the server to save a graded submission's score (idempotent). */
 export async function saveSubmissionOnServer(apiBase, subId) {
   const response = await fetchWithRetry(`${apiBase}/submission/${subId}/save`, { method: 'POST' }, 4, 2000);
@@ -297,6 +307,38 @@ export async function getChatReplyWithRetry(apiBase, messages, { onBusy, maxWait
     const retryable = !response || response.status >= 500 || response.status === 429;
     if (!retryable || Date.now() > deadline) {
       const msg = response ? await parseError(response, 'The tutor could not reply.') : 'Network problem - the tutor could not reply.';
+      throw new SubmissionError(msg.replace('AI_BUSY: ', ''), { retryable: true });
+    }
+    onBusy?.(attempt);
+    await sleep(Math.min(3000 * attempt, 15000));
+  }
+}
+
+/** Mattering drill: the opposing argument to rebut, retried automatically while the AI is busy. */
+export async function getMatteringOpposition(apiBase, { motion, role, argument }, { onBusy, maxWaitMs = 240000 } = {}) {
+  const deadline = Date.now() + maxWaitMs;
+  let attempt = 0;
+  while (true) {
+    attempt += 1;
+    let response;
+    try {
+      response = await fetchWithRetry(`${apiBase}/mattering/opposition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ motion, role, argument }),
+      }, 3, 2000);
+    } catch (err) {
+      response = null;
+    }
+    if (response && response.ok) {
+      const { opposition } = await response.json();
+      return opposition;
+    }
+    const retryable = !response || response.status >= 500 || response.status === 429;
+    if (!retryable || Date.now() > deadline) {
+      const msg = response
+        ? await parseError(response, 'The opposing argument could not be prepared.')
+        : 'Network problem - the opposing argument could not be prepared.';
       throw new SubmissionError(msg.replace('AI_BUSY: ', ''), { retryable: true });
     }
     onBusy?.(attempt);
