@@ -11,6 +11,7 @@ import { MaterialsTab } from './teacher/MaterialsTab';
 import { ScoresTab } from './teacher/ScoresTab';
 import { ActivityTab } from './teacher/ActivityTab';
 import SubmissionReview from './UI/SubmissionReview';
+import { supabaseTeacher } from '../utils/supabaseClient';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
@@ -329,6 +330,7 @@ export function TeacherDashboard() {
         <SubmissionReview
           assessment={reviewRecord}
           apiBase={API_BASE}
+          authClient={supabaseTeacher}
           heading="Attempt review"
           studentName={reviewRecord.student?.full_name}
           onClose={() => setReviewRecord(null)}

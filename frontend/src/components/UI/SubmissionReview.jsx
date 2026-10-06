@@ -77,9 +77,10 @@ function Section({ icon: Icon, title, children }) {
 /**
  * Review one saved attempt: recording, transcript, score and feedback.
  * `assessment` is a row of public.assessments (id, mode, score, feedback, created_at).
+ * `authClient` is the Supabase client of whoever is looking (defaults to the student's).
  * Pass `assessment={null}` with `emptyMessage` when there is nothing to show yet.
  */
-export function SubmissionReview({ assessment, apiBase, onClose, heading = 'Last submission', studentName, emptyMessage }) {
+export function SubmissionReview({ assessment, apiBase, authClient, onClose, heading = 'Last submission', studentName, emptyMessage }) {
   const [review, setReview] = useState(null);
   const [loading, setLoading] = useState(!!assessment);
   const [loadError, setLoadError] = useState('');
@@ -99,12 +100,12 @@ export function SubmissionReview({ assessment, apiBase, onClose, heading = 'Last
     setLoadError('');
     setReview(null);
     setBrokenAudio({});
-    getAssessmentReview(apiBase, assessmentId)
+    getAssessmentReview(apiBase, assessmentId, authClient)
       .then((data) => { if (!cancelled) setReview(data); })
       .catch((err) => { if (!cancelled) setLoadError(err.message || 'Could not load the recording.'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [apiBase, assessmentId]);
+  }, [apiBase, assessmentId, authClient]);
 
   const mode = assessment?.mode;
   const fb = assessment && typeof assessment.feedback === 'object' && assessment.feedback ? assessment.feedback : {};

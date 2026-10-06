@@ -218,8 +218,21 @@ export async function submitText(apiBase, body) {
  * Details for reviewing a saved attempt: its transcript and temporary links to
  * the recording(s). Works for the student who made it and for their teacher.
  */
-export async function getAssessmentReview(apiBase, assessmentId) {
-  const response = await fetchWithRetry(`${apiBase}/assessment/${assessmentId}/review`, {}, 3, 1500);
+export async function getAssessmentReview(apiBase, assessmentId, authClient = supabase) {
+  // Students, teachers and admins each have their own login session, so the caller
+  // says whose to use (fetchWithRetry always sends the student's).
+  const { data: { session } } = await authClient.auth.getSession();
+  if (!session?.access_token) throw new Error('Your login session has expired. Please sign in again.');
+  const request = () => fetch(`${apiBase}/assessment/${assessmentId}/review`, {
+    headers: { Authorization: `Bearer ${session.access_token}` },
+  });
+  let response;
+  try {
+    response = await request();
+  } catch (err) {
+    await sleep(1500); // one quiet retry for a network blip
+    response = await request();
+  }
   if (!response.ok) throw new Error(await parseError(response, 'Could not load this attempt.'));
   return response.json();
 }
