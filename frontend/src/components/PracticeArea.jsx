@@ -12,10 +12,20 @@ import Spinner from './UI/Spinner';
 import { useConfirm } from './UI/ConfirmModal';
 import useActivityTracker from '../hooks/useActivityTracker';
 import useBeforeUnload from '../hooks/useBeforeUnload';
+import useSwipeRow from '../hooks/useSwipeRow';
 import AIStatusBadge from './AIStatusBadge';
 import SubmissionReview from './UI/SubmissionReview';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+
+const NAV_ITEMS = [
+  { key: 'read_aloud', label: '1. Read Aloud', shortLabel: 'Read Aloud', icon: BookOpen },
+  { key: 'qa', label: '2. Q&A Mock', shortLabel: 'Q&A', icon: HelpCircle },
+  { key: 'conversation', label: '3. AI Conversation', shortLabel: 'Conversation', icon: MessageSquare },
+  { key: 'debate', label: '4. Debate Mode', shortLabel: 'Debate', icon: Gavel },
+  { key: 'mattering', label: '5. Mattering Drill', shortLabel: 'Mattering', icon: Lightbulb },
+  { key: 'leaderboard', label: 'Leaderboard Log', shortLabel: 'Leaderboard', icon: Award, section: 'Analytics' },
+];
 
 export function PracticeArea() {
   const navigate = useNavigate();
@@ -43,10 +53,20 @@ export function PracticeArea() {
     activeMode: activeTab === 'leaderboard' ? null : activeTab
   });
 
+  const navRef = React.useRef(null);
+  const swipeRef = useSwipeRow();
+  const setNavRef = React.useCallback((el) => { navRef.current = el; swipeRef(el); }, [swipeRef]);
+
   useEffect(() => {
     // Reset assessment duration timer when mode changes
     sessionStartTimeRef.current = Date.now();
-  }, [activeTab]);
+    // Phones: keep the selected tab visible in the swipeable row
+    const nav = navRef.current;
+    const tab = nav?.querySelector(`[data-tab="${activeTab}"]`);
+    if (nav && tab && nav.scrollWidth > nav.clientWidth) {
+      nav.scrollTo({ left: tab.offsetLeft - (nav.clientWidth - tab.offsetWidth) / 2, behavior: 'smooth' });
+    }
+  }, [activeTab, loadingAuth]);
 
   const shouldWarnOnUnload = activeTab !== 'leaderboard';
   useBeforeUnload(shouldWarnOnUnload, "You have an active practice session. Are you sure you want to leave?");
@@ -210,133 +230,80 @@ export function PracticeArea() {
   return (
     <div className="min-h-screen bg-[#070b13] text-slate-100 flex flex-col md:flex-row relative">
       {/* Background neon glows */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-600/5 rounded-full blur-[100px] pointer-events-none"></div>
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-600/5 rounded-full blur-[100px] pointer-events-none text-indigo-500"></div>
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-600/5 rounded-full blur-[100px]"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-600/5 rounded-full blur-[100px]"></div>
+      </div>
 
-      {/* Sidebar navigation */}
-      <aside className="w-full md:w-64 bg-slate-950/80 border-b md:border-b-0 md:border-r border-slate-900 flex flex-col justify-between p-6 shrink-0 relative z-20">
-        <div className="space-y-8">
-          {/* Logo */}
-          <div className="flex items-center space-x-2.5">
-            <div className="p-2 bg-purple-600/10 border border-purple-500/20 rounded-xl text-purple-400">
-              <Sparkles className="w-5 h-5" />
+      {/* Navigation: compact top bar on phones, sidebar on desktop */}
+      <aside className="w-full md:w-64 bg-slate-950/95 md:bg-slate-950/80 border-b md:border-b-0 md:border-r border-slate-900 flex flex-col justify-between px-4 pt-3 pb-2 md:p-6 shrink-0 relative z-20">
+        <div className="space-y-2.5 md:space-y-8">
+          <div className="flex items-center justify-between gap-3 md:block md:space-y-8">
+            {/* Logo */}
+            <div className="flex items-center space-x-2 md:space-x-2.5 shrink-0">
+              <div className="p-1.5 md:p-2 bg-purple-600/10 border border-purple-500/20 rounded-xl text-purple-400">
+                <Sparkles className="w-4 h-4 md:w-5 md:h-5" />
+              </div>
+              <span className="text-base md:text-lg font-extrabold text-white">
+                href<span className="text-purple-500 font-medium">Speak</span>
+              </span>
             </div>
-            <span className="text-lg font-extrabold text-white">
-              href<span className="text-purple-500 font-medium">Speak</span>
-            </span>
-          </div>
 
-          {/* Student Status Profile */}
-          <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-xl border border-slate-850">
-            <div className="flex items-center space-x-2 overflow-hidden">
-              <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-              <div className="text-xs truncate max-w-[120px]">
-                <div className="text-slate-400 font-medium">{student?.class?.class_name || 'Classroom'}</div>
-                <div className="text-white font-bold font-mono truncate">{student?.full_name}</div>
+            {/* Student Status Profile */}
+            <div className="flex items-center justify-end md:justify-between min-w-0 flex-1 md:p-3 md:bg-slate-900/50 md:rounded-xl md:border md:border-slate-850">
+              <div className="flex items-center space-x-2 overflow-hidden min-w-0">
+                <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                <div className="text-[11px] md:text-xs min-w-0 md:max-w-[120px] leading-tight md:leading-normal">
+                  <div className="text-slate-400 font-medium truncate">{student?.class?.class_name || 'Classroom'}</div>
+                  <div className="text-white font-bold font-mono truncate">{student?.full_name}</div>
+                </div>
               </div>
             </div>
+
+            {/* Sign out (phones) */}
+            <button
+              onClick={handleSignOut}
+              aria-label="Log out"
+              title="Log out"
+              className="md:hidden shrink-0 w-10 h-10 flex items-center justify-center bg-slate-900 border border-slate-800 rounded-xl text-slate-400 active:text-rose-400 active:bg-rose-950/20"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
 
-          {/* Navigation */}
-          <nav className="flex flex-col space-y-1">
-            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2 px-1">Practice Modes</span>
-            
-            <button
-              onClick={() => {
-                setActiveTab('read_aloud');
-                setSaveStatus('');
-              }}
-              className={`flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition-all duration-200 ${
-                activeTab === 'read_aloud'
-                  ? 'bg-purple-600/15 border border-purple-500/20 text-white font-extrabold'
-                  : 'border border-transparent text-slate-400 hover:bg-slate-900/40 hover:text-slate-200'
-              }`}
-            >
-              <BookOpen className="w-4 h-4" />
-              <span>1. Read Aloud</span>
-            </button>
+          {/* Navigation: swipeable row on phones, vertical list on desktop */}
+          <nav ref={setNavRef} className="no-scrollbar flex md:flex-col gap-1.5 md:gap-0 md:space-y-1 overflow-x-auto md:overflow-visible -mx-4 px-4 md:mx-0 md:px-0 pb-1 md:pb-0">
+            <span className="hidden md:block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2 px-1">Practice Modes</span>
 
-            <button
-              onClick={() => {
-                setActiveTab('qa');
-                setSaveStatus('');
-              }}
-              className={`flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition-all duration-200 ${
-                activeTab === 'qa'
-                  ? 'bg-purple-600/15 border border-purple-500/20 text-white font-extrabold'
-                  : 'border border-transparent text-slate-400 hover:bg-slate-900/40 hover:text-slate-200'
-              }`}
-            >
-              <HelpCircle className="w-4 h-4" />
-              <span>2. Q&A Mock</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveTab('conversation');
-                setSaveStatus('');
-              }}
-              className={`flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition-all duration-200 ${
-                activeTab === 'conversation'
-                  ? 'bg-purple-600/15 border border-purple-500/20 text-white font-extrabold'
-                  : 'border border-transparent text-slate-400 hover:bg-slate-900/40 hover:text-slate-200'
-              }`}
-            >
-              <MessageSquare className="w-4 h-4" />
-              <span>3. AI Conversation</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveTab('debate');
-                setSaveStatus('');
-              }}
-              className={`flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition-all duration-200 ${
-                activeTab === 'debate'
-                  ? 'bg-purple-600/15 border border-purple-500/20 text-white font-extrabold'
-                  : 'border border-transparent text-slate-400 hover:bg-slate-900/40 hover:text-slate-200'
-              }`}
-            >
-              <Gavel className="w-4 h-4" />
-              <span>4. Debate Mode</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveTab('mattering');
-                setSaveStatus('');
-              }}
-              className={`flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition-all duration-200 ${
-                activeTab === 'mattering'
-                  ? 'bg-purple-600/15 border border-purple-500/20 text-white font-extrabold'
-                  : 'border border-transparent text-slate-400 hover:bg-slate-900/40 hover:text-slate-200'
-              }`}
-            >
-              <Lightbulb className="w-4 h-4" />
-              <span>5. Mattering Drill</span>
-            </button>
-
-            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mt-4 mb-2 px-1">Analytics</span>
-            
-            <button
-              onClick={() => {
-                setActiveTab('leaderboard');
-                setSaveStatus('');
-              }}
-              className={`flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition-all duration-200 ${
-                activeTab === 'leaderboard'
-                  ? 'bg-purple-600/15 border border-purple-500/20 text-white font-extrabold'
-                  : 'border border-transparent text-slate-400 hover:bg-slate-900/40 hover:text-slate-200'
-              }`}
-            >
-              <Award className="w-4 h-4" />
-              <span>Leaderboard Log</span>
-            </button>
+            {NAV_ITEMS.map(({ key, label, shortLabel, icon: Icon, section }) => (
+              <React.Fragment key={key}>
+                {section && (
+                  <span className="hidden md:block text-[10px] font-semibold text-slate-500 uppercase tracking-wider md:pt-4 mb-2 px-1">{section}</span>
+                )}
+                <button
+                  data-tab={key}
+                  aria-current={activeTab === key ? 'page' : undefined}
+                  onClick={() => {
+                    setActiveTab(key);
+                    setSaveStatus('');
+                  }}
+                  className={`flex items-center shrink-0 whitespace-nowrap space-x-2 md:space-x-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs font-bold transition-all duration-200 ${
+                    activeTab === key
+                      ? 'bg-purple-600/15 border border-purple-500/20 text-white font-extrabold'
+                      : 'border border-slate-800 md:border-transparent text-slate-400 hover:bg-slate-900/40 hover:text-slate-200'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  <span className="md:hidden">{shortLabel}</span>
+                  <span className="hidden md:inline">{label}</span>
+                </button>
+              </React.Fragment>
+            ))}
           </nav>
         </div>
 
-        {/* Footer / Sign out */}
-        <div className="mt-6 border-t border-slate-900 pt-4 flex flex-col space-y-4">
+        {/* Footer / Sign out (desktop) */}
+        <div className="hidden md:flex mt-6 border-t border-slate-900 pt-4 flex-col space-y-4">
           <div className="text-[10px] text-slate-600 font-mono">
             <p>© 2026 HreFSpeak AI</p>
             <p className="mt-1">LMS Dashboard Mode</p>
@@ -352,12 +319,12 @@ export function PracticeArea() {
       </aside>
 
       {/* Main Panel Content Area */}
-      <main className="flex-1 p-6 md:p-10 max-w-5xl overflow-y-auto relative z-10">
+      <main className="flex-1 w-full min-w-0 p-4 md:p-10 max-w-5xl lg:overflow-y-auto relative z-10">
         
         {/* Top Header */}
-        <header className="mb-8 flex justify-between items-center">
-          <div>
-            <h2 className="text-2xl font-bold text-white tracking-tight">
+        <header className="mb-5 md:mb-8 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+          <div className="min-w-0">
+            <h2 className="text-xl md:text-2xl font-bold text-white tracking-tight">
               {activeTab === 'read_aloud' && 'Read Aloud Practice'}
               {activeTab === 'qa' && 'IELTS Q&A Assessment'}
               {activeTab === 'conversation' && 'AI Conversation Partner'}
@@ -374,13 +341,13 @@ export function PracticeArea() {
               {activeTab === 'leaderboard' && 'Logs and scores saved in the Supabase classroom database.'}
             </p>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center justify-between sm:justify-end gap-2 md:gap-3 shrink-0">
             {activeTab !== 'leaderboard' && (
               <button
                 onClick={openLastSubmission}
                 disabled={loadingLast}
                 title="Listen to your latest recording for this mode and see its transcript, score and feedback"
-                className="flex items-center space-x-1.5 px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-xs font-bold text-slate-300 hover:text-white transition disabled:opacity-60 cursor-pointer"
+                className="flex items-center space-x-1.5 px-3 py-2.5 md:py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-xs font-bold text-slate-300 hover:text-white transition disabled:opacity-60 cursor-pointer"
               >
                 {loadingLast ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <History className="w-3.5 h-3.5" />}
                 <span>My last submission</span>

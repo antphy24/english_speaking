@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import useSwipeRow from '../hooks/useSwipeRow';
 import { supabase } from '../utils/supabaseClient';
 import { Award, BookOpen, HelpCircle, MessageSquare, Gavel, Lightbulb, RefreshCw, Calendar, User } from 'lucide-react';
 import Spinner from './UI/Spinner';
 
 export function Leaderboard({ student }) {
+  const swipeRef = useSwipeRow();
   const [activeSource, setActiveSource] = useState('global'); // 'global' (class rankings) | 'local' (own history)
   const [activeModeTab, setActiveModeTab] = useState('read_aloud'); // 'read_aloud' | 'qa' | 'conversation'
   const [activeMaterialFilter, setActiveMaterialFilter] = useState('all');
@@ -175,7 +177,7 @@ export function Leaderboard({ student }) {
     <div className="space-y-6">
       
       {/* Classroom Status Bar */}
-      <div className="glass-panel p-6 rounded-2xl border border-emerald-500/20 glow-green flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="glass-panel p-4 md:p-6 rounded-2xl border border-emerald-500/20 glow-green flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="space-y-1">
           <div className="flex items-center space-x-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
@@ -188,25 +190,25 @@ export function Leaderboard({ student }) {
       </div>
 
       <div className="glass-panel rounded-2xl border-slate-800 overflow-hidden shadow-xl">
-        <div className="px-6 py-4 bg-slate-900/60 border-b border-slate-850 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-          <div className="flex space-x-2 bg-slate-950 p-1 rounded-xl border border-slate-850 self-start">
+        <div className="px-3 md:px-6 py-3 md:py-4 bg-slate-900/60 border-b border-slate-850 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+          <div className="flex space-x-2 bg-slate-950 p-1 rounded-xl border border-slate-850 self-stretch sm:self-start">
             <button
               onClick={() => setActiveSource('global')}
-              className={`flex items-center space-x-1.5 px-4 py-2 rounded-lg text-xs font-bold transition ${
+              className={`flex flex-1 sm:flex-none items-center justify-center space-x-1.5 px-3 md:px-4 py-2.5 md:py-2 rounded-lg text-xs font-bold transition whitespace-nowrap ${
                 activeSource === 'global' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <Award className="w-3.5 h-3.5" />
-              <span>Class Leaderboard</span>
+              <span><span className="sm:hidden">Class Ranking</span><span className="hidden sm:inline">Class Leaderboard</span></span>
             </button>
             <button
               onClick={() => setActiveSource('local')}
-              className={`flex items-center space-x-1.5 px-4 py-2 rounded-lg text-xs font-bold transition ${
+              className={`flex flex-1 sm:flex-none items-center justify-center space-x-1.5 px-3 md:px-4 py-2.5 md:py-2 rounded-lg text-xs font-bold transition whitespace-nowrap ${
                 activeSource === 'local' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <User className="w-3.5 h-3.5" />
-              <span>My Assessment History</span>
+              <span><span className="sm:hidden">My History</span><span className="hidden sm:inline">My Assessment History</span></span>
             </button>
           </div>
         </div>
@@ -216,7 +218,7 @@ export function Leaderboard({ student }) {
             <Spinner message="Connecting to database..." />
           </div>
         ) : errorMsg ? (
-          <div className="p-8 text-center text-rose-400 text-sm">
+          <div className="p-5 md:p-8 text-center text-rose-400 text-sm">
             {errorMsg}
           </div>
         ) : (
@@ -224,8 +226,8 @@ export function Leaderboard({ student }) {
             {/* Global Class Rankings Tab */}
             {activeSource === 'global' && (
               <div>
-                <div className="flex flex-col sm:flex-row border-b border-slate-850 bg-slate-900/20 px-6 sm:items-center justify-between gap-4 py-2 sm:py-0">
-                  <div className="flex overflow-x-auto no-scrollbar">
+                <div className="flex flex-col sm:flex-row border-b border-slate-850 bg-slate-900/20 px-1 md:px-6 sm:items-center justify-between gap-1 sm:gap-4 py-1 sm:py-0">
+                  <div ref={swipeRef} className="flex overflow-x-auto no-scrollbar">
                     {['read_aloud', 'qa', 'conversation', 'debate', 'mattering'].map(mode => (
                       <button
                         key={mode}
@@ -243,12 +245,12 @@ export function Leaderboard({ student }) {
                   </div>
                   
                   {uniqueMaterials.length > 0 && (
-                    <div className="flex items-center space-x-2 py-2 sm:py-0">
+                    <div className="flex items-center space-x-2 px-2 md:px-0 py-2 sm:py-0">
                       <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Material:</span>
                       <select
                         value={activeMaterialFilter}
                         onChange={(e) => setActiveMaterialFilter(e.target.value)}
-                        className="bg-slate-950 border border-slate-800 text-slate-300 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-purple-500 max-w-[200px] truncate"
+                        className="bg-slate-950 border border-slate-800 text-slate-300 text-xs rounded-lg px-2 py-2 md:py-1.5 focus:outline-none focus:border-purple-500 flex-1 min-w-0 sm:flex-none sm:max-w-[200px] truncate"
                       >
                         <option value="all">All Materials</option>
                         {uniqueMaterials.map(mat => (
@@ -260,7 +262,7 @@ export function Leaderboard({ student }) {
                 </div>
 
                 {getSortedRankings(activeModeTab).length === 0 ? (
-                  <div className="p-16 text-center space-y-2 text-slate-500">
+                  <div className="px-6 py-12 md:p-16 text-center space-y-2 text-slate-500">
                     <Award className="w-10 h-10 mx-auto text-slate-700" />
                     <h5 className="text-sm font-bold">No records found</h5>
                     <p className="text-xs max-w-xs mx-auto">Be the first to complete a practice test in {getModeLabel(activeModeTab)} to rank on the leaderboard!</p>
@@ -270,29 +272,38 @@ export function Leaderboard({ student }) {
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="bg-slate-900/30 text-slate-400 text-[10px] font-semibold uppercase tracking-wider border-b border-slate-850">
-                          <th className="py-3.5 px-6 w-16 text-center">Rank</th>
-                          <th className="py-3.5 px-6">Student</th>
-                          <th className="py-3.5 px-6">Material</th>
-                          <th className="py-3.5 px-6">Date</th>
-                          <th className="py-3.5 px-6">Score</th>
-                          <th className="py-3.5 px-6">Feedback Summary</th>
+                          <th className="py-3.5 px-2 md:px-6 w-12 md:w-16 text-center">Rank</th>
+                          <th className="py-3.5 px-2 md:px-6">Student</th>
+                          <th className="hidden md:table-cell py-3.5 px-6">Material</th>
+                          <th className="hidden md:table-cell py-3.5 px-6">Date</th>
+                          <th className="py-3.5 px-3 md:px-6">Score</th>
+                          <th className="hidden md:table-cell py-3.5 px-6">Feedback Summary</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-850 text-slate-300 text-xs">
                         {getSortedRankings(activeModeTab).slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((record, index) => (
                           <tr key={record.id} className="hover:bg-slate-900/40 transition">
-                            <td className="py-4 px-6 text-center">{getRankBadge((currentPage - 1) * itemsPerPage + index)}</td>
-                            <td className="py-4 px-6 font-bold text-white">{record.student?.full_name}</td>
-                            <td className="py-4 px-6 text-slate-300 font-medium truncate max-w-[150px]" title={record.feedback?.material_title || record.feedback?.motion || 'Default Material'}>
+                            <td className="py-3 md:py-4 px-2 md:px-6 text-center">{getRankBadge((currentPage - 1) * itemsPerPage + index)}</td>
+                            <td className="py-3 md:py-4 px-2 md:px-6 font-bold text-white">
+                              {record.student?.full_name}
+                              {/* Phones: material and date sit under the name instead of in their own columns */}
+                              <div className="md:hidden mt-0.5 text-[11px] font-normal text-slate-400 line-clamp-1">
+                                {record.feedback?.material_title || record.feedback?.motion || 'Default Material'}
+                              </div>
+                              <div className="md:hidden text-[10px] font-normal font-mono text-slate-500">
+                                {new Date(record.created_at).toLocaleDateString()}
+                              </div>
+                            </td>
+                            <td className="hidden md:table-cell py-4 px-6 text-slate-300 font-medium truncate max-w-[150px]" title={record.feedback?.material_title || record.feedback?.motion || 'Default Material'}>
                               {record.feedback?.material_title || record.feedback?.motion || 'Default Material'}
                             </td>
-                            <td className="py-4 px-6 text-slate-400 font-mono text-[10px]">
+                            <td className="hidden md:table-cell py-4 px-6 text-slate-400 font-mono text-[10px]">
                               {new Date(record.created_at).toLocaleString()}
                             </td>
-                            <td className="py-4 px-6">
+                            <td className="py-3 md:py-4 px-3 md:px-6">
                               {formatScoreDisplay(record.mode, record.score, record.feedback)}
                             </td>
-                            <td className="py-4 px-6 max-w-xs truncate text-slate-400 italic" title={record.feedback?.feedback || record.feedback?.overall_feedback || (typeof record.feedback === 'string' ? record.feedback : 'See detailed scores')}>
+                            <td className="hidden md:table-cell py-4 px-6 max-w-xs truncate text-slate-400 italic" title={record.feedback?.feedback || record.feedback?.overall_feedback || (typeof record.feedback === 'string' ? record.feedback : 'See detailed scores')}>
                               {record.feedback?.feedback || record.feedback?.overall_feedback || (typeof record.feedback === 'string' ? record.feedback : 'See detailed scores')}
                             </td>
                           </tr>
@@ -302,22 +313,22 @@ export function Leaderboard({ student }) {
                   </div>
                 )}
                 {getSortedRankings(activeModeTab).length > itemsPerPage && (
-                  <div className="flex items-center justify-between px-6 py-4 bg-slate-900/40 border-t border-slate-850">
+                  <div className="flex items-center justify-between gap-3 px-3 md:px-6 py-3 md:py-4 bg-slate-900/40 border-t border-slate-850">
                     <span className="text-xs text-slate-400">
                       Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, getSortedRankings(activeModeTab).length)} of {getSortedRankings(activeModeTab).length} entries
                     </span>
-                    <div className="flex space-x-2">
+                    <div className="flex space-x-2 shrink-0">
                       <button
                         onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                         disabled={currentPage === 1}
-                        className="px-3 py-1 text-xs font-medium rounded-md bg-slate-800 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700"
+                        className="px-3.5 py-2 md:px-3 md:py-1 text-xs font-medium rounded-md bg-slate-800 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700"
                       >
                         Previous
                       </button>
                       <button
                         onClick={() => setCurrentPage(p => p + 1)}
                         disabled={currentPage * itemsPerPage >= getSortedRankings(activeModeTab).length}
-                        className="px-3 py-1 text-xs font-medium rounded-md bg-slate-800 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700"
+                        className="px-3.5 py-2 md:px-3 md:py-1 text-xs font-medium rounded-md bg-slate-800 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700"
                       >
                         Next
                       </button>
@@ -331,7 +342,7 @@ export function Leaderboard({ student }) {
             {activeSource === 'local' && (
               <div>
                 {localHistory.length === 0 ? (
-                  <div className="p-16 text-center space-y-2 text-slate-500">
+                  <div className="px-6 py-12 md:p-16 text-center space-y-2 text-slate-500">
                     <Calendar className="w-12 h-12 text-slate-700 mx-auto" />
                     <h5 className="text-sm font-bold text-slate-400">No activities logged yet</h5>
                     <p className="text-xs text-slate-500">Your practice assessment scores will appear here after you finish your tests.</p>
@@ -341,32 +352,39 @@ export function Leaderboard({ student }) {
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="bg-slate-900/30 text-slate-400 text-[10px] font-semibold uppercase tracking-wider border-b border-slate-850">
-                          <th className="py-3 px-6">Date & Time</th>
-                          <th className="py-3 px-6">Assessment Mode</th>
-                          <th className="py-3 px-6">Material</th>
-                          <th className="py-3 px-6">Score</th>
-                          <th className="py-3 px-6">Feedback Summary</th>
+                          <th className="hidden md:table-cell py-3 px-6">Date & Time</th>
+                          <th className="py-3 px-3 md:px-6"><span className="md:hidden">Attempt</span><span className="hidden md:inline">Assessment Mode</span></th>
+                          <th className="hidden md:table-cell py-3 px-6">Material</th>
+                          <th className="py-3 px-3 md:px-6">Score</th>
+                          <th className="hidden md:table-cell py-3 px-6">Feedback Summary</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-850 text-slate-300 text-xs">
                         {localHistory.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((record) => (
                           <tr key={record.id} className="hover:bg-slate-900/40 transition">
-                            <td className="py-4 px-6 text-slate-400 font-mono text-[10px]">
+                            <td className="hidden md:table-cell py-4 px-6 text-slate-400 font-mono text-[10px]">
                               {new Date(record.created_at).toLocaleString()}
                             </td>
-                            <td className="py-4 px-6 font-semibold text-white">
+                            <td className="py-3 md:py-4 px-3 md:px-6 font-semibold text-white">
                               <div className="flex items-center space-x-2">
                                 {getModeIcon(record.mode)}
                                 <span>{getModeLabel(record.mode)}</span>
                               </div>
+                              {/* Phones: material and date sit under the mode instead of in their own columns */}
+                              <div className="md:hidden mt-0.5 text-[11px] font-normal text-slate-400 line-clamp-1">
+                                {record.feedback?.material_title || record.feedback?.motion || 'Default Material'}
+                              </div>
+                              <div className="md:hidden text-[10px] font-normal font-mono text-slate-500">
+                                {new Date(record.created_at).toLocaleString()}
+                              </div>
                             </td>
-                            <td className="py-4 px-6 text-slate-300 font-medium truncate max-w-[150px]" title={record.feedback?.material_title || record.feedback?.motion || 'Default Material'}>
+                            <td className="hidden md:table-cell py-4 px-6 text-slate-300 font-medium truncate max-w-[150px]" title={record.feedback?.material_title || record.feedback?.motion || 'Default Material'}>
                               {record.feedback?.material_title || record.feedback?.motion || 'Default Material'}
                             </td>
-                            <td className="py-4 px-6">
+                            <td className="py-3 md:py-4 px-3 md:px-6">
                               {formatScoreDisplay(record.mode, record.score, record.feedback)}
                             </td>
-                            <td className="py-4 px-6 max-w-xs truncate text-slate-400 italic" title={record.feedback?.feedback || record.feedback?.overall_feedback || (typeof record.feedback === 'string' ? record.feedback : 'See detailed scores')}>
+                            <td className="hidden md:table-cell py-4 px-6 max-w-xs truncate text-slate-400 italic" title={record.feedback?.feedback || record.feedback?.overall_feedback || (typeof record.feedback === 'string' ? record.feedback : 'See detailed scores')}>
                               {record.feedback?.feedback || record.feedback?.overall_feedback || (typeof record.feedback === 'string' ? record.feedback : 'See detailed scores')}
                             </td>
                           </tr>
@@ -376,22 +394,22 @@ export function Leaderboard({ student }) {
                   </div>
                 )}
                 {localHistory.length > itemsPerPage && (
-                  <div className="flex items-center justify-between px-6 py-4 bg-slate-900/40 border-t border-slate-850">
+                  <div className="flex items-center justify-between gap-3 px-3 md:px-6 py-3 md:py-4 bg-slate-900/40 border-t border-slate-850">
                     <span className="text-xs text-slate-400">
                       Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, localHistory.length)} of {localHistory.length} entries
                     </span>
-                    <div className="flex space-x-2">
+                    <div className="flex space-x-2 shrink-0">
                       <button
                         onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                         disabled={currentPage === 1}
-                        className="px-3 py-1 text-xs font-medium rounded-md bg-slate-800 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700"
+                        className="px-3.5 py-2 md:px-3 md:py-1 text-xs font-medium rounded-md bg-slate-800 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700"
                       >
                         Previous
                       </button>
                       <button
                         onClick={() => setCurrentPage(p => p + 1)}
                         disabled={currentPage * itemsPerPage >= localHistory.length}
-                        className="px-3 py-1 text-xs font-medium rounded-md bg-slate-800 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700"
+                        className="px-3.5 py-2 md:px-3 md:py-1 text-xs font-medium rounded-md bg-slate-800 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700"
                       >
                         Next
                       </button>

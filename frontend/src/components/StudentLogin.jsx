@@ -323,7 +323,7 @@ export function StudentLogin() {
 
         <div className="pt-4 border-t border-slate-900 flex justify-between items-center text-xs">
           <span className="text-slate-500">Are you a Teacher?</span>
-          <Link to="/teacher/login" className="text-purple-400 hover:text-purple-300 font-bold transition">
+          <Link to="/teacher/login" className="py-2 -my-2 pl-3 text-purple-400 hover:text-purple-300 font-bold transition">
             Teacher Portal &rarr;
           </Link>
         </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useMediaRecorder } from '../hooks/useMediaRecorder';
+import { speakEnglish } from '../utils/speech';
 import ScoreCard from './UI/ScoreCard';
 import Spinner from './UI/Spinner';
 import { useConfirm } from './UI/ConfirmModal';
@@ -152,27 +153,8 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, getSession
 
   // Helper to read text aloud via Web Speech API
   const speakText = (text) => {
-    if (!ttsEnabled || !('speechSynthesis' in window)) return;
-    
-    // Stop any current speech
-    window.speechSynthesis.cancel();
-    
-    const utterance = new SpeechSynthesisUtterance(text);
-    
-    // Load voices
-    const voices = window.speechSynthesis.getVoices();
-    // Prefer Google English voices, otherwise standard English
-    const preferredVoice = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Google') || v.name.includes('Natural'))) 
-                         || voices.find(v => v.lang.startsWith('en'));
-    
-    if (preferredVoice) {
-      utterance.voice = preferredVoice;
-    }
-    
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
-    
-    window.speechSynthesis.speak(utterance);
+    if (!ttsEnabled) return;
+    speakEnglish(text, { rate: 1.0 });
   };
 
   const requestTutorReply = async (history) => {
@@ -397,15 +379,15 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, getSession
     <div className="space-y-6">
       
       {/* Informative banner */}
-      <div className="flex items-start space-x-3 bg-indigo-500/10 border border-indigo-500/20 p-4 rounded-xl">
-        <Info className="w-5 h-5 text-indigo-400 mt-0.5 flex-shrink-0" />
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-start gap-3 bg-indigo-500/10 border border-indigo-500/20 p-3 md:p-4 rounded-xl">
+        <Info className="hidden sm:block w-5 h-5 text-indigo-400 mt-0.5 flex-shrink-0" />
         <div className="text-xs text-indigo-200 leading-relaxed flex-grow">
           <strong className="text-white block mb-0.5">Mode 3: Interactive Speaking Practice</strong>
-          Click the record button to speak to the AI Tutor. The tutor will answer you audibly. We recommend holding <strong>3-5 speaking turns</strong> (currently at <strong>{studentTurnsCount}/5</strong>) before ending the conversation to receive your final grading report.
+          Tap the record button to speak to the AI Tutor. The tutor will answer you audibly. We recommend holding <strong>3-5 speaking turns</strong> (currently at <strong>{studentTurnsCount}/5</strong>) before ending the conversation to receive your final grading report.
         </div>
         <button
           onClick={() => setTtsEnabled(!ttsEnabled)}
-          className={`flex items-center space-x-1.5 px-3 py-1 rounded-lg text-xs font-semibold border transition ${
+          className={`flex items-center justify-center shrink-0 space-x-1.5 px-3 py-2 sm:py-1 rounded-lg text-xs font-semibold border transition ${
             ttsEnabled 
               ? 'bg-purple-600/25 border-purple-500/40 text-purple-300 hover:bg-purple-600/40' 
               : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'
@@ -418,39 +400,39 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, getSession
       </div>
 
       {status !== 'graded' && status !== 'error' && (
-        <div className="flex flex-col h-[500px] glass-panel rounded-2xl border-slate-800 overflow-hidden shadow-2xl">
+        <div className="flex flex-col h-[75dvh] min-h-[420px] md:h-[500px] glass-panel rounded-2xl border-slate-800 overflow-hidden shadow-2xl">
           
           {/* Chat Headers */}
-          <div className="flex justify-between items-center bg-slate-900/60 px-6 py-4 border-b border-slate-850">
-            <div className="flex items-center space-x-3">
-              <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></div>
-              <div>
-                <h4 className="text-sm font-bold text-white">English AI Conversation Partner</h4>
-                <p className="text-[10px] text-slate-400">Qwen 3.6-27B model</p>
+          <div className="flex justify-between items-center gap-2 bg-slate-900/60 px-3 md:px-6 py-3 md:py-4 border-b border-slate-850">
+            <div className="flex items-center space-x-2 md:space-x-3 min-w-0">
+              <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shrink-0"></div>
+              <div className="min-w-0">
+                <h4 className="text-sm font-bold text-white truncate"><span className="md:hidden">AI Tutor</span><span className="hidden md:inline">English AI Conversation Partner</span></h4>
+                <p className="hidden md:block text-[10px] text-slate-400">Qwen 3.6-27B model</p>
               </div>
             </div>
             
-            <div className="flex items-center space-x-4">
-              <span className="text-xs font-medium text-slate-400 bg-slate-800/60 px-2.5 py-1 rounded-full border border-slate-750">
+            <div className="flex items-center space-x-2 md:space-x-4 shrink-0">
+              <span className="text-xs font-medium text-slate-400 bg-slate-800/60 px-2.5 py-1 rounded-full border border-slate-750 whitespace-nowrap">
                 Turns: {studentTurnsCount} / 5
               </span>
               
               <button
                 onClick={handleEndConversation}
                 disabled={status === 'bot_replying' || status === 'transcribing'}
-                className="px-4 py-1.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white text-xs font-bold rounded-lg shadow-md transition disabled:opacity-50"
+                className="px-3 md:px-4 py-2.5 md:py-1.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white text-xs font-bold rounded-lg shadow-md transition disabled:opacity-50 whitespace-nowrap"
               >
-                End Conversation
+                <span className="md:hidden">End</span><span className="hidden md:inline">End Conversation</span>
               </button>
             </div>
           </div>
 
           {/* Messages Feed */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-900/10">
+          <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-4 bg-slate-900/10">
             {messages.map((msg, index) => (
               <div
                 key={index}
-                className={`flex items-start space-x-3 max-w-[85%] ${
+                className={`flex items-start space-x-2 md:space-x-3 max-w-[94%] md:max-w-[85%] ${
                   msg.role === 'user' ? 'ml-auto flex-row-reverse space-x-reverse' : ''
                 }`}
               >
@@ -464,7 +446,7 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, getSession
                 </div>
 
                 {/* Message Bubble */}
-                <div className={`p-4 rounded-2xl text-sm leading-relaxed border ${
+                <div className={`p-3 md:p-4 rounded-2xl text-sm leading-relaxed border ${
                   msg.role === 'user'
                     ? 'bg-purple-600/15 border-purple-500/20 text-white rounded-tr-none'
                     : 'bg-slate-900/60 border-slate-800 text-slate-200 rounded-tl-none'
@@ -474,7 +456,7 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, getSession
                   {msg.role === 'assistant' && (
                     <button 
                       onClick={() => speakText(msg.content)}
-                      className="mt-2 text-[10px] text-indigo-400 hover:text-indigo-300 font-semibold flex items-center space-x-1"
+                      className="mt-1 -mb-1 py-2 text-[11px] text-indigo-400 hover:text-indigo-300 font-semibold flex items-center space-x-1"
                     >
                       <Volume2 className="w-3 h-3" />
                       <span>Replay Audio</span>
@@ -553,7 +535,7 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, getSession
             </div>
 
             <span className="text-xs text-slate-400 font-medium select-none">
-              {isRecording ? `Recording... Click to send (${recordingTime}s)` : 'Click to Speak'}
+              {isRecording ? `Recording... Tap to send (${recordingTime}s)` : 'Tap to Speak'}
             </span>
           </div>
 
@@ -579,7 +561,7 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, getSession
 
       {/* Error state */}
       {status === 'error' && (
-        <div className="glass-panel p-6 rounded-xl border border-red-500/20 text-center space-y-4 animate-fadeIn">
+        <div className="glass-panel p-4 md:p-6 rounded-xl border border-red-500/20 text-center space-y-4 animate-fadeIn">
           <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto text-red-500">
             <AlertTriangle className="w-6 h-6" />
           </div>
@@ -594,13 +576,13 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, getSession
               <>
                 <button 
                   onClick={handleRetryGrading}
-                  className="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+                  className="px-5 py-2.5 md:py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
                 >
                   Retry Evaluation
                 </button>
                 <button 
                   onClick={() => { setStatus('idle'); setErrorType(null); }}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+                  className="px-5 py-2.5 md:py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
                 >
                   Return to Chat
                 </button>
@@ -609,7 +591,7 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, getSession
             {errorType === 'reply' && (
               <button 
                 onClick={() => requestTutorReply(messages)}
-                className="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+                className="px-5 py-2.5 md:py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
               >
                 Retry Tutor Reply
               </button>
@@ -619,14 +601,14 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, getSession
                 {turn.progress?.retryable && turn.hasRecording() && (
                   <button 
                     onClick={handleRetryTurn}
-                    className="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+                    className="px-5 py-2.5 md:py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
                   >
                     Retry Sending Message
                   </button>
                 )}
                 <button 
                   onClick={() => { setStatus('idle'); setErrorType(null); clearAudio(); turn.clear(); }}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+                  className="px-5 py-2.5 md:py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
                 >
                   Record Message Again
                 </button>
@@ -634,7 +616,7 @@ export function ModeConversation({ studentName, apiBase, onSaveScore, getSession
             )}
             <button 
               onClick={handleRestart}
-              className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+              className="px-5 py-2.5 md:py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer"
             >
               Reset Entire Chat
             </button>

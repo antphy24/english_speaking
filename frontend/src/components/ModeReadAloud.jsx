@@ -5,6 +5,8 @@ import Spinner from './UI/Spinner';
 import { Mic, Info, RefreshCw, Volume2 } from 'lucide-react';
 import useSubmission from '../hooks/useSubmission';
 import SubmissionProgress from './UI/SubmissionProgress';
+import { speakEnglish, stopSpeaking } from '../utils/speech';
+import useSwipeRow from '../hooks/useSwipeRow';
 
 const PARAGRAPHS = [
   {
@@ -34,6 +36,7 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, getSessionSec
   const paragraphsList = [...customMapped, ...PARAGRAPHS];
 
   const [selectedParagraph, setSelectedParagraph] = useState(paragraphsList[0]);
+  const swipeRef = useSwipeRow();
 
   useEffect(() => {
     if (paragraphsList.length > 0) {
@@ -54,13 +57,10 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, getSessionSec
   const pointerDownTimeRef = useRef(0);
   const [isToggleRecording, setIsToggleRecording] = useState(false);
 
-  useEffect(() => {
-    return () => {
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
-    };
-  }, []);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [speechNotice, setSpeechNotice] = useState('');
+
+  useEffect(() => () => stopSpeaking(), []);
 
   // Custom Recording Hook
   const {
@@ -73,9 +73,19 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, getSessionSec
     clearAudio
   } = useMediaRecorder();
 
+  // Recording gestures.
+  // - Touch screens (iPhone, Android) and keyboard: tap to start, tap again to stop.
+  //   Recording starts from the click itself, because iPhone Safari only treats a
+  //   finished tap - not the first touch - as permission to open the microphone.
+  // - Mouse: tap to toggle, or hold the button down and release to submit.
+  const mouseGestureRef = useRef(false);
+  const startedOnPressRef = useRef(false);
+
   const handlePointerDown = (e) => {
-    e.preventDefault();
+    if (e.pointerType !== 'mouse' || e.button !== 0) return;
+    mouseGestureRef.current = true;
     pointerDownTimeRef.current = Date.now();
+    startedOnPressRef.current = !isRecording;
     if (!isRecording) {
       startRecording();
       setIsToggleRecording(false);
@@ -83,26 +93,36 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, getSessionSec
   };
 
   const handlePointerUp = (e) => {
-    e.preventDefault();
+    if (e.pointerType !== 'mouse' || !mouseGestureRef.current) return;
     const duration = Date.now() - pointerDownTimeRef.current;
-    if (duration < 300) {
-      // It's a short tap!
-      if (isToggleRecording) {
-        stopRecording();
-        setIsToggleRecording(false);
-      } else {
-        setIsToggleRecording(true);
-      }
+    if (startedOnPressRef.current && duration < 300) {
+      // Short click: keep recording until the next click
+      setIsToggleRecording(true);
     } else {
-      // It's a long hold! Stop recording on release
+      // Released after holding, or clicked again while recording
       stopRecording();
       setIsToggleRecording(false);
     }
   };
 
-  const handlePointerLeave = () => {
-    if (isRecording && !isToggleRecording) {
+  const handlePointerLeave = (e) => {
+    if (e.pointerType !== 'mouse' || !mouseGestureRef.current) return;
+    mouseGestureRef.current = false;
+    if (!isToggleRecording) stopRecording();
+  };
+
+  const handleRecordClick = () => {
+    if (mouseGestureRef.current) {
+      // Already handled by the mouse press/release above
+      mouseGestureRef.current = false;
+      return;
+    }
+    if (isRecording) {
       stopRecording();
+      setIsToggleRecording(false);
+    } else {
+      setIsToggleRecording(true);
+      startRecording();
     }
   };
 
@@ -177,7 +197,7 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, getSessionSec
 
   const processAudio = async (blob) => {
     if (blob.size < 2000) {
-      setErrorMessage("Recording was too short. Please hold down the button and speak clearly.");
+      setErrorMessage("Recording was too short. Tap the microphone, read the text clearly, then tap again to finish.");
       setStatus('error');
       return;
     }
@@ -234,48 +254,56 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, getSessionSec
     }
   };
 
-  // Browser TTS to read paragraph to the student
+  // Read the paragraph to the student in clear American English
   const speakParagraph = () => {
-    if ('speechSynthesis' in window) {
-      // Cancel active speaking
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(selectedParagraph.text);
-      utterance.rate = 0.9; // Slightly slower for clear instruction
-      window.speechSynthesis.speak(utterance);
-    } else {
-      alert("Text-to-speech not supported in this browser.");
+    if (isSpeaking) {
+      stopSpeaking();
+      setIsSpeaking(false);
+      return;
     }
+    setSpeechNotice('');
+    const started = speakEnglish(selectedParagraph.text, { rate: 0.9, onEnd: () => setIsSpeaking(false) });
+    if (started) setIsSpeaking(true);
+    else setSpeechNotice('This browser cannot play the sample voice.');
   };
+
+  // A different paragraph was chosen: stop reading the old one
+  useEffect(() => {
+    stopSpeaking();
+    setIsSpeaking(false);
+  }, [selectedParagraph?.id]);
 
   return (
     <div className="space-y-6">
       
       {/* Intro info */}
-      <div className="flex items-start space-x-3 bg-indigo-500/10 border border-indigo-500/20 p-4 rounded-xl">
+      <div className="hidden md:flex items-start space-x-3 bg-indigo-500/10 border border-indigo-500/20 p-4 rounded-xl">
         <Info className="w-5 h-5 text-indigo-400 mt-0.5 flex-shrink-0" />
         <div className="text-xs text-indigo-200 leading-relaxed">
           <strong className="text-white block mb-0.5">Mode 1: Read Aloud Assessment</strong>
-          Select a text paragraph, review it, then hold down the microphone button to read it aloud. Releasing the button will transcribe and automatically grade your pronunciation and accuracy.
+          Select a text paragraph, review it, then tap the microphone button and read it aloud. Tap the button again when you finish to transcribe and automatically grade your pronunciation and accuracy.
         </div>
       </div>
 
       {status === 'idle' && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          {/* Paragraph selector */}
-          <div className="md:col-span-1 space-y-3">
-            <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Select Paragraph</h4>
-            <div className="flex flex-col space-y-2">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 md:gap-6">
+          {/* Paragraph selector: swipeable row on phones, list on desktop */}
+          <div className="md:col-span-1 space-y-2 md:space-y-3 min-w-0">
+            <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              Select Paragraph{paragraphsList.length > 1 && <span className="md:hidden normal-case font-normal text-slate-500"> · swipe for more</span>}
+            </h4>
+            <div ref={swipeRef} className="no-scrollbar flex md:flex-col gap-2 md:gap-0 md:space-y-2 overflow-x-auto md:overflow-visible -mx-4 px-4 md:mx-0 md:px-0">
               {paragraphsList.map((p) => (
                 <button
                   key={p.id}
                   onClick={() => setSelectedParagraph(p)}
-                  className={`p-3 text-left rounded-xl border transition-all duration-200 ${
+                  className={`p-3 text-left rounded-xl border transition-all duration-200 shrink-0 md:w-auto ${paragraphsList.length > 1 ? 'w-[72%]' : 'w-full'} ${
                     selectedParagraph.id === p.id
                       ? 'bg-purple-600/15 border-purple-500 text-white shadow-md shadow-purple-500/5'
                       : 'bg-slate-900/40 border-slate-800 text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
                   }`}
                 >
-                  <div className="font-bold text-sm">{p.title}</div>
+                  <div className="font-bold text-sm line-clamp-2 md:line-clamp-none">{p.title}</div>
                   <div className="text-[10px] opacity-80 mt-1 line-clamp-1">{p.text}</div>
                 </button>
               ))}
@@ -283,38 +311,39 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, getSessionSec
           </div>
 
           {/* Reading Arena */}
-          <div className="md:col-span-3 flex flex-col justify-between glass-panel rounded-2xl p-6 pb-28 md:pb-6 border-slate-800 space-y-6">
+          <div className="md:col-span-3 min-w-0 flex flex-col justify-between glass-panel rounded-2xl p-4 md:p-6 border-slate-800 space-y-4 md:space-y-6">
             <div className="flex justify-between items-center">
               <span className="text-xs font-medium text-purple-400 tracking-widest uppercase">Target Text</span>
               <button 
                 onClick={speakParagraph}
-                className="flex items-center space-x-1 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs transition-colors"
-                title="Listen to native model reading"
+                className="flex items-center space-x-1.5 px-3 py-2 md:py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs transition-colors"
+                title="Listen to a model reading in American English"
               >
                 <Volume2 className="w-3.5 h-3.5" />
-                <span>Hear Sample</span>
+                <span>{isSpeaking ? 'Stop Sample' : 'Hear Sample'}</span>
               </button>
             </div>
+            {speechNotice && <p className="text-xs text-amber-300">{speechNotice}</p>}
             
-            <p className="text-lg text-white font-medium leading-relaxed tracking-wide py-4 border-y border-slate-850 px-2 select-none">
+            <p className="text-lg text-white font-medium leading-relaxed tracking-wide py-4 border-y border-slate-850 px-1 md:px-2 select-none">
               {selectedParagraph.text}
             </p>
 
-            {/* Adaptive Recording Controls (Inline on Desktop, Sticky Bottom Bar on Mobile) */}
+            {/* Recording controls: pinned to the bottom of the screen on phones (so the text
+                stays readable while recording), inline on desktop */}
             <div className="
-              flex flex-col items-center justify-center space-y-3 pt-2
-              md:relative md:bg-transparent md:border-0 md:p-0 md:shadow-none md:flex-col md:space-y-3 md:gap-0
-              max-md:fixed max-md:bottom-0 max-md:left-0 max-md:right-0 max-md:bg-[#070b13]/95 max-md:backdrop-blur-md max-md:border-t max-md:border-slate-900 max-md:p-4 max-md:pb-6 max-md:shadow-[0_-10px_30px_rgba(0,0,0,0.5)] max-md:z-40 max-md:flex-row-reverse max-md:justify-between max-md:space-y-0 max-md:px-6
+              sticky bottom-0 z-20 -mx-4 -mb-4 px-5 pt-3 pb-safe flex flex-row-reverse items-center justify-between bg-[#0a0f1a] border-t border-slate-800 rounded-b-2xl shadow-[0_-10px_30px_rgba(0,0,0,0.5)]
+              md:static md:mx-0 md:mb-0 md:px-0 md:pt-2 md:flex-col md:justify-center md:space-y-3 md:bg-transparent md:border-0 md:rounded-none md:shadow-none
             ">
               <button
                 onPointerDown={handlePointerDown}
                 onPointerUp={handlePointerUp}
                 onPointerLeave={handlePointerLeave}
-                onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handlePointerDown(); } }}
-                onKeyUp={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handlePointerUp(); } }}
-                aria-label={isRecording ? `Recording in progress, ${recordingTime} seconds` : 'Hold to record your reading'}
-                role="button"
-                tabIndex={0}
+                onClick={handleRecordClick}
+                onContextMenu={(e) => e.preventDefault()}
+                type="button"
+                aria-label={isRecording ? `Recording in progress, ${recordingTime} seconds. Tap to stop` : 'Tap to record your reading'}
+                style={{ touchAction: 'manipulation', WebkitTouchCallout: 'none', WebkitTapHighlightColor: 'transparent' }}
                 className={`relative w-16 h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center transition-all duration-350 select-none shrink-0 ${
                   isRecording 
                     ? 'bg-red-500 text-white animate-record-pulse'
@@ -324,14 +353,14 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, getSessionSec
                 <Mic className="w-6 h-6 md:w-8 md:h-8" />
               </button>
               
-              <div className="text-left md:text-center max-md:flex-1">
+              <div className="text-left md:text-center flex-1 md:flex-none min-w-0">
                 <span className="block text-sm font-semibold text-slate-300">
                   {isRecording ? `Recording... ${recordingTime}s` : 'Read Aloud'}
                 </span>
                 <span className="text-xs text-slate-500 block mt-0.5 max-w-[200px] md:max-w-none">
                   {isRecording 
                     ? (isToggleRecording ? 'Tap button to stop' : 'Release to submit') 
-                    : 'Tap to toggle or hold to record'}
+                    : 'Tap to start, tap again to finish'}
                 </span>
               </div>
             </div>
@@ -362,7 +391,7 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, getSessionSec
 
       {/* Error state */}
       {status === 'error' && (
-        <div className="glass-panel p-6 rounded-xl border border-red-500/20 text-center space-y-4">
+        <div className="glass-panel p-4 md:p-6 rounded-xl border border-red-500/20 text-center space-y-4">
           <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto text-red-500">
             <Mic className="w-6 h-6" />
           </div>
@@ -379,14 +408,14 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, getSessionSec
             {submission.progress?.retryable && submission.hasRecording() && (
               <button 
                 onClick={handleRetry}
-                className="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+                className="px-5 py-2.5 md:py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
               >
                 Retry
               </button>
             )}
             <button 
               onClick={handleRestart}
-              className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+              className="px-5 py-2.5 md:py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer"
             >
               Record Again
             </button>

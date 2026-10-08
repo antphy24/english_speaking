@@ -117,3 +117,64 @@ body {
 .confirm-card {
   animation: cardSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* ---------- Phone / touch-screen refinements ---------- */
+
+/* Horizontal swipe rows without a visible scrollbar */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Laptops (mouse): show a slim scrollbar on those rows so it is clear they move sideways.
+   They also respond to the mouse wheel and to click-and-drag (see hooks/useSwipeRow.js). */
+@media (hover: hover) and (pointer: fine) {
+  .no-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #334155 transparent;
+    cursor: grab;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: block;
+    height: 5px;
+  }
+  @media (min-width: 768px) {
+    .no-scrollbar {
+      cursor: auto;
+    }
+  }
+}
+
+/* No double-tap zoom delay and no grey flash on tap */
+button, a, select, label, summary, [role="button"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+@media (max-width: 767px) {
+  /* iPhone Safari zooms the whole page when a focused field has text smaller than 16px */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+
+  /* 100vh is taller than the visible screen on phones (address bar); use the real height */
+  .min-h-screen {
+    min-height: 100dvh;
+  }
+}
+
+/* Space for the iPhone home indicator under bars pinned to the bottom (phones only) */
+@media (max-width: 767px) {
+  .pb-safe {
+    padding-bottom: calc(0.875rem + env(safe-area-inset-bottom, 0px));
+  }
+}

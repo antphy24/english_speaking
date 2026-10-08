@@ -1,3 +1,4 @@
+import useSwipeRow from '../hooks/useSwipeRow';
 import React, { useState } from 'react';
 import { 
   Plus, Users, Award, BookOpen, LogOut, 
@@ -75,6 +76,7 @@ const formatScoreDetails = (mode, scoreData) => {
 };
 
 export function TeacherDashboard() {
+  const swipeRef = useSwipeRow();
   const [activeTab, setActiveTab] = useState('overview');
   const [dateFilter, setDateFilter] = useState('30days');
   const [reviewRecord, setReviewRecord] = useState(null); // score row opened in the review panel
@@ -107,56 +109,75 @@ export function TeacherDashboard() {
   return (
     <div className="min-h-screen bg-[#070b13] text-slate-100 flex flex-col md:flex-row relative">
       {/* Background neon glows */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#0d9488]/5 rounded-full blur-[100px] pointer-events-none"></div>
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-600/5 rounded-full blur-[100px] pointer-events-none"></div>
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#0d9488]/5 rounded-full blur-[100px]"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-600/5 rounded-full blur-[100px]"></div>
+      </div>
 
-      {/* Sidebar */}
-      <aside className="w-full md:w-64 bg-slate-950/80 border-b md:border-b-0 md:border-r border-slate-900 flex flex-col justify-between p-6 shrink-0 relative z-20">
-        <div className="space-y-8">
-          <div className="flex items-center space-x-2.5">
-            <div className="p-2 bg-indigo-600/10 border border-indigo-500/20 rounded-xl text-indigo-400">
-              <Plus className="w-5 h-5" />
+      {/* Navigation: compact top bar on phones, sidebar on desktop */}
+      <aside className="w-full md:w-64 bg-slate-950/95 md:bg-slate-950/80 border-b md:border-b-0 md:border-r border-slate-900 flex flex-col justify-between px-4 pt-3 pb-2 md:p-6 shrink-0 relative z-20">
+        <div className="space-y-2.5 md:space-y-8">
+          <div className="flex items-center justify-between gap-3 md:block md:space-y-8">
+            <div className="flex items-center space-x-2 md:space-x-2.5 shrink-0">
+              <div className="p-1.5 md:p-2 bg-indigo-600/10 border border-indigo-500/20 rounded-xl text-indigo-400">
+                <Plus className="w-4 h-4 md:w-5 md:h-5" />
+              </div>
+              <span className="text-base md:text-lg font-extrabold text-white">
+                HreF<span className="text-indigo-500 font-medium">Speak</span>
+              </span>
             </div>
-            <span className="text-lg font-extrabold text-white">
-              HreF<span className="text-indigo-500 font-medium">Speak</span>
-            </span>
+
+            <div className="flex items-center justify-end md:justify-start space-x-2 min-w-0 flex-1 md:p-3 md:bg-slate-900/40 md:rounded-xl md:border md:border-slate-850">
+              <Users className="w-4 h-4 text-indigo-400 shrink-0" />
+              <div className="text-[11px] md:text-xs truncate min-w-0 md:max-w-[150px] leading-tight md:leading-normal">
+                <div className="text-slate-400 font-medium">Teacher Portal</div>
+                <div className="text-white font-bold truncate">{data.teacher?.full_name}</div>
+              </div>
+            </div>
+
+            {/* Sign out (phones) */}
+            <button
+              onClick={data.handleSignOut}
+              aria-label="Log out"
+              title="Log out"
+              className="md:hidden shrink-0 w-10 h-10 flex items-center justify-center bg-slate-900 border border-slate-800 rounded-xl text-slate-400 active:text-rose-400 active:bg-rose-950/20"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
 
-          <div className="flex items-center space-x-2 p-3 bg-slate-900/40 rounded-xl border border-slate-850">
-            <Users className="w-4 h-4 text-indigo-400 shrink-0" />
-            <div className="text-xs truncate max-w-[150px]">
-              <div className="text-slate-400 font-medium">Teacher Portal</div>
-              <div className="text-white font-bold truncate">{data.teacher?.full_name}</div>
-            </div>
-          </div>
-
-          <nav className="flex flex-col space-y-1">
-            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2 px-1">Management</span>
+          {/* Swipeable row on phones, vertical list on desktop */}
+          <nav ref={swipeRef} className="no-scrollbar flex md:flex-col gap-1.5 md:gap-0 md:space-y-1 overflow-x-auto md:overflow-visible -mx-4 px-4 md:mx-0 md:px-0 pb-1 md:pb-0">
+            <span className="hidden md:block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2 px-1">Management</span>
             
             {[
-              { key: 'overview', icon: BarChart2, label: 'Performance Overview' },
-              { key: 'classes', icon: Users, label: 'Classes & Enrollment' },
-              { key: 'materials', icon: BookOpen, label: 'Class Materials' },
-              { key: 'scores', icon: Award, label: 'Assessment Records' },
-              { key: 'activity', icon: BarChart2, label: 'Activity Monitor' },
-            ].map(({ key, icon: Icon, label }) => (
+              { key: 'overview', icon: BarChart2, label: 'Performance Overview', shortLabel: 'Overview' },
+              { key: 'classes', icon: Users, label: 'Classes & Enrollment', shortLabel: 'Classes' },
+              { key: 'materials', icon: BookOpen, label: 'Class Materials', shortLabel: 'Materials' },
+              { key: 'scores', icon: Award, label: 'Assessment Records', shortLabel: 'Records' },
+              { key: 'activity', icon: BarChart2, label: 'Activity Monitor', shortLabel: 'Activity' },
+            ].map(({ key, icon: Icon, label, shortLabel }) => (
               <button
                 key={key}
-                onClick={() => setActiveTab(key)}
-                className={`flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition ${
+                onClick={(e) => {
+                  setActiveTab(key);
+                  e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                }}
+                className={`flex items-center shrink-0 whitespace-nowrap space-x-2 md:space-x-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs font-bold transition ${
                   activeTab === key
                     ? 'bg-indigo-600/15 border border-indigo-500/20 text-white font-extrabold'
-                    : 'border border-transparent text-slate-400 hover:bg-slate-900/40 hover:text-slate-200'
+                    : 'border border-slate-800 md:border-transparent text-slate-400 hover:bg-slate-900/40 hover:text-slate-200'
                 }`}
               >
                 <Icon className="w-4 h-4" />
-                <span>{label}</span>
+                <span className="md:hidden">{shortLabel}</span>
+                <span className="hidden md:inline">{label}</span>
               </button>
             ))}
           </nav>
         </div>
 
-        <div className="pt-6 border-t border-slate-900 mt-6">
+        <div className="hidden md:block pt-6 border-t border-slate-900 mt-6">
           <button
             onClick={data.handleSignOut}
             className="w-full flex items-center justify-between px-4 py-2 bg-slate-900 hover:bg-rose-950/20 border border-slate-850 hover:border-rose-950/50 rounded-xl text-xs font-bold text-slate-400 hover:text-rose-400 transition cursor-pointer"
@@ -168,10 +189,10 @@ export function TeacherDashboard() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 p-6 md:p-10 overflow-y-auto max-w-6xl relative z-10">
-        <header className="mb-8 flex justify-between items-center">
-          <div>
-            <h2 className="text-2xl font-bold text-white tracking-tight">
+      <main className="flex-1 w-full min-w-0 p-4 md:p-10 md:overflow-y-auto max-w-6xl relative z-10">
+        <header className="mb-5 md:mb-8 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+          <div className="min-w-0">
+            <h2 className="text-xl md:text-2xl font-bold text-white tracking-tight">
               {TAB_TITLES[activeTab]}
             </h2>
             <p className="text-xs text-slate-400 mt-1">
@@ -179,11 +200,11 @@ export function TeacherDashboard() {
             </p>
           </div>
           
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2 md:space-x-3 shrink-0">
             <select 
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
-              className="bg-slate-900 border border-slate-800 text-white text-xs rounded-xl px-3 py-2 outline-none focus:border-indigo-500"
+              className="flex-1 sm:flex-none min-w-0 bg-slate-900 border border-slate-800 text-white text-xs rounded-xl px-3 py-2 outline-none focus:border-indigo-500"
             >
               <option value="7days">Last 7 Days</option>
               <option value="30days">Last 30 Days</option>
@@ -193,7 +214,7 @@ export function TeacherDashboard() {
             <button 
               onClick={data.loadDashboardData}
               disabled={data.loadingData}
-              className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-xl transition cursor-pointer"
+              className="p-3 md:p-2 shrink-0 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-xl transition cursor-pointer"
               title="Refresh logs"
             >
               <RefreshCw className={`w-4 h-4 ${data.loadingData ? 'animate-spin' : ''}`} />

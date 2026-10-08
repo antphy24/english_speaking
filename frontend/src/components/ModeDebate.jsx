@@ -4,6 +4,7 @@ import Spinner from './UI/Spinner';
 import useSubmission from '../hooks/useSubmission';
 import { saveSubmissionOnServer } from '../utils/api';
 import SubmissionProgress from './UI/SubmissionProgress';
+import PinnedBar from './UI/PinnedBar';
 import { useMediaRecorder } from '../hooks/useMediaRecorder';
 
 const DEFAULT_MOTIONS = [
@@ -292,21 +293,30 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
 
   if (step === 'case_building') {
     return (
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fadeIn">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 animate-fadeIn">
+        <PinnedBar time={formatTime(timer)}>
+          <button
+            onClick={handleSkipToSpeech}
+            className="w-full font-bold py-2.5 px-3 rounded-xl text-sm flex items-center justify-center space-x-2 cursor-pointer bg-emerald-600/20 text-emerald-400 border border-emerald-500/30"
+          >
+            <span>Start Speech</span>
+            <Mic className="w-4 h-4" />
+          </button>
+        </PinnedBar>
         <div className="lg:col-span-1 space-y-6">
-          <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl p-6 shadow-xl">
-            <div className="flex items-center space-x-3 mb-4">
+          <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl">
+            <div className="hidden lg:flex items-center space-x-3 mb-4">
               <Clock className="w-5 h-5 text-indigo-400" />
               <h3 className="font-bold text-white">Case Building Time</h3>
             </div>
-            <div className="text-4xl font-mono font-bold text-center text-indigo-300 tracking-wider mb-6 bg-slate-950 py-4 rounded-xl border border-slate-800">
+            <div className="hidden lg:block text-4xl font-mono font-bold text-center text-indigo-300 tracking-wider mb-6 bg-slate-950 py-4 rounded-xl border border-slate-800">
               {formatTime(timer)}
             </div>
             <div className="mb-4">
               <span className="text-xs text-slate-500 uppercase font-bold tracking-wider">Motion</span>
               <p className="text-sm font-medium text-slate-200 mt-1">{motion}</p>
             </div>
-            <div className="mb-6">
+            <div className="lg:mb-6">
               <span className="text-xs text-slate-500 uppercase font-bold tracking-wider">Role</span>
               <p className={`text-sm font-bold mt-1 ${role === 'Affirmative' ? 'text-indigo-400' : 'text-rose-400'}`}>
                 {role}
@@ -314,7 +324,7 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
             </div>
             <button
               onClick={handleSkipToSpeech}
-              className="w-full bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 font-bold py-3 px-4 rounded-xl transition-colors flex items-center justify-center space-x-2"
+              className="hidden lg:flex w-full bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 font-bold py-3 px-4 rounded-xl transition-colors items-center justify-center space-x-2"
             >
               <span>Ready? Start Speech</span>
               <Mic className="w-4 h-4" />
@@ -323,7 +333,7 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
         </div>
 
         <div className="lg:col-span-2">
-          <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl p-6 shadow-xl h-full flex flex-col">
+          <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl h-full flex flex-col">
             <div className="flex items-center space-x-3 mb-4">
               <FileText className="w-5 h-5 text-slate-400" />
               <h3 className="font-bold text-white">Scratchpad</h3>
@@ -332,7 +342,7 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
               value={scratchpad}
               onChange={(e) => setScratchpad(e.target.value)}
               placeholder="Outline your AEL structure here. (Assertion, Explanation, Link-back). This will remain visible during your speech..."
-              className="flex-1 w-full bg-slate-950 border border-slate-800 text-slate-300 rounded-xl p-4 focus:outline-none focus:border-indigo-500/50 resize-none font-mono text-sm leading-relaxed"
+              className="flex-1 w-full min-h-[240px] lg:min-h-0 bg-slate-950 border border-slate-800 text-slate-300 rounded-xl p-4 focus:outline-none focus:border-indigo-500/50 resize-none font-mono text-sm leading-relaxed"
             />
           </div>
         </div>
@@ -342,13 +352,32 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
 
   if (step === 'recording') {
     return (
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fadeIn">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 animate-fadeIn">
+        <PinnedBar time={formatTime(timer)} tone={isRecording ? 'text-rose-300' : 'text-slate-200'}>
+          {!isRecording ? (
+            <button
+              onClick={handleBeginSpeech}
+              className="w-full font-bold py-2.5 px-3 rounded-xl text-sm flex items-center justify-center space-x-2 cursor-pointer bg-indigo-600 text-white"
+            >
+              <Mic className="w-4 h-4" />
+              <span>Record Speech</span>
+            </button>
+          ) : (
+            <button
+              onClick={handleFinishSpeech}
+              className="w-full font-bold py-2.5 px-3 rounded-xl text-sm flex items-center justify-center space-x-2 cursor-pointer bg-rose-600 text-white"
+            >
+              <Square className="w-4 h-4 fill-current" />
+              <span>Stop Recording</span>
+            </button>
+          )}
+        </PinnedBar>
         <div className="lg:col-span-1 space-y-6">
-          <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl p-6 shadow-xl text-center">
+          <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl text-center">
             <h3 className="font-bold text-white mb-2">Speech Delivery</h3>
-            <p className="text-xs text-slate-400 mb-6">Standard speech time is 7:15. Speak clearly.</p>
+            <p className="text-xs text-slate-400 lg:mb-6">Standard speech time is 7:15. Speak clearly.</p>
             
-            <div className="text-4xl font-mono font-bold text-center text-slate-200 tracking-wider mb-6 bg-slate-950 py-4 rounded-xl border border-slate-800 relative overflow-hidden">
+            <div className="hidden lg:block text-4xl font-mono font-bold text-center text-slate-200 tracking-wider mb-6 bg-slate-950 py-4 rounded-xl border border-slate-800 relative overflow-hidden">
               <div className={`absolute top-0 left-0 h-1 bg-indigo-500 transition-all duration-1000 ${isRecording ? 'w-full' : 'w-0'}`} style={{ animationDuration: '435s' }}></div>
               {formatTime(timer)}
             </div>
@@ -357,7 +386,7 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
               <button
                 onClick={handleBeginSpeech}
                 aria-label="Record Speech"
-                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-4 rounded-xl transition-all transform hover:scale-105 flex justify-center items-center space-x-3 shadow-lg shadow-indigo-900/20"
+                className="hidden lg:flex w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-4 rounded-xl transition-all transform hover:scale-105 justify-center items-center space-x-3 shadow-lg shadow-indigo-900/20"
               >
                 <Mic className="w-5 h-5" />
                 <span>Record Speech</span>
@@ -366,7 +395,7 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
               <button
                 onClick={handleFinishSpeech}
                 aria-label={`Stop Recording, ${recordingTime} seconds elapsed`}
-                className="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-4 px-4 rounded-xl transition-all transform hover:scale-105 flex justify-center items-center space-x-3 animate-pulse shadow-lg shadow-rose-900/20"
+                className="hidden lg:flex w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-4 px-4 rounded-xl transition-all transform hover:scale-105 justify-center items-center space-x-3 animate-pulse shadow-lg shadow-rose-900/20"
               >
                 <Square className="w-5 h-5 fill-current" />
                 <span>Stop Recording</span>
@@ -393,7 +422,7 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
         </div>
 
         <div className="lg:col-span-2">
-          <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl p-6 shadow-xl h-full flex flex-col">
+          <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl h-full flex flex-col">
             <div className="flex items-center space-x-3 mb-4">
               <FileText className="w-5 h-5 text-slate-400" />
               <h3 className="font-bold text-white">Your Notes</h3>
@@ -409,7 +438,7 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
 
   if (step === 'error') {
     return (
-      <div className="glass-panel p-6 rounded-xl border border-red-500/20 text-center space-y-4 animate-fadeIn">
+      <div className="glass-panel p-4 md:p-6 rounded-xl border border-red-500/20 text-center space-y-4 animate-fadeIn">
         <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto text-red-500">
           <AlertTriangle className="w-6 h-6" />
         </div>
@@ -426,7 +455,7 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
           {submission.progress?.retryable && submission.hasRecording() && (
             <button 
               onClick={handleRetry}
-              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+              className="px-5 py-2.5 md:py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
             >
               Retry
             </button>
@@ -434,14 +463,14 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
           {motion && (
             <button 
               onClick={handleBackToSpeech}
-              className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+              className="px-5 py-2.5 md:py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer"
             >
               Record Speech Again
             </button>
           )}
           <button 
             onClick={handleReset}
-            className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+            className="px-5 py-2.5 md:py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer"
           >
             Start Over
           </button>
@@ -473,7 +502,7 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
       <div className="space-y-8 animate-fadeIn pb-10">
         
         {/* Score Banner */}
-        <div className="bg-gradient-to-r from-indigo-900/40 to-slate-900/80 backdrop-blur-xl border border-indigo-500/20 rounded-3xl p-8 relative overflow-hidden flex flex-col md:flex-row items-center md:items-stretch justify-between shadow-2xl">
+        <div className="bg-gradient-to-r from-indigo-900/40 to-slate-900/80 backdrop-blur-xl border border-indigo-500/20 rounded-3xl p-5 md:p-8 relative overflow-hidden flex flex-col md:flex-row items-center md:items-stretch justify-between shadow-2xl">
            <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-[80px] pointer-events-none"></div>
            
            <div className="flex-1 w-full text-center md:text-left z-10">
@@ -486,8 +515,8 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
              </p>
              
              {audioUrl && (
-                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800/50 inline-block">
-                  <audio controls src={audioUrl} className="h-8 grayscale contrast-125" />
+                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800/50 block md:inline-block max-w-full">
+                  <audio controls src={audioUrl} className="h-8 w-full md:w-auto max-w-full grayscale contrast-125" />
                 </div>
              )}
            </div>
@@ -504,7 +533,7 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
         {/* Detailed Rubric Breakdown */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
            {/* Matter */}
-           <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 flex flex-col hover:border-blue-500/30 transition-colors">
+           <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 md:p-6 flex flex-col hover:border-blue-500/30 transition-colors">
               <div className="flex justify-between items-start mb-4">
                  <div>
                    <h4 className="font-bold text-white">Matter</h4>
@@ -520,7 +549,7 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
            </div>
            
            {/* Manner */}
-           <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 flex flex-col hover:border-purple-500/30 transition-colors">
+           <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 md:p-6 flex flex-col hover:border-purple-500/30 transition-colors">
               <div className="flex justify-between items-start mb-4">
                  <div>
                    <h4 className="font-bold text-white">Manner</h4>
@@ -536,7 +565,7 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
            </div>
 
            {/* Method */}
-           <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 flex flex-col hover:border-emerald-500/30 transition-colors">
+           <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 md:p-6 flex flex-col hover:border-emerald-500/30 transition-colors">
               <div className="flex justify-between items-start mb-4">
                  <div>
                    <h4 className="font-bold text-white">Method</h4>
@@ -554,13 +583,13 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
 
         {/* Overall Summary & Transcript */}
         <div className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden">
-           <div className="p-6 border-b border-slate-800 bg-slate-900/80">
+           <div className="p-4 md:p-6 border-b border-slate-800 bg-slate-900/80">
              <h4 className="font-bold text-white mb-3">Overall Adjudicator Feedback</h4>
              <p className="text-sm text-indigo-200/90 leading-relaxed">
                {resultData.overall_feedback}
              </p>
            </div>
-           <div className="p-6">
+           <div className="p-4 md:p-6">
              <h4 className="font-bold text-white mb-3 flex items-center space-x-2">
                <Target className="w-4 h-4 text-slate-400" />
                <span>Speech Transcript</span>

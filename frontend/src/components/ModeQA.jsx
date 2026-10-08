@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useMediaRecorder } from '../hooks/useMediaRecorder';
+import useSwipeRow from '../hooks/useSwipeRow';
 import ScoreCard from './UI/ScoreCard';
 import Spinner from './UI/Spinner';
 import { Mic, MicOff, Info, HelpCircle } from 'lucide-react';
@@ -34,6 +35,7 @@ export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, c
   const questionsList = [...customMapped, ...QUESTIONS];
 
   const [selectedQuestion, setSelectedQuestion] = useState(questionsList[0]);
+  const swipeRef = useSwipeRow();
 
   useEffect(() => {
     if (questionsList.length > 0) {
@@ -204,7 +206,7 @@ export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, c
     <div className="space-y-6">
       
       {/* Informative banner */}
-      <div className="flex items-start space-x-3 bg-indigo-500/10 border border-indigo-500/20 p-4 rounded-xl">
+      <div className="hidden md:flex items-start space-x-3 bg-indigo-500/10 border border-indigo-500/20 p-4 rounded-xl">
         <Info className="w-5 h-5 text-indigo-400 mt-0.5 flex-shrink-0" />
         <div className="text-xs text-indigo-200 leading-relaxed">
           <strong className="text-white block mb-0.5">Mode 2: IELTS Q&A Prompt</strong>
@@ -213,18 +215,20 @@ export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, c
       </div>
 
       {(status === 'idle' || status === 'recording') && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 md:gap-6">
           
           {/* Topic selector */}
-          <div className="md:col-span-1 space-y-3">
-            <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">IELTS Topics</h4>
-            <div className="flex flex-col space-y-2">
+          <div className="md:col-span-1 space-y-2 md:space-y-3 min-w-0">
+            <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              IELTS Topics{questionsList.length > 1 && <span className="md:hidden normal-case font-normal text-slate-500"> · swipe for more</span>}
+            </h4>
+            <div ref={swipeRef} className="no-scrollbar flex md:flex-col gap-2 md:gap-0 md:space-y-2 overflow-x-auto md:overflow-visible -mx-4 px-4 md:mx-0 md:px-0">
               {questionsList.map((q) => (
                 <button
                   key={q.id}
                   disabled={isRecording}
                   onClick={() => setSelectedQuestion(q)}
-                  className={`p-3 text-left rounded-xl border transition-all duration-200 ${
+                  className={`p-3 text-left rounded-xl border transition-all duration-200 shrink-0 md:w-auto ${questionsList.length > 1 ? 'w-[60%]' : 'w-full'} ${
                     selectedQuestion.id === q.id
                       ? 'bg-purple-600/15 border-purple-500 text-white'
                       : 'bg-slate-900/40 border-slate-800 text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
@@ -238,7 +242,7 @@ export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, c
           </div>
 
           {/* Prompt Detail Arena */}
-          <div className="md:col-span-3 flex flex-col justify-between glass-panel rounded-2xl p-6 border-slate-800 space-y-6">
+          <div className="md:col-span-3 min-w-0 flex flex-col justify-between glass-panel rounded-2xl p-4 md:p-6 border-slate-800 space-y-4 md:space-y-6">
             <div className="flex items-center space-x-2 text-xs font-medium text-purple-400 tracking-widest uppercase">
               <HelpCircle className="w-4 h-4" />
               <span>Prompt Card</span>
@@ -267,7 +271,7 @@ export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, c
                   {isRecording ? `Recording in progress: ${recordingTime}s` : 'Start Assessment'}
                 </span>
                 <span className="text-xs text-slate-500">
-                  {isRecording ? 'Click button again to complete recording' : 'Click to start recording your response'}
+                  {isRecording ? 'Tap the button again to finish' : 'Tap to start recording your response'}
                 </span>
               </div>
             </div>
@@ -298,7 +302,7 @@ export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, c
 
       {/* Error state */}
       {status === 'error' && (
-        <div className="glass-panel p-6 rounded-xl border border-red-500/20 text-center space-y-4 animate-fadeIn">
+        <div className="glass-panel p-4 md:p-6 rounded-xl border border-red-500/20 text-center space-y-4 animate-fadeIn">
           <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto text-red-500">
             <MicOff className="w-6 h-6" />
           </div>
@@ -315,14 +319,14 @@ export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, c
             {submission.progress?.retryable && submission.hasRecording() && (
               <button 
                 onClick={handleRetry}
-                className="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+                className="px-5 py-2.5 md:py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
               >
                 Retry
               </button>
             )}
             <button 
               onClick={handleRestart}
-              className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+              className="px-5 py-2.5 md:py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer"
             >
               Record Again
             </button>

@@ -190,7 +190,7 @@ export function TeacherLogin() {
             {isSignUp ? 'Already have an admin account? Log In' : 'Need an admin account? Create one'}
           </button>
           
-          <Link to="/student/login" className="text-slate-500 hover:text-slate-400 font-semibold transition text-center">
+          <Link to="/student/login" className="py-2 text-slate-500 hover:text-slate-400 font-semibold transition text-center">
             &larr; Back to Student Practice
           </Link>
         </div>

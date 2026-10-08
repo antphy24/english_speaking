@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import Spinner from './UI/Spinner';
 import SubmissionProgress from './UI/SubmissionProgress';
+import PinnedBar from './UI/PinnedBar';
 import useSubmission from '../hooks/useSubmission';
 import { useMediaRecorder } from '../hooks/useMediaRecorder';
 import { getMatteringOpposition, saveSubmissionOnServer } from '../utils/api';
@@ -450,7 +451,7 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
   // ---------------- Shared pieces ----------------
 
   const issuePanel = (
-    <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl p-6 shadow-xl">
+    <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl">
       <span className="text-xs text-slate-500 uppercase font-bold tracking-wider">Motion</span>
       <p className="text-sm font-medium text-slate-200 mt-1">{d.motion}</p>
       <span className="text-xs text-slate-500 uppercase font-bold tracking-wider block mt-4">Your side</span>
@@ -465,7 +466,7 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
   );
 
   const notesPanel = (
-    <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl p-6 shadow-xl h-full flex flex-col">
+    <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl h-full flex flex-col">
       <div className="flex items-center space-x-3 mb-4">
         <FileText className="w-5 h-5 text-slate-400" />
         <h3 className="font-bold text-white">Your breakdown</h3>
@@ -476,11 +477,43 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
     </div>
   );
 
+  // Phones/tablets: the same timer and record button, pinned to the top of the screen
+  const pinnedRecorder = (which, limit, label, note = '') => {
+    const left = limit - recordingTime;
+    const overtime = isRecording && left <= 0;
+    return (
+      <PinnedBar
+        time={isRecording ? formatTime(left) : formatTime(limit)}
+        tone={overtime ? 'text-rose-400' : isRecording ? 'text-rose-300' : 'text-slate-200'}
+        note={overtime ? `Time is up - finish your sentence (stops in ${Math.max(0, limit + GRACE_SECONDS - recordingTime)}s).` : note}
+      >
+        {!isRecording ? (
+          <button
+            onClick={() => beginRecording(which)}
+            className="w-full font-bold py-2.5 px-3 rounded-xl text-sm flex items-center justify-center space-x-2 cursor-pointer bg-indigo-600 text-white"
+          >
+            <Mic className="w-4 h-4" />
+            <span>{label}</span>
+          </button>
+        ) : (
+          <button
+            onClick={stopRecording}
+            className="w-full font-bold py-2.5 px-3 rounded-xl text-sm flex items-center justify-center space-x-2 cursor-pointer bg-rose-600 text-white"
+          >
+            <Square className="w-4 h-4 fill-current" />
+            <span>Stop Recording</span>
+          </button>
+        )}
+      </PinnedBar>
+    );
+  };
+
+  // Wide screens: full-size timer and record button inside the card
   const recorder = (which, limit, label) => {
     const left = limit - recordingTime;
     const overtime = isRecording && left <= 0;
     return (
-      <>
+      <div className="hidden lg:block">
         <div className={`text-4xl font-mono font-bold text-center tracking-wider mb-2 bg-slate-950 py-4 rounded-xl border border-slate-800 ${overtime ? 'text-rose-400' : 'text-slate-200'}`}>
           {isRecording ? formatTime(left) : formatTime(limit)}
         </div>
@@ -506,7 +539,7 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
             <span>Stop Recording</span>
           </button>
         )}
-      </>
+      </div>
     );
   };
 
@@ -588,9 +621,18 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
 
   if (step === 'breakdown') {
     return (
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fadeIn">
-        <div className="lg:col-span-1 space-y-6">
-          <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl p-6 shadow-xl">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 animate-fadeIn">
+        <PinnedBar time={formatTime(timer)}>
+          <button
+            onClick={handleGoToArgument}
+            className="w-full font-bold py-2.5 px-3 rounded-xl text-sm flex items-center justify-center space-x-2 cursor-pointer bg-emerald-600/20 text-emerald-400 border border-emerald-500/30"
+          >
+            <span>Deliver Argument</span>
+            <Mic className="w-4 h-4" />
+          </button>
+        </PinnedBar>
+        <div className="lg:col-span-1 space-y-4 lg:space-y-6">
+          <div className="hidden lg:block bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl">
             <div className="flex items-center space-x-3 mb-4">
               <Clock className="w-5 h-5 text-indigo-400" />
               <h3 className="font-bold text-white">Breakdown Time</h3>
@@ -609,7 +651,7 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
           {issuePanel}
         </div>
 
-        <div className="lg:col-span-2 bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
+        <div className="lg:col-span-2 bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl space-y-5">
           {NOTE_FIELDS.map(({ key, label, icon: Icon, hint, placeholder }) => (
             <div key={key}>
               <label htmlFor={`mattering-${key}`} className="flex items-center space-x-2 text-sm font-bold text-white">
@@ -638,11 +680,12 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
 
   if (step === 'argument') {
     return (
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fadeIn">
-        <div className="lg:col-span-1 space-y-6">
-          <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl p-6 shadow-xl text-center">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 animate-fadeIn">
+        {pinnedRecorder('argument', ARGUMENT_SECONDS, 'Record Argument')}
+        <div className="lg:col-span-1 space-y-4 lg:space-y-6">
+          <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl text-center">
             <h3 className="font-bold text-white mb-1">Round 1: Your Argument</h3>
-            <p className="text-xs text-slate-400 mb-5">One argument, 2 minutes: claim, reasoning, example, link back.</p>
+            <p className="text-xs text-slate-400 lg:mb-5">One argument, 2 minutes: claim, reasoning, example, link back.</p>
             {recorder('argument', ARGUMENT_SECONDS, 'Record Argument')}
           </div>
           {issuePanel}
@@ -674,11 +717,12 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
   if (step === 'rebuttal') {
     const prepping = !isRecording && timer > 0;
     return (
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fadeIn">
-        <div className="lg:col-span-1 space-y-6">
-          <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl p-6 shadow-xl text-center">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 animate-fadeIn">
+        {pinnedRecorder('rebuttal', REBUTTAL_SECONDS, 'Record Rebuttal')}
+        <div className="lg:col-span-1 space-y-4 lg:space-y-6">
+          <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl text-center">
             <h3 className="font-bold text-white mb-1">Round 2: Rebuttal</h3>
-            <p className="text-xs text-slate-400 mb-5">
+            <p className="text-xs text-slate-400 lg:mb-5">
               {prepping
                 ? `Prep time left: ${formatTime(timer)}. You can start early.`
                 : 'Answer the opposing argument in 1 minute.'}
@@ -700,7 +744,7 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
         </div>
 
         <div className="lg:col-span-2 space-y-6">
-          <div className="bg-rose-950/20 border border-rose-500/20 rounded-2xl p-6">
+          <div className="bg-rose-950/20 border border-rose-500/20 rounded-2xl p-4 md:p-6">
             <div className="flex items-center space-x-2 mb-3">
               <Swords className="w-5 h-5 text-rose-400" />
               <h3 className="font-bold text-white">The other side says</h3>
@@ -710,7 +754,7 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
               Tip: say which point you are answering, why it is wrong or not enough, and why your side still wins.
             </p>
           </div>
-          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 md:p-6">
             <span className="text-xs text-slate-500 uppercase font-bold tracking-wider">Your argument (what we heard)</span>
             <p className="text-sm text-slate-400 font-mono leading-relaxed mt-2 whitespace-pre-wrap">{argument}</p>
           </div>
@@ -737,7 +781,7 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
     const retryable = errorType === 'opposition' || errorType === 'grading'
       || ((errorType === 'argument' || errorType === 'rebuttal') && turn.progress?.retryable && turn.hasRecording());
     return (
-      <div className="glass-panel p-6 rounded-xl border border-red-500/20 text-center space-y-4 animate-fadeIn">
+      <div className="glass-panel p-4 md:p-6 rounded-xl border border-red-500/20 text-center space-y-4 animate-fadeIn">
         <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto text-red-500">
           <AlertTriangle className="w-6 h-6" />
         </div>
@@ -750,26 +794,26 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
         </div>
         <div className="flex flex-wrap justify-center gap-3 mt-4">
           {retryable && (
-            <button onClick={handleRetry} className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer">
+            <button onClick={handleRetry} className="px-5 py-2.5 md:py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer">
               Retry
             </button>
           )}
           {(errorType === 'argument' || errorType === 'rebuttal' || (errorType === 'mic' && d.motion)) && (
-            <button onClick={handleRecordAgain} className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer">
+            <button onClick={handleRecordAgain} className="px-5 py-2.5 md:py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer">
               Record Again
             </button>
           )}
           {errorType === 'rebuttal' && (
-            <button onClick={handleSkipRebuttal} className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer">
+            <button onClick={handleSkipRebuttal} className="px-5 py-2.5 md:py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer">
               Skip Rebuttal
             </button>
           )}
           {errorType === 'opposition' && (
-            <button onClick={handleGradeWithoutRebuttal} className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer">
+            <button onClick={handleGradeWithoutRebuttal} className="px-5 py-2.5 md:py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer">
               Score My Argument Only
             </button>
           )}
-          <button onClick={handleReset} className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer">
+          <button onClick={handleReset} className="px-5 py-2.5 md:py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer">
             Start Over
           </button>
         </div>
@@ -785,7 +829,7 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
     };
     return (
       <div className="space-y-8 animate-fadeIn pb-10">
-        <div className="bg-gradient-to-r from-indigo-900/40 to-slate-900/80 backdrop-blur-xl border border-indigo-500/20 rounded-3xl p-8 flex flex-col md:flex-row items-center md:items-stretch justify-between gap-6 shadow-2xl">
+        <div className="bg-gradient-to-r from-indigo-900/40 to-slate-900/80 backdrop-blur-xl border border-indigo-500/20 rounded-3xl p-5 md:p-8 flex flex-col md:flex-row items-center md:items-stretch justify-between gap-6 shadow-2xl">
           <div className="flex-1 w-full text-center md:text-left">
             <div className="inline-block px-3 py-1 bg-indigo-500/20 text-indigo-300 text-[10px] font-bold uppercase tracking-wider rounded-lg border border-indigo-500/20 mb-4">
               Mattering Drill
@@ -818,27 +862,27 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
           ))}
         </div>
 
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 md:p-6">
           <h4 className="font-bold text-white mb-3">Adjudicator Feedback</h4>
           <p className="text-sm text-indigo-200/90 leading-relaxed">{result.overall_feedback}</p>
         </div>
 
         <div className={`grid grid-cols-1 gap-6 ${result.rebuttal_feedback ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
-          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 md:p-6">
             <h4 className="font-bold text-white mb-3 flex items-center space-x-2">
               <Target className="w-4 h-4 text-blue-400" /><span>Your Argument</span>
             </h4>
             <p className="text-sm text-slate-300 leading-relaxed">{result.argument_feedback}</p>
           </div>
           {result.rebuttal_feedback && (
-            <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+            <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 md:p-6">
               <h4 className="font-bold text-white mb-3 flex items-center space-x-2">
                 <Swords className="w-4 h-4 text-rose-400" /><span>Your Rebuttal</span>
               </h4>
               <p className="text-sm text-slate-300 leading-relaxed">{result.rebuttal_feedback}</p>
             </div>
           )}
-          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 md:p-6">
             <h4 className="font-bold text-white mb-3 flex items-center space-x-2">
               <BookOpen className="w-4 h-4 text-emerald-400" /><span>Read Up On</span>
             </h4>
@@ -846,7 +890,7 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
           </div>
         </div>
 
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 space-y-5">
+        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 md:p-6 space-y-5">
           <div>
             <h4 className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-2">Your argument (transcript)</h4>
             <p className="text-sm text-slate-400 font-mono leading-loose bg-slate-950/50 p-4 rounded-xl border border-slate-800/50 whitespace-pre-wrap">{argument}</p>

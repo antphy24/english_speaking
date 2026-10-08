@@ -1,4 +1,5 @@
 import React from 'react';
+import SpeakableWords from './SpeakableWords';
 import { Award, BookOpen, MessageSquare, AlertCircle, HelpCircle, CheckCircle, RefreshCw } from 'lucide-react';
 
 export function ScoreCard({ mode, score, onRestart, isSaving, saveStatus, onSaveToLeaderboard }) {
@@ -20,19 +21,19 @@ export function ScoreCard({ mode, score, onRestart, isSaving, saveStatus, onSave
   };
 
   return (
-    <div className="w-full glass-panel rounded-2xl p-6 glow-purple border border-purple-500/10 animate-fadeIn space-y-6">
+    <div className="w-full glass-panel rounded-2xl p-4 md:p-6 glow-purple border border-purple-500/10 animate-fadeIn space-y-6">
       
       {/* Header */}
-      <div className="flex justify-between items-center border-b border-slate-800 pb-4">
-        <div className="flex items-center space-x-3">
+      <div className="flex justify-between items-center gap-3 border-b border-slate-800 pb-4">
+        <div className="flex items-center space-x-3 min-w-0">
           <div className="p-2.5 bg-purple-500/10 rounded-lg text-purple-400">
             {mode === 'read_aloud' && <BookOpen className="w-6 h-6" />}
             {mode === 'qa' && <HelpCircle className="w-6 h-6" />}
             {mode === 'conversation' && <MessageSquare className="w-6 h-6" />}
           </div>
           <div>
-            <span className="text-xs font-semibold text-purple-400 tracking-wider uppercase">Assessment Complete</span>
-            <h3 className="text-xl font-bold text-white">
+            <span className="text-[10px] md:text-xs font-semibold text-purple-400 tracking-wider uppercase">Assessment Complete</span>
+            <h3 className="text-lg md:text-xl font-bold text-white leading-tight">
               {mode === 'read_aloud' && 'Read Aloud Results'}
               {mode === 'qa' && 'Q&A Grading Report'}
               {mode === 'conversation' && 'Dialogue Evaluation Report'}
@@ -43,7 +44,7 @@ export function ScoreCard({ mode, score, onRestart, isSaving, saveStatus, onSave
         {/* Restart Button */}
         <button 
           onClick={onRestart}
-          className="flex items-center space-x-2 px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-sm transition-all duration-200"
+          className="flex items-center shrink-0 whitespace-nowrap space-x-2 px-3.5 py-2.5 md:py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-sm transition-all duration-200"
         >
           <RefreshCw className="w-4 h-4" />
           <span>Try Again</span>
@@ -89,15 +90,11 @@ export function ScoreCard({ mode, score, onRestart, isSaving, saveStatus, onSave
 
           {/* Details & Playback */}
           <div className="md:col-span-8 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-800/80">
                 <span className="block text-xs text-rose-400 font-semibold uppercase tracking-wider mb-1.5">Skipped Words ({score.skipped_words?.length || 0})</span>
                 {score.skipped_words && score.skipped_words.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
-                    {score.skipped_words.map((w, idx) => (
-                      <span key={idx} className="text-xs px-2 py-0.5 bg-rose-500/10 text-rose-300 border border-rose-500/20 rounded font-medium">{w}</span>
-                    ))}
-                  </div>
+                  <SpeakableWords words={score.skipped_words} tone="rose" className="md:max-h-28 md:overflow-y-auto pr-1" />
                 ) : (
                   <p className="text-xs text-slate-400 italic">No words skipped!</p>
                 )}
@@ -106,11 +103,10 @@ export function ScoreCard({ mode, score, onRestart, isSaving, saveStatus, onSave
               <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-800/80">
                 <span className="block text-xs text-amber-400 font-semibold uppercase tracking-wider mb-1.5">Mispronounced ({score.mispronounced_words?.length || 0})</span>
                 {score.mispronounced_words && score.mispronounced_words.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
-                    {score.mispronounced_words.map((w, idx) => (
-                      <span key={idx} className="text-xs px-2 py-0.5 bg-amber-500/10 text-amber-300 border border-amber-500/20 rounded font-medium">{w}</span>
-                    ))}
-                  </div>
+                  <>
+                    <SpeakableWords words={score.mispronounced_words} tone="amber" className="md:max-h-28 md:overflow-y-auto pr-1" />
+                    <p className="text-[10px] text-slate-500 mt-1.5">Tap a word to hear how it is pronounced.</p>
+                  </>
                 ) : (
                   <p className="text-xs text-slate-400 italic">Perfect pronunciation!</p>
                 )}
@@ -124,7 +120,7 @@ export function ScoreCard({ mode, score, onRestart, isSaving, saveStatus, onSave
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
           
           {/* Average Score Badge */}
-          <div className="md:col-span-4 flex flex-col items-center justify-center p-6 bg-slate-900/50 rounded-xl border border-slate-800">
+          <div className="md:col-span-4 flex flex-col items-center justify-center p-4 md:p-6 bg-slate-900/50 rounded-xl border border-slate-800">
             <Award className="w-10 h-10 text-purple-400 mb-2" />
             <span className="text-xs text-slate-400 uppercase tracking-widest font-semibold mb-1">Overall Score</span>
             
@@ -205,7 +201,7 @@ export function ScoreCard({ mode, score, onRestart, isSaving, saveStatus, onSave
       </div>
 
       {/* Leaderboard Logging Button */}
-      <div className="border-t border-slate-850 pt-5 flex items-center justify-between">
+      <div className="border-t border-slate-850 pt-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center space-x-2 text-xs text-slate-400">
           <AlertCircle className="w-4 h-4 text-purple-400 flex-shrink-0" />
           <span>Scores are recorded anonymously by default under your name.</span>
@@ -214,7 +210,7 @@ export function ScoreCard({ mode, score, onRestart, isSaving, saveStatus, onSave
         <button
           onClick={onSaveToLeaderboard}
           disabled={isSaving || saveStatus === 'success'}
-          className={`flex items-center space-x-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 ${
+          className={`flex items-center justify-center shrink-0 space-x-2 px-5 py-3 md:py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 ${
             saveStatus === 'success'
               ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
               : 'bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-600/20 active:scale-95 disabled:opacity-50'

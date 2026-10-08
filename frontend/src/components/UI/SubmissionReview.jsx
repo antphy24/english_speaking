@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, Headphones, FileText, MessageSquareText, Loader2, AlertTriangle } from 'lucide-react';
 import { getAssessmentReview } from '../../utils/api';
+import SpeakableWords from './SpeakableWords';
 
 const MODE_TITLES = {
   read_aloud: 'Read Aloud',
@@ -48,7 +49,8 @@ function scoreSummary(mode, score, fb) {
 
 /** Feedback paragraphs, per mode: [heading, text]. */
 function feedbackBlocks(mode, fb) {
-  const words = (list) => (Array.isArray(list) && list.length ? list.join(', ') : '');
+  // Word lists stay as arrays so each word can be tapped to hear it
+  const words = (list) => (Array.isArray(list) && list.length ? list : '');
   let blocks;
   if (mode === 'debate') {
     blocks = [['Overall', fb.overall_feedback], ['Matter', fb.matter_feedback], ['Manner', fb.manner_feedback], ['Method', fb.method_feedback]];
@@ -127,7 +129,7 @@ export function SubmissionReview({ assessment, apiBase, authClient, onClose, hea
 
   return (
     <div
-      className="fixed inset-0 z-[9998] flex items-start sm:items-center justify-center p-4 overflow-y-auto"
+      className="fixed inset-0 z-[9998] flex items-start sm:items-center justify-center p-2 sm:p-4 overflow-y-auto"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       role="dialog"
       aria-modal="true"
@@ -135,7 +137,7 @@ export function SubmissionReview({ assessment, apiBase, authClient, onClose, hea
     >
       <div className="fixed inset-0 bg-black/70 backdrop-blur-sm pointer-events-none" />
       <div className="relative w-full max-w-2xl bg-slate-950 border border-slate-800 rounded-2xl shadow-2xl my-auto">
-        <div className="flex items-start justify-between gap-4 px-6 py-4 border-b border-slate-800">
+        <div className="flex items-start justify-between gap-3 px-4 md:px-6 py-3 md:py-4 border-b border-slate-800">
           <div className="min-w-0">
             <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
               {heading}{mode ? ` · ${MODE_TITLES[mode] || mode}` : ''}
@@ -153,7 +155,7 @@ export function SubmissionReview({ assessment, apiBase, authClient, onClose, hea
           <button
             onClick={onClose}
             aria-label="Close"
-            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer shrink-0"
+            className="p-3 md:p-2 -mr-2 md:mr-0 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
@@ -164,7 +166,7 @@ export function SubmissionReview({ assessment, apiBase, authClient, onClose, hea
             {emptyMessage || 'No saved attempt yet. Finish one and it will appear here.'}
           </p>
         ) : (
-          <div className="px-6 py-5 space-y-6 max-h-[75vh] overflow-y-auto">
+          <div className="px-4 md:px-6 py-4 md:py-5 space-y-5 md:space-y-6 max-h-[80dvh] md:max-h-[75vh] overflow-y-auto overscroll-contain">
             {/* Score */}
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
               <div>
@@ -229,7 +231,9 @@ export function SubmissionReview({ assessment, apiBase, authClient, onClose, hea
               {blocks.map(([label, text]) => (
                 <div key={label}>
                   {blocks.length > 1 && <div className="text-xs font-bold text-slate-200 mb-0.5">{label}</div>}
-                  <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{text}</p>
+                  {Array.isArray(text)
+                    ? <SpeakableWords words={text} tone={label === 'Skipped words' ? 'rose' : 'amber'} className="mt-1" />
+                    : <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{text}</p>}
                 </div>
               ))}
             </Section>
