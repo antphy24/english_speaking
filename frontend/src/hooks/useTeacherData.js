@@ -304,12 +304,16 @@ export function useTeacherData(dateFilter = '30days') {
         
       if (error) throw error;
       
-      setActionSuccess('Class updated successfully!');
+      setActionSuccess('timer_settings' in updates ? 'Timers saved. Students get them the next time they open Debate or Mattering.' : 'Class updated successfully!');
       setClassesList(prev => prev.map(c => c.id === classId ? { ...c, ...updates } : c));
       if (selectedClass?.id === classId) setSelectedClass(prev => ({ ...prev, ...updates }));
     } catch (err) {
       console.error('Update class failed:', err);
-      setActionError(err.message || 'Failed to update class.');
+      if ('timer_settings' in updates && /timer_settings/.test(err.message || '')) {
+        setActionError('Timer settings need a one-time database update first: run supabase/migrations/20261016_class_timer_settings.sql in the Supabase SQL Editor, then try again.');
+      } else {
+        setActionError(err.message || 'Failed to update class.');
+      }
     }
   };
 

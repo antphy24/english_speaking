@@ -6,6 +6,7 @@ import {
 import Spinner from './UI/Spinner';
 import SubmissionProgress from './UI/SubmissionProgress';
 import PinnedBar from './UI/PinnedBar';
+import { DEFAULT_TIMERS, describeDuration } from '../utils/timerSettings';
 import useSubmission from '../hooks/useSubmission';
 import { useMediaRecorder } from '../hooks/useMediaRecorder';
 import { getMatteringOpposition, saveSubmissionOnServer } from '../utils/api';
@@ -37,10 +38,6 @@ const DEFAULT_ISSUES = [
   },
 ];
 
-const BREAKDOWN_SECONDS = 300;
-const ARGUMENT_SECONDS = 120;
-const REBUTTAL_PREP_SECONDS = 60;
-const REBUTTAL_SECONDS = 60;
 const AUDIO_SLOT = { argument: 'mattering', rebuttal: 'mattering_rebuttal' };
 const GRACE_SECONDS = 15; // recording stops by itself this long after time is up
 
@@ -105,7 +102,12 @@ const formatTime = (seconds) => {
   return `${m}:${s}`;
 };
 
-export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds, isSaving, saveStatus, customIssues = [] }) {
+export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds, isSaving, saveStatus, customIssues = [], timers = DEFAULT_TIMERS.mattering }) {
+  // Times set by the teacher for this class (seconds)
+  const BREAKDOWN_SECONDS = timers.breakdown;
+  const ARGUMENT_SECONDS = timers.argument;
+  const REBUTTAL_PREP_SECONDS = timers.rebuttal_prep;
+  const REBUTTAL_SECONDS = timers.rebuttal;
   // setup -> breakdown -> argument -> working -> rebuttal -> working -> grading -> results   (or error)
   const [step, setStep] = useState('setup');
   const [issueId, setIssueId] = useState('');
@@ -560,9 +562,9 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
 
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-6">
           {[
-            ['1', 'Breakdown', '5 min, written'],
-            ['2', 'Argument', '2 min, spoken'],
-            ['3', 'Rebuttal', '1 min prep + 1 min'],
+            ['1', 'Breakdown', `${describeDuration(BREAKDOWN_SECONDS)}, written`],
+            ['2', 'Argument', `${describeDuration(ARGUMENT_SECONDS)}, spoken`],
+            ['3', 'Rebuttal', REBUTTAL_PREP_SECONDS > 0 ? `${describeDuration(REBUTTAL_PREP_SECONDS)} prep + ${describeDuration(REBUTTAL_SECONDS)}` : describeDuration(REBUTTAL_SECONDS)],
             ['4', 'Speaker score', '69-81 scale'],
           ].map(([n, name, detail]) => (
             <div key={n} className="bg-slate-950/60 border border-slate-800 rounded-xl p-3">
@@ -685,7 +687,7 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
         <div className="lg:col-span-1 space-y-4 lg:space-y-6">
           <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl text-center">
             <h3 className="font-bold text-white mb-1">Round 1: Your Argument</h3>
-            <p className="text-xs text-slate-400 lg:mb-5">One argument, 2 minutes: claim, reasoning, example, link back.</p>
+            <p className="text-xs text-slate-400 lg:mb-5">One argument, {describeDuration(ARGUMENT_SECONDS)}: claim, reasoning, example, link back.</p>
             {recorder('argument', ARGUMENT_SECONDS, 'Record Argument')}
           </div>
           {issuePanel}
@@ -725,7 +727,7 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
             <p className="text-xs text-slate-400 lg:mb-5">
               {prepping
                 ? `Prep time left: ${formatTime(timer)}. You can start early.`
-                : 'Answer the opposing argument in 1 minute.'}
+                : `Answer the opposing argument in ${describeDuration(REBUTTAL_SECONDS)}.`}
             </p>
             {recorder('rebuttal', REBUTTAL_SECONDS, 'Record Rebuttal')}
             {!isRecording && (

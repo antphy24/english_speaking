@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, ChevronRight, Trash2, Edit2, Key, X, Check } from 'lucide-react';
+import TimerSettings from './TimerSettings';
 
 export function ClassesTab({
   classesList,
@@ -222,6 +223,9 @@ export function ClassesTab({
                 </div>
               )}
             </div>
+
+            {/* Speaking / preparation times for this class */}
+            <TimerSettings selectedClass={selectedClass} handleUpdateClass={handleUpdateClass} />
 
             {/* Import Forms */}
             <form onSubmit={handleBulkEnroll} className="space-y-4">

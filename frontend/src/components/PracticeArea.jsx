@@ -15,6 +15,7 @@ import useBeforeUnload from '../hooks/useBeforeUnload';
 import useSwipeRow from '../hooks/useSwipeRow';
 import AIStatusBadge from './AIStatusBadge';
 import SubmissionReview from './UI/SubmissionReview';
+import { resolveTimers, DEFAULT_TIMERS } from '../utils/timerSettings';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
@@ -35,6 +36,7 @@ export function PracticeArea() {
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [activeTab, setActiveTab] = useState('read_aloud'); // 'read_aloud' | 'qa' | 'conversation' | 'debate' | 'mattering' | 'leaderboard'
   const [customMaterials, setCustomMaterials] = useState([]);
+  const [timers, setTimers] = useState(DEFAULT_TIMERS); // Debate / Mattering times set by the teacher for this class
 
   // Verification state for scores saving
   const [isSaving, setIsSaving] = useState(false);
@@ -127,6 +129,27 @@ export function PracticeArea() {
 
     checkAuth();
   }, [navigate]);
+
+  // The teacher can change the Debate / Mattering times for the class at any time, so read
+  // them again whenever one of those tabs is opened. Any problem (for example the database
+  // not updated yet) simply keeps the default times.
+  useEffect(() => {
+    if (!student?.class_id || (activeTab !== 'debate' && activeTab !== 'mattering')) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('classes')
+          .select('timer_settings')
+          .eq('id', student.class_id)
+          .maybeSingle();
+        if (!cancelled && !error) setTimers(resolveTimers(data?.timer_settings));
+      } catch {
+        /* keep the defaults */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeTab, student?.class_id]);
 
   const handleSignOut = async () => {
     const confirmed = await confirm({
@@ -401,6 +424,7 @@ export function PracticeArea() {
               saveStatus={saveStatus}
               customMotions={debateMaterials}
               getSessionSeconds={getSessionSeconds}
+              timers={timers.debate}
             />
           )}
           {activeTab === 'mattering' && (
@@ -411,6 +435,7 @@ export function PracticeArea() {
               saveStatus={saveStatus}
               customIssues={matteringMaterials}
               getSessionSeconds={getSessionSeconds}
+              timers={timers.mattering}
             />
           )}
           {activeTab === 'leaderboard' && (

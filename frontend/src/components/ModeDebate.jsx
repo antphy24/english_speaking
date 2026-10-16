@@ -5,6 +5,7 @@ import useSubmission from '../hooks/useSubmission';
 import { saveSubmissionOnServer } from '../utils/api';
 import SubmissionProgress from './UI/SubmissionProgress';
 import PinnedBar from './UI/PinnedBar';
+import { DEFAULT_TIMERS, describeDuration } from '../utils/timerSettings';
 import { useMediaRecorder } from '../hooks/useMediaRecorder';
 
 const DEFAULT_MOTIONS = [
@@ -14,14 +15,17 @@ const DEFAULT_MOTIONS = [
   "This House regrets the rise of cancel culture."
 ];
 
-export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessionSeconds, isSaving, saveStatus, customMotions = [] }) {
+export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessionSeconds, isSaving, saveStatus, customMotions = [], timers = DEFAULT_TIMERS.debate }) {
+  // Times set by the teacher for this class (seconds)
+  const PREP_SECONDS = timers.prep;
+  const SPEECH_SECONDS = timers.speech;
   const [step, setStep] = useState('setup'); // setup -> case_building -> recording -> grading -> results
   
   const [motion, setMotion] = useState('');
   const [role, setRole] = useState('Affirmative');
   const [scratchpad, setScratchpad] = useState('');
   
-  const [timer, setTimer] = useState(900); // 15 mins for case building, 435s for speech
+  const [timer, setTimer] = useState(PREP_SECONDS); // case building first, then the speech
   
   const [isRecordingState, setIsRecordingState] = useState(false); // Remove if not needed, wait actually I should just use the hook
   const [audioUrl, setAudioUrl] = useState(null);
@@ -74,7 +78,7 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
       return;
     }
     setStep('case_building');
-    setTimer(900); // 15 mins
+    setTimer(PREP_SECONDS);
     startTimer();
   };
 
@@ -94,7 +98,7 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
   const handleSkipToSpeech = () => {
     clearInterval(timerIntervalRef.current);
     setStep('recording');
-    setTimer(435); // 7 mins 15 seconds
+    setTimer(SPEECH_SECONDS);
   };
 
   const handleBeginSpeech = () => {
@@ -211,7 +215,7 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
     setErrorMessage('');
     setAudioUrl(null);
     setStep('recording');
-    setTimer(435);
+    setTimer(SPEECH_SECONDS);
   };
 
   const formatTime = (seconds) => {
@@ -375,10 +379,10 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
         <div className="lg:col-span-1 space-y-6">
           <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl text-center">
             <h3 className="font-bold text-white mb-2">Speech Delivery</h3>
-            <p className="text-xs text-slate-400 lg:mb-6">Standard speech time is 7:15. Speak clearly.</p>
+            <p className="text-xs text-slate-400 lg:mb-6">Speech time is {describeDuration(SPEECH_SECONDS)}. Speak clearly.</p>
             
             <div className="hidden lg:block text-4xl font-mono font-bold text-center text-slate-200 tracking-wider mb-6 bg-slate-950 py-4 rounded-xl border border-slate-800 relative overflow-hidden">
-              <div className={`absolute top-0 left-0 h-1 bg-indigo-500 transition-all duration-1000 ${isRecording ? 'w-full' : 'w-0'}`} style={{ animationDuration: '435s' }}></div>
+              <div className={`absolute top-0 left-0 h-1 bg-indigo-500 transition-all duration-1000 ${isRecording ? 'w-full' : 'w-0'}`} style={{ animationDuration: `${SPEECH_SECONDS}s` }}></div>
               {formatTime(timer)}
             </div>
 
