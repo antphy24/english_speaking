@@ -2,7 +2,7 @@ import useSwipeRow from '../hooks/useSwipeRow';
 import React, { useState } from 'react';
 import { 
   Plus, Users, Award, BookOpen, LogOut, 
-  BarChart2, ShieldAlert, CheckCircle, RefreshCw 
+  BarChart2, ShieldAlert, CheckCircle, RefreshCw, FlaskConical 
 } from 'lucide-react';
 import Spinner from './UI/Spinner';
 import { useTeacherData } from '../hooks/useTeacherData';
@@ -11,6 +11,7 @@ import { ClassesTab } from './teacher/ClassesTab';
 import { MaterialsTab } from './teacher/MaterialsTab';
 import { ScoresTab } from './teacher/ScoresTab';
 import { ActivityTab } from './teacher/ActivityTab';
+import { ResearchTab } from './research/ResearchTab';
 import SubmissionReview from './UI/SubmissionReview';
 import { supabaseTeacher } from '../utils/supabaseClient';
 
@@ -96,6 +97,7 @@ export function TeacherDashboard() {
     materials: 'Manage Practice Materials',
     scores: 'Assessments Score Ledger',
     activity: 'Student Activity Monitor',
+    research: 'Research Tests (Pretest / Posttest)',
   };
 
   const TAB_DESCRIPTIONS = {
@@ -104,6 +106,7 @@ export function TeacherDashboard() {
     materials: 'Add class-specific custom texts for Read Aloud, prompts for Q&A, AI conversations, or debate and mattering motions.',
     scores: 'Deep-dive review of individual student speech assessments.',
     activity: 'Track active practice time and monitor idle behavior.',
+    research: 'Speaking tests for a research study: consent, one recording per question, AI scoring with the Brown rubric, blind human scorers.',
   };
 
   return (
@@ -156,6 +159,7 @@ export function TeacherDashboard() {
               { key: 'materials', icon: BookOpen, label: 'Class Materials', shortLabel: 'Materials' },
               { key: 'scores', icon: Award, label: 'Assessment Records', shortLabel: 'Records' },
               { key: 'activity', icon: BarChart2, label: 'Activity Monitor', shortLabel: 'Activity' },
+              { key: 'research', icon: FlaskConical, label: 'Research Tests', shortLabel: 'Research' },
             ].map(({ key, icon: Icon, label, shortLabel }) => (
               <button
                 key={key}
@@ -332,6 +336,10 @@ export function TeacherDashboard() {
                 setCurrentPage={data.setCurrentPage}
                 itemsPerPage={data.itemsPerPage}
               />
+            )}
+
+            {activeTab === 'research' && (
+              <ResearchTab setActionError={data.setActionError} setActionSuccess={data.setActionSuccess} />
             )}
 
             {activeTab === 'activity' && (

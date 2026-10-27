@@ -26,6 +26,7 @@ from rq.job import Job
 # Import utilities
 from utils.ai import get_chat_reply, get_mattering_opposition, AIBusyError, AITransientError
 from utils import pipeline, storage
+from research_api import build_router as build_research_router, sweeper_loop
 
 load_dotenv()
 
@@ -64,8 +65,10 @@ async def lifespan(app: FastAPI):
         transport=httpx.AsyncHTTPTransport(local_address="0.0.0.0", retries=2) if force_ipv4 else None,
     )
     reaper_task = asyncio.create_task(temp_file_reaper())
+    research_task = asyncio.create_task(sweeper_loop(research_q_transcribe, research_q_score))
     yield
     reaper_task.cancel()
+    research_task.cancel()
     await app.state.http_client.aclose()
 
 app = FastAPI(title="English speaking assessment platform API", lifespan=lifespan)
@@ -1001,6 +1004,12 @@ async def retry_submission(request: Request, sub_id: str, user: dict = Depends(v
         # Retrying students go to the front: they already waited their turn.
         return pipeline.public_view(pipeline.enqueue_stage(sub, at_front=True))
     return await asyncio.to_thread(retry)
+
+# Research Test mode (pretest/posttest): see research_api.py
+research_router, research_q_transcribe, research_q_score = build_research_router(
+    verify_authenticated, verify_teacher, redis_conn)
+app.include_router(research_router)
+
 
 @app.get("/job/{job_id}")
 async def get_job_status(job_id: str):

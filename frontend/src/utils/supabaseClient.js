@@ -21,5 +21,10 @@ export const supabaseAdmin = createClient(supabaseUrl, supabaseAnonKey, {
   auth: { storageKey: `sb-${projectId}-admin-auth-token` }
 })
 
+// Human scorers of the Research Test mode have their own login session too.
+export const supabaseScorer = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: { storageKey: `sb-${projectId}-scorer-auth-token` }
+})
+
 // Keep default export for backwards compatibility in case we missed a file
 export const supabase = supabaseStudent;

@@ -5,6 +5,7 @@ Usage:
     python worker.py                                   # all queues, priority order
     python worker.py transcribe_priority transcribe    # transcription only
     python worker.py grade                             # grading only
+    python worker.py research_transcribe research_score  # research tests only
 
 Transcription and grading run in separate worker groups (see supervisord.conf) so
 that grading jobs waiting for AI capacity never block transcriptions.
@@ -22,7 +23,7 @@ load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
-DEFAULT_QUEUES = ["transcribe_priority", "transcribe", "grade"]
+DEFAULT_QUEUES = ["transcribe_priority", "transcribe", "grade", "research_transcribe", "research_score"]
 
 if os.name == "nt":
     # Windows has no SIGALRM, so job timeouts cannot be enforced there (local dev only).

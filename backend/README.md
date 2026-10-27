@@ -47,3 +47,22 @@ This is the backend for the Hrefspeak English learning platform. It runs FastAPI
   time. Disable with `LOCAL_ASR_ENABLED=false`. Check it with `python check_local_asr.py`.
 - Run `python check_groq.py` to check that every model works with your key.
 - Make sure `ALLOW_MOCK_TOKENS` is **not** `true` in production.
+
+## Research Test mode (pretest / posttest)
+
+Teacher dashboard > **Research Tests**. One-time setup:
+
+1. Run `supabase/migrations/20261027_research_test.sql` in the Supabase SQL Editor (tables + private bucket `research-recordings`).
+2. Deploy this backend (the new `research-transcribe-worker` and `research-score-worker` start from `supervisord.conf`).
+3. Optional settings (environment variables):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `RESEARCH_GEMINI_MODEL` | `gemini-3.8-flash` | Model that listens to the audio and scores Brown's rubric. Keep it the same for pretest AND posttest. |
+| `RESEARCH_GEMINI_RPD` | `20` | Free requests per day for that model (check Google AI Studio > Rate limits). Replaced automatically when Google reports the real value. |
+| `RESEARCH_GEMINI_RPM` | `5` | Free requests per minute. |
+| `RESEARCH_SCORING_RUNS` | `1` | Scoring runs per test; the median is used. 3 is more reliable but uses 3x the quota. |
+| `RESEARCH_STORAGE_LIMIT_MB` | `1024` | Shown on the capacity page (Supabase free plan = 1 GB). |
+| `RESEARCH_LOCAL_TZ` | `Asia/Makassar` | Time zone for the reset times shown to the teacher. |
+
+Recordings are never deleted automatically. Download the ZIP and Excel before deleting a study.

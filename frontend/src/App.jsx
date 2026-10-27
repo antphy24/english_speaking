@@ -13,6 +13,9 @@ const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
 const PracticeArea = lazy(() => import('./components/PracticeArea'));
 const AdminLogin = lazy(() => import('./components/AdminLogin'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
+const SpeakingTest = lazy(() => import('./components/research/SpeakingTest'));
+const ScorerLogin = lazy(() => import('./components/research/ScorerLogin'));
+const ScorerDashboard = lazy(() => import('./components/research/ScorerDashboard'));
 
 // Loading fallback
 const PageLoader = () => (
@@ -35,6 +38,11 @@ export function App() {
               {/* Student practice environment */}
               <Route path="/practice" element={<PracticeArea />} />
               
+              {/* Research Test mode: student test and human scorers */}
+              <Route path="/speaking-test/:testId" element={<SpeakingTest />} />
+              <Route path="/scorer/login" element={<ScorerLogin />} />
+              <Route path="/scorer" element={<ScorerDashboard />} />
+
               {/* Teacher login & dashboard */}
               <Route path="/teacher/login" element={<TeacherLogin />} />
               <Route path="/teacher/dashboard" element={<TeacherDashboard />} />

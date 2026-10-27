@@ -15,6 +15,7 @@ import useBeforeUnload from '../hooks/useBeforeUnload';
 import useSwipeRow from '../hooks/useSwipeRow';
 import AIStatusBadge from './AIStatusBadge';
 import SubmissionReview from './UI/SubmissionReview';
+import StudentTestBanner from './research/StudentTestBanner';
 import { resolveTimers, DEFAULT_TIMERS } from '../utils/timerSettings';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
@@ -379,6 +380,8 @@ export function PracticeArea() {
             <AIStatusBadge apiBase={API_BASE} />
           </div>
         </header>
+
+        <StudentTestBanner studentId={student?.id} />
 
         {/* Tab Components */}
         <div className="animate-fadeIn">
