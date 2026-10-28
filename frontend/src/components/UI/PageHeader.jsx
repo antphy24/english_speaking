@@ -11,7 +11,7 @@ export function PageHeader({ title, description, actions, className = '' }) {
         <h1 className="text-[22px] md:text-[28px] font-bold tracking-tight text-ink leading-tight">{title}</h1>
         {description && <p className="text-sm md:text-[15px] text-ink-muted max-w-2xl">{description}</p>}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2 md:gap-2.5 shrink-0">{actions}</div>}
+      {actions && <div className="flex items-center gap-2 md:gap-2.5 shrink-0">{actions}</div>}
     </header>
   );
 }

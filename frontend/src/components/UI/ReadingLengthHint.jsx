@@ -24,25 +24,25 @@ export function ReadingLengthHint({ text }) {
 
   let tone, Icon, advice;
   if (words < 15) {
-    tone = 'text-amber-300 border-amber-500/20 bg-amber-500/10';
+    tone = 'text-warning border-warning/30 bg-warning-tint';
     Icon = AlertTriangle;
     advice = 'Very short: a single mistake changes the score a lot. Aim for at least 30 words.';
   } else if (words <= 80) {
-    tone = 'text-emerald-300 border-emerald-500/20 bg-emerald-500/10';
+    tone = 'text-success border-success/30 bg-success-tint';
     Icon = CheckCircle2;
     advice = 'Good length for whole-school sessions: hundreds of students can get results within minutes.';
   } else if (words <= 150) {
-    tone = 'text-sky-300 border-sky-500/20 bg-sky-500/10';
+    tone = 'text-brand-ink border-brand/30 bg-brand-tint';
     Icon = Info;
     advice = 'Good for class sessions. With 200+ students at once, some will wait longer for results.';
   } else {
-    tone = 'text-amber-300 border-amber-500/20 bg-amber-500/10';
+    tone = 'text-warning border-warning/30 bg-warning-tint';
     Icon = AlertTriangle;
     advice = 'Long passage: best for small groups or homework. With hundreds of students at once, results can take over an hour.';
   }
 
   return (
-    <div className={`mt-2 p-2.5 rounded-lg border text-[11px] leading-relaxed space-y-1 ${tone}`}>
+    <div className={`mt-2 p-2.5 rounded-lg border text-xs leading-relaxed space-y-1 ${tone}`}>
       <div className="flex items-center gap-1.5 font-semibold">
         <Clock className="w-3.5 h-3.5 shrink-0" />
         <span>
@@ -54,7 +54,7 @@ export function ReadingLengthHint({ text }) {
         <span>{advice}</span>
       </div>
       {hasDigits && (
-        <div className="flex items-start gap-1.5 text-amber-200">
+        <div className="flex items-start gap-1.5 text-warning">
           <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
           <span>Contains numbers: write them as words (e.g. "nineteen ninety") so correct readings are not marked wrong.</span>
         </div>

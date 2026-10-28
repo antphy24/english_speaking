@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../utils/supabaseClient';
-import { Sparkles, BookOpen, Key, User, ShieldAlert, Check } from 'lucide-react';
-import Spinner from './UI/Spinner';
+import { Key, Loader2 } from 'lucide-react';
+import { Button } from './UI/Button';
+import { Field, Input, Select } from './UI/Field';
+import { Alert } from './UI/Alert';
+import { Logo, Wordmark } from './UI/Logo';
 
 export function StudentLogin() {
   const navigate = useNavigate();
@@ -163,172 +166,125 @@ export function StudentLogin() {
     }
   };
 
+  const shell = (children) => (
+    <div className="min-h-screen bg-canvas text-ink flex flex-col items-center px-4 py-10 sm:py-16">
+      <div className="w-full max-w-[420px] flex-1 flex flex-col">{children}</div>
+    </div>
+  );
+
   if (changingPassword) {
-    return (
-      <div className="min-h-screen bg-[#070b13] flex flex-col justify-center items-center px-4 relative overflow-hidden">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-600/10 rounded-full blur-[100px] pointer-events-none animate-pulse-slow"></div>
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-600/10 rounded-full blur-[100px] pointer-events-none animate-pulse-slow [animation-delay:2s]"></div>
-        
-        <div className="w-full max-w-md glass-panel p-8 rounded-3xl border border-purple-500/10 shadow-2xl relative z-10 space-y-6">
-          <div className="text-center space-y-2">
-            <div className="w-12 h-12 bg-amber-500/10 rounded-2xl border border-amber-500/20 flex items-center justify-center mx-auto text-amber-400">
-              <Key className="w-6 h-6 animate-bounce" />
-            </div>
-            <h2 className="text-2xl font-bold text-white tracking-tight">Set New Password</h2>
-            <p className="text-slate-400 text-xs px-2 leading-relaxed">
-              This is your first login. For security, you must update your password from your default School ID.
-            </p>
+    return shell(
+      <>
+        <div className="flex flex-col items-center text-center gap-3 mb-7">
+          <div className="w-12 h-12 rounded-full bg-brand-tint text-brand-ink flex items-center justify-center">
+            <Key className="w-6 h-6" aria-hidden="true" />
           </div>
-          
-          {error && (
-            <div className="p-3 bg-rose-500/15 border border-rose-500/20 rounded-xl text-xs text-rose-400 flex items-center space-x-2">
-              <ShieldAlert className="w-4 h-4 shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-          
-          {success && (
-            <div className="p-3 bg-emerald-500/15 border border-emerald-500/20 rounded-xl text-xs text-emerald-400 flex items-center space-x-2">
-              <Check className="w-4 h-4 shrink-0" />
-              <span>{success}</span>
-            </div>
-          )}
-
-          <form onSubmit={handlePasswordChange} className="space-y-4">
-            <div className="space-y-1 text-left">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">New Password</label>
-              <input
-                type="password"
-                required
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Minimum 6 characters"
-                className="w-full px-4 py-2.5 bg-slate-900/60 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all text-sm font-medium"
-              />
-            </div>
-            
-            <div className="space-y-1 text-left">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Confirm New Password</label>
-              <input
-                type="password"
-                required
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Confirm your password"
-                className="w-full px-4 py-2.5 bg-slate-900/60 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all text-sm font-medium"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loggingIn}
-              className="w-full py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-purple-600/20 active:scale-[0.98] transition-all duration-200 disabled:opacity-50"
-            >
-              {loggingIn ? 'Updating...' : 'Update & Enter'}
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-[#070b13] flex flex-col justify-center items-center px-4 relative overflow-hidden">
-      {/* Background neon glows */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-600/10 rounded-full blur-[100px] pointer-events-none animate-pulse-slow"></div>
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-600/10 rounded-full blur-[100px] pointer-events-none animate-pulse-slow [animation-delay:2s]"></div>
-
-      <div className="w-full max-w-md glass-panel p-8 rounded-3xl border border-purple-500/10 shadow-2xl relative z-10 space-y-6">
-        <div className="text-center space-y-2">
-          <div className="w-16 h-16 bg-purple-600/10 rounded-2xl border border-purple-500/20 flex items-center justify-center mx-auto text-purple-400">
-            <Sparkles className="w-8 h-8 animate-pulse" />
-          </div>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight">
-            href<span className="text-purple-500 font-medium">Speak</span>
-          </h1>
-          <p className="text-slate-400 text-xs">
-            Student Assessment Platform
+          <h1 className="text-2xl font-bold tracking-tight">Set a new password</h1>
+          <p className="text-[15px] text-ink-muted leading-relaxed">
+            This is your first sign-in. Please replace the starting password (your School ID) with your own.
           </p>
         </div>
 
-        {error && (
-          <div className="p-3 bg-rose-500/15 border border-rose-500/20 rounded-xl text-xs text-rose-400 flex items-center space-x-2">
-            <ShieldAlert className="w-4 h-4 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
+        <form onSubmit={handlePasswordChange} className="bg-surface border border-line rounded-2xl shadow-card p-5 sm:p-6 flex flex-col gap-5">
+          {error && <Alert tone="error">{error}</Alert>}
+          {success && <Alert tone="success">{success}</Alert>}
 
-        <form onSubmit={handleLogin} className="space-y-4">
-          {/* Input 1: Class Code */}
-          <div className="space-y-1 text-left">
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Class Code</label>
-            <div className="relative">
-              <input
-                type="text"
-                required
-                value={classCode}
-                onChange={handleClassCodeChange}
-                placeholder="Enter 6-character code"
-                className="w-full px-4 py-2.5 bg-slate-900/60 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all text-sm font-semibold tracking-wider"
-              />
-              {loadingStudents && (
-                <div className="absolute right-3 top-3">
-                  <div className="w-4 h-4 border-2 border-purple-500/20 border-t-purple-500 rounded-full animate-spin"></div>
-                </div>
-              )}
-            </div>
-          </div>
+          <Field label="New password" hint="At least 6 characters.">
+            <Input
+              type="password"
+              required
+              autoComplete="new-password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+            />
+          </Field>
+          <Field label="Type it again">
+            <Input
+              type="password"
+              required
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+            />
+          </Field>
 
-          {/* Input 2: Dropdown of Student Names */}
-          {studentsList.length > 0 && (
-            <div className="space-y-1 text-left animate-fadeIn">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Your Name</label>
-              <select
-                value={selectedStudent?.id || ''}
-                onChange={handleStudentSelect}
-                className="w-full px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all text-sm font-medium"
-              >
-                {studentsList.map((student) => (
-                  <option key={student.id} value={student.id} className="bg-slate-950 text-white">
-                    {student.full_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Input 3: Password */}
-          {selectedStudent && (
-            <div className="space-y-1 text-left animate-fadeIn">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Password</label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Initially your School ID"
-                className="w-full px-4 py-2.5 bg-slate-900/60 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all text-sm font-medium"
-              />
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loggingIn || !selectedStudent}
-            className="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-purple-600/20 active:scale-[0.98] transition-all duration-200 disabled:opacity-50"
-          >
-            {loggingIn ? 'Logging in...' : 'Start Practice'}
-          </button>
+          <Button type="submit" size="lg" fullWidth loading={loggingIn}>
+            {loggingIn ? 'Updating...' : 'Save and start practising'}
+          </Button>
         </form>
+      </>
+    );
+  }
 
-        <div className="pt-4 border-t border-slate-900 flex justify-between items-center text-xs">
-          <span className="text-slate-500">Are you a Teacher?</span>
-          <Link to="/teacher/login" className="py-2 -my-2 pl-3 text-purple-400 hover:text-purple-300 font-bold transition">
-            Teacher Portal &rarr;
-          </Link>
+  return shell(
+    <>
+      <div className="flex flex-col items-center text-center gap-4 mb-7">
+        <Logo size="lg" markOnly />
+        <div className="space-y-1.5">
+          <h1 className="text-[26px] font-bold tracking-tight">Welcome to <Wordmark /></h1>
+          <p className="text-[15px] text-ink-muted">Practise speaking English and get feedback on every attempt.</p>
         </div>
       </div>
-    </div>
+
+      <form onSubmit={handleLogin} className="bg-surface border border-line rounded-2xl shadow-card p-5 sm:p-6 flex flex-col gap-5">
+        {error && <Alert tone="error">{error}</Alert>}
+
+        <Field label="Class code" htmlFor="class-code" hint={studentsList.length === 0 ? "6 letters or numbers. Ask your teacher if you don't know it." : undefined}>
+          <div className="relative">
+            <Input
+              id="class-code"
+              type="text"
+              required
+              value={classCode}
+              onChange={handleClassCodeChange}
+              placeholder="e.g. AB12CD"
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              className="font-semibold tracking-[0.15em] uppercase pr-11"
+            />
+            {loadingStudents && (
+              <Loader2 className="absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-brand animate-spin" aria-label="Finding your class" />
+            )}
+          </div>
+        </Field>
+
+        {studentsList.length > 0 && (
+          <Field label="Your name">
+            <Select value={selectedStudent?.id || ''} onChange={handleStudentSelect}>
+              {studentsList.map((student) => (
+                <option key={student.id} value={student.id}>
+                  {student.full_name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+
+        {selectedStudent && (
+          <Field label="Password" hint="The first time, this is your School ID.">
+            <Input
+              type="password"
+              required
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </Field>
+        )}
+
+        <Button type="submit" size="lg" fullWidth loading={loggingIn} disabled={!selectedStudent}>
+          {loggingIn ? 'Signing in...' : 'Start practising'}
+        </Button>
+      </form>
+
+      <p className="mt-auto pt-10 text-center text-sm text-ink-muted">
+        Are you a teacher?{' '}
+        <Link to="/teacher/login" className="font-semibold text-brand-ink hover:underline underline-offset-4">
+          Sign in here
+        </Link>
+      </p>
+    </>
   );
 }
 export default StudentLogin;

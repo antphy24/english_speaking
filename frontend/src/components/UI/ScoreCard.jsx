@@ -1,242 +1,206 @@
 import React from 'react';
 import SpeakableWords from './SpeakableWords';
-import { Award, BookOpen, MessageSquare, AlertCircle, HelpCircle, CheckCircle, RefreshCw } from 'lucide-react';
+import { CheckCircle2, RotateCcw, Lightbulb } from 'lucide-react';
+import { Button } from './Button';
 
-export function ScoreCard({ mode, score, onRestart, isSaving, saveStatus, onSaveToLeaderboard }) {
-  if (!score) return null;
+// One place that turns a 0-100 score into words and a colour
+export function scoreBand(val) {
+  if (val >= 85) return { label: 'Excellent', text: 'text-success', bar: 'bg-success', stroke: 'stroke-success' };
+  if (val >= 70) return { label: 'Good', text: 'text-brand-ink', bar: 'bg-brand', stroke: 'stroke-brand' };
+  if (val >= 50) return { label: 'Fair', text: 'text-warning', bar: 'bg-warning', stroke: 'stroke-warning' };
+  return { label: 'Keep practising', text: 'text-danger', bar: 'bg-danger', stroke: 'stroke-danger' };
+}
 
-  // Helper to color-code 0-100 scores
-  const getScoreColor = (val) => {
-    if (val >= 85) return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
-    if (val >= 70) return 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20';
-    if (val >= 50) return 'text-amber-400 bg-amber-500/10 border-amber-500/20';
-    return 'text-rose-400 bg-rose-500/10 border-rose-500/20';
-  };
-
-  const getScoreBarColor = (val) => {
-    if (val >= 85) return 'bg-emerald-500';
-    if (val >= 70) return 'bg-indigo-500';
-    if (val >= 50) return 'bg-amber-500';
-    return 'bg-rose-500';
-  };
-
+/** Circular 0-100 gauge. */
+export function ScoreRing({ value, size = 112, label }) {
+  const v = Math.max(0, Math.min(100, Number(value) || 0));
+  const r = 52;
+  const c = 2 * Math.PI * r;
+  const band = scoreBand(v);
   return (
-    <div className="w-full glass-panel rounded-2xl p-4 md:p-6 glow-purple border border-purple-500/10 animate-fadeIn space-y-6">
-      
-      {/* Header */}
-      <div className="flex justify-between items-center gap-3 border-b border-slate-800 pb-4">
-        <div className="flex items-center space-x-3 min-w-0">
-          <div className="p-2.5 bg-purple-500/10 rounded-lg text-purple-400">
-            {mode === 'read_aloud' && <BookOpen className="w-6 h-6" />}
-            {mode === 'qa' && <HelpCircle className="w-6 h-6" />}
-            {mode === 'conversation' && <MessageSquare className="w-6 h-6" />}
-          </div>
-          <div>
-            <span className="text-[10px] md:text-xs font-semibold text-purple-400 tracking-wider uppercase">Assessment Complete</span>
-            <h3 className="text-lg md:text-xl font-bold text-white leading-tight">
-              {mode === 'read_aloud' && 'Read Aloud Results'}
-              {mode === 'qa' && 'Q&A Grading Report'}
-              {mode === 'conversation' && 'Dialogue Evaluation Report'}
-            </h3>
-          </div>
-        </div>
-        
-        {/* Restart Button */}
-        <button 
-          onClick={onRestart}
-          className="flex items-center shrink-0 whitespace-nowrap space-x-2 px-3.5 py-2.5 md:py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-sm transition-all duration-200"
-        >
-          <RefreshCw className="w-4 h-4" />
-          <span>Try Again</span>
-        </button>
-      </div>
-
-      {/* Main Score Layout */}
-      {mode === 'read_aloud' && (
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
-          {/* SVG Circular Gauge for Accuracy */}
-          <div className="md:col-span-4 flex flex-col items-center justify-center p-4 bg-slate-900/50 rounded-xl border border-slate-800">
-            <div className="relative w-32 h-32 flex items-center justify-center">
-              <svg className="w-full h-full transform -rotate-90">
-                <circle
-                  cx="64"
-                  cy="64"
-                  r="52"
-                  className="stroke-slate-800 fill-transparent"
-                  strokeWidth="8"
-                />
-                <circle
-                  cx="64"
-                  cy="64"
-                  r="52"
-                  className="stroke-purple-500 transition-all duration-1000 ease-out fill-transparent"
-                  strokeWidth="8"
-                  strokeDasharray={2 * Math.PI * 52}
-                  strokeDashoffset={2 * Math.PI * 52 * (1 - score.accuracy_score / 100)}
-                  strokeLinecap="round"
-                />
-              </svg>
-              <div className="absolute flex flex-col items-center justify-center">
-                <span className="text-3xl font-extrabold text-white">{score.accuracy_score}</span>
-                <span className="text-xs text-slate-400 uppercase tracking-widest font-semibold">Accuracy</span>
-              </div>
-            </div>
-            
-            <div className="mt-4 text-center">
-              <div className="text-sm text-slate-400">Word Error Rate (WER)</div>
-              <div className="text-lg font-bold text-indigo-400">{(score.word_error_rate * 100).toFixed(1)}%</div>
-            </div>
-          </div>
-
-          {/* Details & Playback */}
-          <div className="md:col-span-8 space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-800/80">
-                <span className="block text-xs text-rose-400 font-semibold uppercase tracking-wider mb-1.5">Skipped Words ({score.skipped_words?.length || 0})</span>
-                {score.skipped_words && score.skipped_words.length > 0 ? (
-                  <SpeakableWords words={score.skipped_words} tone="rose" className="md:max-h-28 md:overflow-y-auto pr-1" />
-                ) : (
-                  <p className="text-xs text-slate-400 italic">No words skipped!</p>
-                )}
-              </div>
-
-              <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-800/80">
-                <span className="block text-xs text-amber-400 font-semibold uppercase tracking-wider mb-1.5">Mispronounced ({score.mispronounced_words?.length || 0})</span>
-                {score.mispronounced_words && score.mispronounced_words.length > 0 ? (
-                  <>
-                    <SpeakableWords words={score.mispronounced_words} tone="amber" className="md:max-h-28 md:overflow-y-auto pr-1" />
-                    <p className="text-[10px] text-slate-500 mt-1.5">Tap a word to hear how it is pronounced.</p>
-                  </>
-                ) : (
-                  <p className="text-xs text-slate-400 italic">Perfect pronunciation!</p>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {(mode === 'qa' || mode === 'conversation') && (
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
-          
-          {/* Average Score Badge */}
-          <div className="md:col-span-4 flex flex-col items-center justify-center p-4 md:p-6 bg-slate-900/50 rounded-xl border border-slate-800">
-            <Award className="w-10 h-10 text-purple-400 mb-2" />
-            <span className="text-xs text-slate-400 uppercase tracking-widest font-semibold mb-1">Overall Score</span>
-            
-            {(() => {
-              const scores = mode === 'qa' 
-                ? [score.fluency, score.lexical_resource, score.grammatical_range, score.pronunciation]
-                : [score.fluency_and_coherence, score.lexical_resource, score.grammatical_range, score.pronunciation, score.interactive_communication];
-              const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-              // Round to nearest integer
-              const roundedAvg = Math.round(avg);
-              return (
-                <div className={`mt-2 px-5 py-2.5 rounded-2xl border text-4xl font-extrabold ${getScoreColor(roundedAvg)}`}>
-                  {roundedAvg}
-                </div>
-              );
-            })()}
-            <span className="text-[10px] text-slate-500 mt-2">Scale 0 - 100</span>
-          </div>
-
-          {/* Breakdown sliders */}
-          <div className="md:col-span-8 space-y-4">
-            <h4 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-2">Sub-Score Breakdown</h4>
-            
-            {mode === 'qa' ? (
-              <div className="space-y-3">
-                {[
-                  { label: 'Fluency & Coherence', val: score.fluency },
-                  { label: 'Lexical Resource', val: score.lexical_resource },
-                  { label: 'Grammatical Range', val: score.grammatical_range },
-                  { label: 'Pronunciation', val: score.pronunciation },
-                ].map((item, idx) => (
-                  <div key={idx} className="space-y-1">
-                    <div className="flex justify-between text-xs font-medium">
-                      <span className="text-slate-400">{item.label}</span>
-                      <span className="text-white font-bold">{item.val} / 100</span>
-                    </div>
-                    <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full rounded-full transition-all duration-1000 ${getScoreBarColor(item.val)}`} 
-                        style={{ width: `${Math.max(0, Math.min(100, item.val))}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {[
-                  { label: 'Fluency & Coherence', val: score.fluency_and_coherence },
-                  { label: 'Lexical Resource', val: score.lexical_resource },
-                  { label: 'Grammatical Range', val: score.grammatical_range },
-                  { label: 'Pronunciation', val: score.pronunciation },
-                  { label: 'Interactive Communication', val: score.interactive_communication },
-                ].map((item, idx) => (
-                  <div key={idx} className="space-y-1">
-                    <div className="flex justify-between text-xs font-medium">
-                      <span className="text-slate-400">{item.label}</span>
-                      <span className="text-white font-bold">{item.val} / 100</span>
-                    </div>
-                    <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full rounded-full transition-all duration-1000 ${getScoreBarColor(item.val)}`} 
-                        style={{ width: `${Math.max(0, Math.min(100, item.val))}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Detailed Feedback */}
-      <div className="bg-slate-900/50 p-5 rounded-xl border border-slate-800 space-y-2">
-        <h4 className="text-sm font-semibold text-purple-400 uppercase tracking-wider">Examiner Feedback</h4>
-        <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap">{score.feedback}</p>
-      </div>
-
-      {/* Leaderboard Logging Button */}
-      <div className="border-t border-slate-850 pt-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center space-x-2 text-xs text-slate-400">
-          <AlertCircle className="w-4 h-4 text-purple-400 flex-shrink-0" />
-          <span>Scores are recorded anonymously by default under your name.</span>
-        </div>
-        
-        <button
-          onClick={onSaveToLeaderboard}
-          disabled={isSaving || saveStatus === 'success'}
-          className={`flex items-center justify-center shrink-0 space-x-2 px-5 py-3 md:py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 ${
-            saveStatus === 'success'
-              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-              : 'bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-600/20 active:scale-95 disabled:opacity-50'
-          }`}
-        >
-          {saveStatus === 'success' ? (
-            <>
-              <CheckCircle className="w-4 h-4" />
-              <span>Score Saved!</span>
-            </>
-          ) : (
-            <>
-              {isSaving ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
-                  <span>Saving to Leaderboard...</span>
-                </>
-              ) : (
-                <span>Log to Google Sheet</span>
-              )}
-            </>
-          )}
-        </button>
-      </div>
-      
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90" role="img" aria-label={`${label || 'Score'} ${Math.round(v)} out of 100`}>
+        <circle cx="60" cy="60" r={r} className="stroke-surface-muted fill-none" strokeWidth="10" />
+        <circle
+          cx="60" cy="60" r={r}
+          className={`${band.stroke} fill-none transition-all duration-1000 ease-out`}
+          strokeWidth="10"
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - v / 100)}
+        />
+      </svg>
+      <span className="absolute inset-0 flex items-center justify-center text-[28px] font-bold text-ink tabular-nums" aria-hidden="true">
+        {Math.round(v)}
+      </span>
     </div>
   );
 }
+
+const TITLES = {
+  read_aloud: 'Read Aloud result',
+  qa: 'Q&A result',
+  conversation: 'Conversation result',
+};
+
+function SubScores({ items }) {
+  return (
+    <div className="space-y-3.5">
+      {items.map((item) => {
+        const band = scoreBand(item.val);
+        return (
+          <div key={item.label} className="space-y-1.5">
+            <div className="flex justify-between gap-3 text-sm">
+              <span className="text-ink-muted font-medium">{item.label}</span>
+              <span className="text-ink font-semibold tabular-nums">{item.val}<span className="text-ink-subtle font-normal"> / 100</span></span>
+            </div>
+            <div className="h-2 bg-surface-muted rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-1000 ${band.bar}`}
+                style={{ width: `${Math.max(0, Math.min(100, item.val))}%` }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function ScoreCard({ mode, score, onRestart, isSaving, saveStatus, onSaveToLeaderboard, nextAction }) {
+  if (!score) return null;
+
+  let main;
+  let mainLabel;
+  let parts = null;
+  if (mode === 'read_aloud') {
+    main = score.accuracy_score;
+    mainLabel = 'Accuracy';
+  } else {
+    parts = mode === 'qa'
+      ? [
+          { label: 'Fluency & coherence', val: score.fluency },
+          { label: 'Vocabulary', val: score.lexical_resource },
+          { label: 'Grammar', val: score.grammatical_range },
+          { label: 'Pronunciation', val: score.pronunciation },
+        ]
+      : [
+          { label: 'Fluency & coherence', val: score.fluency_and_coherence },
+          { label: 'Vocabulary', val: score.lexical_resource },
+          { label: 'Grammar', val: score.grammatical_range },
+          { label: 'Pronunciation', val: score.pronunciation },
+          { label: 'Interaction', val: score.interactive_communication },
+        ];
+    main = Math.round(parts.reduce((a, b) => a + (Number(b.val) || 0), 0) / parts.length);
+    mainLabel = 'Overall score';
+  }
+  const band = scoreBand(main);
+  const skipped = score.skipped_words || [];
+  const unclear = score.mispronounced_words || [];
+
+  return (
+    <section className="bg-surface border border-line rounded-2xl shadow-card animate-fadeIn" aria-label={TITLES[mode] || 'Result'}>
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-3 px-5 md:px-7 pt-5 md:pt-6">
+        <div className="min-w-0">
+          <SaveState isSaving={isSaving} saveStatus={saveStatus} />
+          <h3 className="text-lg md:text-xl font-bold text-ink leading-snug mt-0.5">{TITLES[mode] || 'Your result'}</h3>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" icon={RotateCcw} onClick={onRestart}>Try again</Button>
+          {nextAction}
+        </div>
+      </div>
+
+      <div className="px-5 md:px-7 py-5 md:py-6 space-y-5">
+        {/* Main score */}
+        <div className="grid gap-4 md:grid-cols-12">
+          <div className="md:col-span-5 flex items-center gap-5 p-4 md:p-5 border border-line rounded-2xl">
+            <ScoreRing value={main} size={104} label={mainLabel} />
+            <div className="min-w-0">
+              <div className="text-[13px] font-semibold text-ink-muted">{mainLabel}</div>
+              <div className={`text-xl font-bold ${band.text}`}>{band.label}</div>
+              {mode === 'read_aloud' && score.word_error_rate != null && (
+                <div className="text-[13px] text-ink-subtle mt-1">Word error rate {(score.word_error_rate * 100).toFixed(1)}%</div>
+              )}
+              {mode !== 'read_aloud' && <div className="text-[13px] text-ink-subtle mt-1">Scale 0 - 100</div>}
+            </div>
+          </div>
+
+          {mode === 'read_aloud' ? (
+            <div className="md:col-span-7 grid grid-cols-2 gap-4">
+              <div className="p-4 md:p-5 border border-line rounded-2xl">
+                <div className="text-[13px] font-semibold text-ink-muted">Unclear words</div>
+                <div className={`text-[28px] font-bold tabular-nums leading-tight ${unclear.length ? 'text-warning' : 'text-success'}`}>{unclear.length}</div>
+                <div className="text-[13px] text-ink-subtle">{unclear.length ? 'practise these below' : 'clear pronunciation'}</div>
+              </div>
+              <div className="p-4 md:p-5 border border-line rounded-2xl">
+                <div className="text-[13px] font-semibold text-ink-muted">Skipped words</div>
+                <div className={`text-[28px] font-bold tabular-nums leading-tight ${skipped.length ? 'text-danger' : 'text-success'}`}>{skipped.length}</div>
+                <div className="text-[13px] text-ink-subtle">{skipped.length ? 'missed while reading' : 'nothing skipped'}</div>
+              </div>
+            </div>
+          ) : (
+            <div className="md:col-span-7 p-4 md:p-5 border border-line rounded-2xl">
+              <SubScores items={parts} />
+            </div>
+          )}
+        </div>
+
+        {/* Words to practise (Read Aloud) */}
+        {mode === 'read_aloud' && (unclear.length > 0 || skipped.length > 0) && (
+          <div className="grid gap-4 md:grid-cols-2">
+            {unclear.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold text-ink">Practise saying these</h4>
+                <SpeakableWords words={unclear} tone="amber" className="md:max-h-32 md:overflow-y-auto" />
+              </div>
+            )}
+            {skipped.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold text-ink">You skipped</h4>
+                <SpeakableWords words={skipped} tone="rose" className="md:max-h-32 md:overflow-y-auto" />
+              </div>
+            )}
+            <p className="md:col-span-2 text-[13px] text-ink-subtle">Tap a word to hear how it is said.</p>
+          </div>
+        )}
+
+        {/* Feedback */}
+        {score.feedback && (
+          <div className="flex gap-3 p-4 md:p-5 rounded-2xl bg-brand-tint">
+            <Lightbulb className="w-5 h-5 text-brand-ink shrink-0 mt-0.5" aria-hidden="true" />
+            <div className="min-w-0">
+              <h4 className="text-[15px] font-semibold text-brand-ink">Feedback</h4>
+              <p className="text-[15px] text-ink leading-relaxed whitespace-pre-wrap mt-1">{score.feedback}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Saving failed: offer another try */}
+        {saveStatus === 'error' && onSaveToLeaderboard && (
+          <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-danger-tint">
+            <p className="text-sm text-ink">Your result is shown, but it was not saved to your record yet.</p>
+            <Button onClick={onSaveToLeaderboard} loading={isSaving}>Save again</Button>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function SaveState({ isSaving, saveStatus }) {
+  if (isSaving) {
+    return <span className="text-[13px] font-semibold text-ink-subtle">Saving to your record...</span>;
+  }
+  if (saveStatus === 'success') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-success">
+        <CheckCircle2 className="w-4 h-4" aria-hidden="true" /> Saved to your record
+      </span>
+    );
+  }
+  return <span className="text-[13px] font-semibold text-brand-ink">Assessment complete</span>;
+}
+
 export default ScoreCard;

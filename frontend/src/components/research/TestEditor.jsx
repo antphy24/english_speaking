@@ -3,7 +3,7 @@ import { Save, Plus, Trash2, Image as ImageIcon, Upload, AlertTriangle } from 'l
 import { researchRequest } from '../../utils/researchApi';
 import { supabaseTeacher } from '../../utils/supabaseClient';
 
-const input = 'w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-indigo-500';
+const input = 'w-full min-h-[40px] bg-surface border border-line-strong rounded-[10px] px-3 py-2 text-sm text-ink placeholder:text-ink-subtle outline-none focus:border-brand focus:ring-4 focus:ring-brand-ring';
 
 function nextId(prefix, existing) {
   let n = existing.length + 1;
@@ -78,18 +78,18 @@ export default function TestEditor({ test, hasAttempts, onSaved, setError, setSu
   return (
     <div className="space-y-4">
       {hasAttempts && (
-        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 flex gap-2">
+        <div className="p-3 rounded-xl bg-warning-tint border border-warning/30 text-xs text-warning flex gap-2">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           Students have already taken this test. Changing questions now means they did not all take the same test.
         </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <label className="md:col-span-2 text-xs text-slate-400 space-y-1">
+        <label className="md:col-span-2 text-xs text-ink-muted space-y-1">
           <span>Test title (students see this)</span>
           <input className={input} value={title} onChange={(e) => { setTitle(e.target.value); setDirty(true); }} />
         </label>
-        <label className="text-xs text-slate-400 space-y-1">
+        <label className="text-xs text-ink-muted space-y-1">
           <span>Times a student may hear a question again</span>
           <select className={input} value={content.max_repeats ?? 1}
                   onChange={(e) => update((c) => { c.max_repeats = Number(e.target.value); })}>
@@ -98,25 +98,25 @@ export default function TestEditor({ test, hasAttempts, onSaved, setError, setSu
         </label>
       </div>
 
-      <label className="block text-xs text-slate-400 space-y-1">
+      <label className="block text-xs text-ink-muted space-y-1">
         <span>Consent text (shown before the test; the student must agree to start)</span>
         <textarea className={`${input} min-h-[160px]`} value={content.consent_text}
                   onChange={(e) => update((c) => { c.consent_text = e.target.value; })} />
       </label>
-      <label className="block text-xs text-slate-400 space-y-1">
+      <label className="block text-xs text-ink-muted space-y-1">
         <span>Instructions read to the student before Part 1</span>
         <textarea className={input} rows={2} value={content.intro}
                   onChange={(e) => update((c) => { c.intro = e.target.value; })} />
       </label>
 
       {content.parts.map((part, pIdx) => (
-        <div key={part.id} className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 space-y-3">
+        <div key={part.id} className="bg-surface border border-line rounded-2xl p-4 space-y-3">
           <div className="flex items-center gap-2">
             <input className={`${input} font-bold`} value={part.title}
                    onChange={(e) => update((c) => { c.parts[pIdx].title = e.target.value; })} />
             {content.parts.length > 1 && (
               <button title="Remove part" onClick={() => update((c) => { c.parts.splice(pIdx, 1); })}
-                      className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-500 hover:text-rose-400">
+                      className="p-2 rounded-xl bg-surface border border-line text-ink-subtle hover:text-danger">
                 <Trash2 className="w-4 h-4" />
               </button>
             )}
@@ -126,9 +126,9 @@ export default function TestEditor({ test, hasAttempts, onSaved, setError, setSu
 
           <div className="flex flex-col sm:flex-row gap-3 items-start">
             {part.image_url ? (
-              <img src={part.image_url} alt="" className="w-full sm:w-48 h-32 object-cover rounded-xl border border-slate-800" />
+              <img src={part.image_url} alt="" className="w-full sm:w-48 h-32 object-cover rounded-xl border border-line" />
             ) : (
-              <div className="w-full sm:w-48 h-32 rounded-xl border border-dashed border-slate-700 flex flex-col items-center justify-center text-[11px] text-slate-500 text-center px-2">
+              <div className="w-full sm:w-48 h-32 rounded-xl border border-dashed border-line flex flex-col items-center justify-center text-xs text-ink-subtle text-center px-2">
                 <ImageIcon className="w-5 h-5 mb-1" /> No picture
               </div>
             )}
@@ -140,12 +140,12 @@ export default function TestEditor({ test, hasAttempts, onSaved, setError, setSu
                        ref={(el) => { fileRefs.current[part.id] = el; }}
                        onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadImage(part.id, f); }} />
                 <button onClick={() => fileRefs.current[part.id]?.click()} disabled={uploading === part.id}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 hover:border-indigo-500">
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface border border-line text-xs text-ink-muted hover:border-brand">
                   <Upload className="w-3.5 h-3.5" /> {uploading === part.id ? 'Uploading...' : (part.image_path ? 'Replace picture' : 'Add picture')}
                 </button>
                 {part.image_path && (
                   <button onClick={() => uploadImage(part.id, null, true)} disabled={uploading === part.id}
-                          className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-400 hover:text-rose-400">
+                          className="px-3 py-2 rounded-xl bg-surface border border-line text-xs text-ink-muted hover:text-danger">
                     Remove
                   </button>
                 )}
@@ -155,24 +155,24 @@ export default function TestEditor({ test, hasAttempts, onSaved, setError, setSu
 
           <div className="space-y-2">
             {part.items.map((item, iIdx) => (
-              <div key={item.id} className="bg-slate-950/50 border border-slate-800 rounded-xl p-3 space-y-2">
+              <div key={item.id} className="bg-surface border border-line rounded-xl p-3 space-y-2">
                 <div className="flex items-start gap-2">
-                  <span className="text-[10px] font-mono text-slate-500 mt-2.5 w-10 shrink-0">{item.id}</span>
+                  <span className="text-xs tabular-nums text-ink-subtle mt-2.5 w-10 shrink-0">{item.id}</span>
                   <textarea className={input} rows={2} value={item.prompt}
                             onChange={(e) => update((c) => { c.parts[pIdx].items[iIdx].prompt = e.target.value; })} />
                   {part.items.length > 1 && (
                     <button title="Remove question" onClick={() => update((c) => { c.parts[pIdx].items.splice(iIdx, 1); })}
-                            className="p-2 text-slate-500 hover:text-rose-400"><Trash2 className="w-4 h-4" /></button>
+                            className="p-2 text-ink-subtle hover:text-danger"><Trash2 className="w-4 h-4" /></button>
                   )}
                 </div>
-                <div className="flex flex-wrap gap-3 pl-12 text-[11px] text-slate-400">
+                <div className="flex flex-wrap gap-3 pl-12 text-xs text-ink-muted">
                   <label className="flex items-center gap-1.5">Thinking time
-                    <input type="number" min={0} max={120} className="w-16 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-white"
+                    <input type="number" min={0} max={120} className="w-16 bg-surface border border-line-strong rounded-lg px-2 py-1 text-ink"
                            value={item.prep_seconds || 0}
                            onChange={(e) => update((c) => { c.parts[pIdx].items[iIdx].prep_seconds = Number(e.target.value); })} />s
                   </label>
                   <label className="flex items-center gap-1.5">Answer time
-                    <input type="number" min={10} max={300} className="w-16 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-white"
+                    <input type="number" min={10} max={300} className="w-16 bg-surface border border-line-strong rounded-lg px-2 py-1 text-ink"
                            value={item.speak_seconds}
                            onChange={(e) => update((c) => { c.parts[pIdx].items[iIdx].speak_seconds = Number(e.target.value); })} />s
                   </label>
@@ -180,7 +180,7 @@ export default function TestEditor({ test, hasAttempts, onSaved, setError, setSu
               </div>
             ))}
             <button onClick={() => update((c) => { c.parts[pIdx].items.push({ id: nextId(`${part.id}q`, allItemIds), prompt: '', speak_seconds: 30, prep_seconds: 0 }); })}
-                    className="flex items-center gap-1.5 text-xs text-indigo-300 hover:text-indigo-200">
+                    className="flex items-center gap-1.5 text-xs text-brand-ink hover:text-brand-ink">
               <Plus className="w-3.5 h-3.5" /> Add question
             </button>
           </div>
@@ -188,16 +188,16 @@ export default function TestEditor({ test, hasAttempts, onSaved, setError, setSu
       ))}
 
       <button onClick={() => update((c) => { const id = nextId('p', c.parts.map((p) => p.id)); c.parts.push({ id, title: `Part ${c.parts.length + 1}`, instructions: '', image_path: null, image_note: '', items: [{ id: `${id}q1`, prompt: '', speak_seconds: 30, prep_seconds: 0 }] }); })}
-              className="flex items-center gap-1.5 text-xs text-indigo-300 hover:text-indigo-200">
+              className="flex items-center gap-1.5 text-xs text-brand-ink hover:text-brand-ink">
         <Plus className="w-3.5 h-3.5" /> Add part
       </button>
 
-      <div className="sticky bottom-0 -mx-1 px-1 py-3 bg-[#070b13]/95 flex items-center justify-between gap-3 border-t border-slate-900">
-        <span className="text-xs text-slate-400">
+      <div className="sticky bottom-0 -mx-1 px-1 py-3 bg-surface flex items-center justify-between gap-3 border-t border-line">
+        <span className="text-xs text-ink-muted">
           {allItemIds.length} questions · max {Math.round(totalSeconds / 6) / 10} min of thinking + speaking
         </span>
         <button onClick={save} disabled={saving || !dirty}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-xs font-bold">
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand hover:bg-brand-hover disabled:opacity-40 text-white text-xs font-bold">
           <Save className="w-4 h-4" /> {saving ? 'Saving...' : dirty ? 'Save test' : 'Saved'}
         </button>
       </div>

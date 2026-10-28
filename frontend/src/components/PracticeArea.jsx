@@ -7,12 +7,15 @@ import ModeConversation from './ModeConversation';
 import ModeDebate from './ModeDebate';
 import ModeMattering from './ModeMattering';
 import Leaderboard from './Leaderboard';
-import { BookOpen, HelpCircle, MessageSquare, Award, UserCheck, LogOut, Sparkles, Gavel, Lightbulb, History, Loader2 } from 'lucide-react';
+import { BookOpen, HelpCircle, MessageSquare, Award, Gavel, Lightbulb, History } from 'lucide-react';
+import { AppShell } from './UI/AppShell';
+import { PageHeader } from './UI/PageHeader';
+import { Button } from './UI/Button';
+import { useToast } from './UI/Toast';
 import Spinner from './UI/Spinner';
 import { useConfirm } from './UI/ConfirmModal';
 import useActivityTracker from '../hooks/useActivityTracker';
 import useBeforeUnload from '../hooks/useBeforeUnload';
-import useSwipeRow from '../hooks/useSwipeRow';
 import AIStatusBadge from './AIStatusBadge';
 import SubmissionReview from './UI/SubmissionReview';
 import StudentTestBanner from './research/StudentTestBanner';
@@ -21,17 +24,27 @@ import { resolveTimers, DEFAULT_TIMERS } from '../utils/timerSettings';
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
 const NAV_ITEMS = [
-  { key: 'read_aloud', label: '1. Read Aloud', shortLabel: 'Read Aloud', icon: BookOpen },
-  { key: 'qa', label: '2. Q&A Mock', shortLabel: 'Q&A', icon: HelpCircle },
-  { key: 'conversation', label: '3. AI Conversation', shortLabel: 'Conversation', icon: MessageSquare },
-  { key: 'debate', label: '4. Debate Mode', shortLabel: 'Debate', icon: Gavel },
-  { key: 'mattering', label: '5. Mattering Drill', shortLabel: 'Mattering', icon: Lightbulb },
-  { key: 'leaderboard', label: 'Leaderboard Log', shortLabel: 'Leaderboard', icon: Award, section: 'Analytics' },
+  { key: 'read_aloud', label: 'Read Aloud', icon: BookOpen },
+  { key: 'qa', label: 'Q&A', icon: HelpCircle },
+  { key: 'conversation', label: 'Conversation', icon: MessageSquare },
+  { key: 'debate', label: 'Debate', icon: Gavel },
+  { key: 'mattering', label: 'Mattering', icon: Lightbulb },
+  { key: 'leaderboard', label: 'Leaderboard', icon: Award, section: 'Progress' },
 ];
+
+const PAGE_INFO = {
+  read_aloud: { title: 'Read Aloud', description: 'Choose a paragraph, read it aloud, and get your accuracy score with feedback.' },
+  qa: { title: 'Q&A', description: 'Answer a question out loud. You are scored on fluency, vocabulary, grammar and pronunciation.' },
+  conversation: { title: 'Conversation', description: 'Talk with an AI partner, then get a score for the whole conversation.' },
+  debate: { title: 'Debate', description: 'Prepare a case, deliver your speech, and get feedback like a debate adjudicator would give.' },
+  mattering: { title: 'Mattering', description: 'Break an issue down, deliver one argument, then rebut the other side. Scored on the debate speaker scale.' },
+  leaderboard: { title: 'Leaderboard', description: 'Your saved scores and how your class is doing.' },
+};
 
 export function PracticeArea() {
   const navigate = useNavigate();
   const confirm = useConfirm();
+  const toast = useToast();
 
   const [student, setStudent] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
@@ -56,19 +69,9 @@ export function PracticeArea() {
     activeMode: activeTab === 'leaderboard' ? null : activeTab
   });
 
-  const navRef = React.useRef(null);
-  const swipeRef = useSwipeRow();
-  const setNavRef = React.useCallback((el) => { navRef.current = el; swipeRef(el); }, [swipeRef]);
-
   useEffect(() => {
     // Reset assessment duration timer when mode changes
     sessionStartTimeRef.current = Date.now();
-    // Phones: keep the selected tab visible in the swipeable row
-    const nav = navRef.current;
-    const tab = nav?.querySelector(`[data-tab="${activeTab}"]`);
-    if (nav && tab && nav.scrollWidth > nav.clientWidth) {
-      nav.scrollTo({ left: tab.offsetLeft - (nav.clientWidth - tab.offsetWidth) / 2, behavior: 'smooth' });
-    }
   }, [activeTab, loadingAuth]);
 
   const shouldWarnOnUnload = activeTab !== 'leaderboard';
@@ -237,7 +240,7 @@ export function PracticeArea() {
     } catch (err) {
       console.error('Failed to log score to database:', err);
       setSaveStatus('error');
-      alert(`Your result is shown, but saving it to the leaderboard failed. Please sign out and sign in again, then press the save button. (${err.message || JSON.stringify(err)})`);
+      toast.error(`Your result is shown, but saving it failed. Please sign out and sign in again, then press Save again. (${err.message || JSON.stringify(err)})`, { duration: 0 });
     } finally {
       setIsSaving(false);
     }
@@ -245,150 +248,56 @@ export function PracticeArea() {
 
   if (loadingAuth) {
     return (
-      <div className="min-h-screen bg-[#070b13] flex justify-center items-center">
-        <Spinner message="Signing in practice portal..." />
+      <div className="min-h-screen bg-canvas flex justify-center items-center">
+        <Spinner message="Opening your practice space..." />
       </div>
     );
   }
 
+  const page = PAGE_INFO[activeTab] || PAGE_INFO.read_aloud;
+
   return (
-    <div className="min-h-screen bg-[#070b13] text-slate-100 flex flex-col md:flex-row relative">
-      {/* Background neon glows */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-600/5 rounded-full blur-[100px]"></div>
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-600/5 rounded-full blur-[100px]"></div>
-      </div>
-
-      {/* Navigation: compact top bar on phones, sidebar on desktop */}
-      <aside className="w-full md:w-64 bg-slate-950/95 md:bg-slate-950/80 border-b md:border-b-0 md:border-r border-slate-900 flex flex-col justify-between px-4 pt-3 pb-2 md:p-6 shrink-0 relative z-20">
-        <div className="space-y-2.5 md:space-y-8">
-          <div className="flex items-center justify-between gap-3 md:block md:space-y-8">
-            {/* Logo */}
-            <div className="flex items-center space-x-2 md:space-x-2.5 shrink-0">
-              <div className="p-1.5 md:p-2 bg-purple-600/10 border border-purple-500/20 rounded-xl text-purple-400">
-                <Sparkles className="w-4 h-4 md:w-5 md:h-5" />
-              </div>
-              <span className="text-base md:text-lg font-extrabold text-white">
-                href<span className="text-purple-500 font-medium">Speak</span>
-              </span>
-            </div>
-
-            {/* Student Status Profile */}
-            <div className="flex items-center justify-end md:justify-between min-w-0 flex-1 md:p-3 md:bg-slate-900/50 md:rounded-xl md:border md:border-slate-850">
-              <div className="flex items-center space-x-2 overflow-hidden min-w-0">
-                <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                <div className="text-[11px] md:text-xs min-w-0 md:max-w-[120px] leading-tight md:leading-normal">
-                  <div className="text-slate-400 font-medium truncate">{student?.class?.class_name || 'Classroom'}</div>
-                  <div className="text-white font-bold font-mono truncate">{student?.full_name}</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Sign out (phones) */}
-            <button
-              onClick={handleSignOut}
-              aria-label="Log out"
-              title="Log out"
-              className="md:hidden shrink-0 w-10 h-10 flex items-center justify-center bg-slate-900 border border-slate-800 rounded-xl text-slate-400 active:text-rose-400 active:bg-rose-950/20"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Navigation: swipeable row on phones, vertical list on desktop */}
-          <nav ref={setNavRef} className="no-scrollbar flex md:flex-col gap-1.5 md:gap-0 md:space-y-1 overflow-x-auto md:overflow-visible -mx-4 px-4 md:mx-0 md:px-0 pb-1 md:pb-0">
-            <span className="hidden md:block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2 px-1">Practice Modes</span>
-
-            {NAV_ITEMS.map(({ key, label, shortLabel, icon: Icon, section }) => (
-              <React.Fragment key={key}>
-                {section && (
-                  <span className="hidden md:block text-[10px] font-semibold text-slate-500 uppercase tracking-wider md:pt-4 mb-2 px-1">{section}</span>
-                )}
-                <button
-                  data-tab={key}
-                  aria-current={activeTab === key ? 'page' : undefined}
-                  onClick={() => {
-                    setActiveTab(key);
-                    setSaveStatus('');
-                  }}
-                  className={`flex items-center shrink-0 whitespace-nowrap space-x-2 md:space-x-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs font-bold transition-all duration-200 ${
-                    activeTab === key
-                      ? 'bg-purple-600/15 border border-purple-500/20 text-white font-extrabold'
-                      : 'border border-slate-800 md:border-transparent text-slate-400 hover:bg-slate-900/40 hover:text-slate-200'
-                  }`}
+    <AppShell
+      navItems={NAV_ITEMS}
+      navTitle="Practice"
+      activeKey={activeTab}
+      onSelect={(key) => {
+        setActiveTab(key);
+        setSaveStatus('');
+      }}
+      user={{ name: student?.full_name, subtitle: student?.class?.class_name || 'Classroom' }}
+      onSignOut={handleSignOut}
+    >
+      <div className="flex flex-col gap-5 md:gap-7">
+        <PageHeader
+          title={page.title}
+          description={page.description}
+          actions={
+            <>
+              <AIStatusBadge apiBase={API_BASE} />
+              {activeTab !== 'leaderboard' && (
+                <Button
+                  variant="secondary"
+                  icon={History}
+                  loading={loadingLast}
+                  onClick={openLastSubmission}
+                  title="Listen to your latest recording for this mode and see its transcript, score and feedback"
                 >
-                  <Icon className="w-4 h-4" />
-                  <span className="md:hidden">{shortLabel}</span>
-                  <span className="hidden md:inline">{label}</span>
-                </button>
-              </React.Fragment>
-            ))}
-          </nav>
-        </div>
-
-        {/* Footer / Sign out (desktop) */}
-        <div className="hidden md:flex mt-6 border-t border-slate-900 pt-4 flex-col space-y-4">
-          <div className="text-[10px] text-slate-600 font-mono">
-            <p>© 2026 HreFSpeak AI</p>
-            <p className="mt-1">LMS Dashboard Mode</p>
-          </div>
-          <button
-            onClick={handleSignOut}
-            className="w-full flex items-center justify-between px-4 py-2 bg-slate-900 hover:bg-rose-950/20 border border-slate-850 hover:border-rose-950/50 rounded-xl text-xs font-bold text-slate-400 hover:text-rose-400 transition"
-          >
-            <span>Log Out</span>
-            <LogOut className="w-4 h-4" />
-          </button>
-        </div>
-      </aside>
-
-      {/* Main Panel Content Area */}
-      <main className="flex-1 w-full min-w-0 p-4 md:p-10 max-w-5xl lg:overflow-y-auto relative z-10">
-        
-        {/* Top Header */}
-        <header className="mb-5 md:mb-8 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-          <div className="min-w-0">
-            <h2 className="text-xl md:text-2xl font-bold text-white tracking-tight">
-              {activeTab === 'read_aloud' && 'Read Aloud Practice'}
-              {activeTab === 'qa' && 'IELTS Q&A Assessment'}
-              {activeTab === 'conversation' && 'AI Conversation Partner'}
-              {activeTab === 'debate' && 'Debate Adjudication'}
-              {activeTab === 'mattering' && 'Mattering Drill'}
-              {activeTab === 'leaderboard' && 'Leaderboard Logs'}
-            </h2>
-            <p className="text-xs text-slate-400 mt-1">
-              {activeTab === 'read_aloud' && 'Read the paragraph aloud. Whisper evaluates your accuracy.'}
-              {activeTab === 'qa' && 'Express your thoughts on the prompt. Gemini evaluates against IELTS standards.'}
-              {activeTab === 'conversation' && 'Hold a conversation with the AI tutor. Whisper and Gemini evaluate dialogue performance.'}
-              {activeTab === 'debate' && 'Practice case building and speech delivery. Gemini acts as a strict debate adjudicator.'}
-              {activeTab === 'mattering' && 'Break an issue down, deliver one argument, then rebut the other side. Scored on the debate speaker scale.'}
-              {activeTab === 'leaderboard' && 'Logs and scores saved in the Supabase classroom database.'}
-            </p>
-          </div>
-          <div className="flex items-center justify-between sm:justify-end gap-2 md:gap-3 shrink-0">
-            {activeTab !== 'leaderboard' && (
-              <button
-                onClick={openLastSubmission}
-                disabled={loadingLast}
-                title="Listen to your latest recording for this mode and see its transcript, score and feedback"
-                className="flex items-center space-x-1.5 px-3 py-2.5 md:py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-xs font-bold text-slate-300 hover:text-white transition disabled:opacity-60 cursor-pointer"
-              >
-                {loadingLast ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <History className="w-3.5 h-3.5" />}
-                <span>My last submission</span>
-              </button>
-            )}
-            <AIStatusBadge apiBase={API_BASE} />
-          </div>
-        </header>
+                  My last submission
+                </Button>
+              )}
+            </>
+          }
+        />
 
         <StudentTestBanner studentId={student?.id} />
 
         {/* Tab Components */}
-        <div className="animate-fadeIn">
+        <div key={activeTab} className="animate-fadeIn">
           {activeTab === 'read_aloud' && (
-            <ModeReadAloud 
-              studentName={student.full_name} 
-              apiBase={API_BASE} 
+            <ModeReadAloud
+              studentName={student.full_name}
+              apiBase={API_BASE}
               onSaveScore={handleSaveScore}
               isSaving={isSaving}
               saveStatus={saveStatus}
@@ -397,9 +306,9 @@ export function PracticeArea() {
             />
           )}
           {activeTab === 'qa' && (
-            <ModeQA 
-              studentName={student.full_name} 
-              apiBase={API_BASE} 
+            <ModeQA
+              studentName={student.full_name}
+              apiBase={API_BASE}
               onSaveScore={handleSaveScore}
               isSaving={isSaving}
               saveStatus={saveStatus}
@@ -408,9 +317,9 @@ export function PracticeArea() {
             />
           )}
           {activeTab === 'conversation' && (
-            <ModeConversation 
-              studentName={student.full_name} 
-              apiBase={API_BASE} 
+            <ModeConversation
+              studentName={student.full_name}
+              apiBase={API_BASE}
               onSaveScore={handleSaveScore}
               isSaving={isSaving}
               saveStatus={saveStatus}
@@ -419,9 +328,9 @@ export function PracticeArea() {
             />
           )}
           {activeTab === 'debate' && (
-            <ModeDebate 
-              studentName={student.full_name} 
-              apiBase={API_BASE} 
+            <ModeDebate
+              studentName={student.full_name}
+              apiBase={API_BASE}
               onSaveScore={handleSaveScore}
               isSaving={isSaving}
               saveStatus={saveStatus}
@@ -445,7 +354,7 @@ export function PracticeArea() {
             <Leaderboard student={student} />
           )}
         </div>
-      </main>
+      </div>
 
       {lastSubmission && (
         <SubmissionReview
@@ -456,7 +365,7 @@ export function PracticeArea() {
           onClose={() => setLastSubmission(null)}
         />
       )}
-    </div>
+    </AppShell>
   );
 }
 export default PracticeArea;

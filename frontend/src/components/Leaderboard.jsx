@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import useSwipeRow from '../hooks/useSwipeRow';
 import { supabase } from '../utils/supabaseClient';
 import { Award, BookOpen, HelpCircle, MessageSquare, Gavel, Lightbulb, RefreshCw, Calendar, User } from 'lucide-react';
 import Spinner from './UI/Spinner';
+import { modeLabel, MODE_ORDER } from '../utils/modes';
 
 export function Leaderboard({ student }) {
-  const swipeRef = useSwipeRow();
   const [activeSource, setActiveSource] = useState('global'); // 'global' (class rankings) | 'local' (own history)
   const [activeModeTab, setActiveModeTab] = useState('read_aloud'); // 'read_aloud' | 'qa' | 'conversation'
   const [activeMaterialFilter, setActiveMaterialFilter] = useState('all');
@@ -82,36 +81,42 @@ export function Leaderboard({ student }) {
   const getModeIcon = (mode) => {
     switch (mode) {
       case 'read_aloud':
-        return <BookOpen className="w-4 h-4 text-purple-400" />;
+        return <BookOpen className="w-4 h-4 text-ink-subtle" aria-hidden="true" />;
       case 'qa':
-        return <HelpCircle className="w-4 h-4 text-indigo-400" />;
+        return <HelpCircle className="w-4 h-4 text-ink-subtle" aria-hidden="true" />;
       case 'conversation':
-        return <MessageSquare className="w-4 h-4 text-pink-400" />;
+        return <MessageSquare className="w-4 h-4 text-ink-subtle" aria-hidden="true" />;
       case 'debate':
-        return <Gavel className="w-4 h-4 text-amber-400" />;
+        return <Gavel className="w-4 h-4 text-ink-subtle" aria-hidden="true" />;
       case 'mattering':
-        return <Lightbulb className="w-4 h-4 text-teal-400" />;
+        return <Lightbulb className="w-4 h-4 text-ink-subtle" aria-hidden="true" />;
       default:
-        return <Award className="w-4 h-4 text-slate-400" />;
+        return <Award className="w-4 h-4 text-ink-subtle" aria-hidden="true" />;
     }
   };
 
   const getModeLabel = (mode) => {
     switch (mode) {
-      case 'read_aloud': return 'Read Aloud';
-      case 'qa': return 'Q&A IELTS Mock';
-      case 'conversation': return 'Dialogue Practice';
-      case 'debate': return 'Debate Practice';
-      case 'mattering': return 'Mattering Drill';
+      case 'read_aloud':
+      case 'qa':
+      case 'conversation':
+      case 'debate':
+      case 'mattering':
+        return modeLabel(mode);
       default: return mode;
     }
   };
 
   const getRankBadge = (index) => {
-    if (index === 0) return <span className="text-xl" title="1st Place (Gold)">🥇</span>;
-    if (index === 1) return <span className="text-xl" title="2nd Place (Silver)">🥈</span>;
-    if (index === 2) return <span className="text-xl" title="3rd Place (Bronze)">🥉</span>;
-    return <span className="text-xs font-bold text-slate-500 font-mono">#{index + 1}</span>;
+    const top = ['bg-warning-tint text-warning', 'bg-surface-muted text-ink', 'bg-[rgb(180_83_9/0.12)] text-warning'];
+    return (
+      <span
+        title={index < 3 ? `${['1st', '2nd', '3rd'][index]} place` : undefined}
+        className={`inline-flex w-8 h-8 items-center justify-center rounded-full text-sm font-bold tabular-nums ${index < 3 ? top[index] : 'text-ink-subtle'}`}
+      >
+        {index + 1}
+      </span>
+    );
   };
 
   // Extract unique materials for the current mode
@@ -138,9 +143,9 @@ export function Leaderboard({ student }) {
     if (mode === 'read_aloud') {
       return (
         <div className="flex flex-col">
-          <span className="text-white font-bold text-sm">{score}% Accuracy</span>
+          <span className="text-ink font-semibold text-sm tabular-nums">{score}% Accuracy</span>
           {feedback?.word_error_rate !== undefined && (
-            <span className="text-[10px] text-slate-400">WER: {(feedback.word_error_rate * 100).toFixed(0)}%</span>
+            <span className="text-xs text-ink-muted">WER: {(feedback.word_error_rate * 100).toFixed(0)}%</span>
           )}
         </div>
       );
@@ -148,17 +153,17 @@ export function Leaderboard({ student }) {
     if (mode === 'mattering') {
       return (
         <div className="flex flex-col">
-          <span className="text-white font-bold text-sm">{Math.round(score)} Speaker Score</span>
-          <span className="text-[10px] text-slate-400">{feedback?.band || 'Scale 69-81'}</span>
+          <span className="text-ink font-semibold text-sm tabular-nums">{Math.round(score)} Speaker Score</span>
+          <span className="text-xs text-ink-muted">{feedback?.band || 'Scale 69-81'}</span>
         </div>
       );
     }
     if (mode === 'debate') {
       return (
         <div className="flex flex-col">
-          <span className="text-white font-bold text-sm">{Math.round(score)}/100 Debate</span>
+          <span className="text-ink font-semibold text-sm tabular-nums">{Math.round(score)}/100 Debate</span>
           {feedback?.matter_score !== undefined && (
-            <span className="text-[10px] text-slate-400">
+            <span className="text-xs text-ink-muted">
               Matter: {feedback.matter_score} | Manner: {feedback.manner_score} | Method: {feedback.method_score}
             </span>
           )}
@@ -167,8 +172,8 @@ export function Leaderboard({ student }) {
     }
     return (
       <div className="flex flex-col">
-        <span className="text-white font-bold text-sm">{Math.round(score)}/100 Score</span>
-        <span className="text-[10px] text-slate-400">Speaking Level</span>
+        <span className="text-ink font-semibold text-sm tabular-nums">{Math.round(score)}/100 Score</span>
+        <span className="text-xs text-ink-muted">Speaking Level</span>
       </div>
     );
   };
@@ -176,49 +181,40 @@ export function Leaderboard({ student }) {
   return (
     <div className="space-y-6">
       
-      {/* Classroom Status Bar */}
-      <div className="glass-panel p-4 md:p-6 rounded-2xl border border-emerald-500/20 glow-green flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center space-x-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-            <h4 className="font-bold text-white text-base">Classroom Synced Online</h4>
-          </div>
-          <p className="text-xs text-emerald-200/80 leading-relaxed max-w-xl">
-            Logged scorecards are shared with your class, <strong>{student?.class?.class_name || 'Classroom'}</strong>. You can view your peer rankings or track your progress below.
-          </p>
-        </div>
-      </div>
+      <p className="text-sm text-ink-muted">
+        Scores are shared with your class, <strong className="text-ink">{student?.class?.class_name || 'Classroom'}</strong>.
+      </p>
 
-      <div className="glass-panel rounded-2xl border-slate-800 overflow-hidden shadow-xl">
-        <div className="px-3 md:px-6 py-3 md:py-4 bg-slate-900/60 border-b border-slate-850 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-          <div className="flex space-x-2 bg-slate-950 p-1 rounded-xl border border-slate-850 self-stretch sm:self-start">
+      <div className="bg-surface border border-line rounded-2xl overflow-hidden shadow-card">
+        <div className="px-3 md:px-6 py-3 md:py-4 bg-surface-muted border-b border-line flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+          <div className="flex space-x-2 bg-surface p-1 rounded-xl border border-line self-stretch sm:self-start">
             <button
               onClick={() => setActiveSource('global')}
-              className={`flex flex-1 sm:flex-none items-center justify-center space-x-1.5 px-3 md:px-4 py-2.5 md:py-2 rounded-lg text-xs font-bold transition whitespace-nowrap ${
-                activeSource === 'global' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+              className={`flex flex-1 sm:flex-none items-center justify-center space-x-1.5 px-3 md:px-4 min-h-[40px] rounded-lg text-sm font-semibold transition whitespace-nowrap ${
+                activeSource === 'global' ? 'bg-brand text-white' : 'text-ink-muted hover:text-ink'
               }`}
             >
               <Award className="w-3.5 h-3.5" />
-              <span><span className="sm:hidden">Class Ranking</span><span className="hidden sm:inline">Class Leaderboard</span></span>
+              <span>Class ranking</span>
             </button>
             <button
               onClick={() => setActiveSource('local')}
-              className={`flex flex-1 sm:flex-none items-center justify-center space-x-1.5 px-3 md:px-4 py-2.5 md:py-2 rounded-lg text-xs font-bold transition whitespace-nowrap ${
-                activeSource === 'local' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+              className={`flex flex-1 sm:flex-none items-center justify-center space-x-1.5 px-3 md:px-4 min-h-[40px] rounded-lg text-sm font-semibold transition whitespace-nowrap ${
+                activeSource === 'local' ? 'bg-brand text-white' : 'text-ink-muted hover:text-ink'
               }`}
             >
               <User className="w-3.5 h-3.5" />
-              <span><span className="sm:hidden">My History</span><span className="hidden sm:inline">My Assessment History</span></span>
+              <span>My history</span>
             </button>
           </div>
         </div>
 
         {isLoading ? (
           <div className="py-20 flex justify-center">
-            <Spinner message="Connecting to database..." />
+            <Spinner message="Loading scores..." />
           </div>
         ) : errorMsg ? (
-          <div className="p-5 md:p-8 text-center text-rose-400 text-sm">
+          <div className="p-5 md:p-8 text-center text-danger text-sm">
             {errorMsg}
           </div>
         ) : (
@@ -226,16 +222,19 @@ export function Leaderboard({ student }) {
             {/* Global Class Rankings Tab */}
             {activeSource === 'global' && (
               <div>
-                <div className="flex flex-col sm:flex-row border-b border-slate-850 bg-slate-900/20 px-1 md:px-6 sm:items-center justify-between gap-1 sm:gap-4 py-1 sm:py-0">
-                  <div ref={swipeRef} className="flex overflow-x-auto no-scrollbar">
-                    {['read_aloud', 'qa', 'conversation', 'debate', 'mattering'].map(mode => (
+                <div className="border-b border-line bg-surface-muted px-3 md:px-6">
+                  <div role="tablist" aria-label="Practice mode" className="flex flex-wrap gap-x-1">
+                    {MODE_ORDER.map(mode => (
                       <button
                         key={mode}
+                        type="button"
+                        role="tab"
+                        aria-selected={activeModeTab === mode}
                         onClick={() => setActiveModeTab(mode)}
-                        className={`flex items-center space-x-1.5 py-3.5 px-4 text-xs font-bold border-b-2 -mb-px transition whitespace-nowrap ${
-                          activeModeTab === mode 
-                            ? 'border-purple-500 text-purple-400 font-extrabold' 
-                            : 'border-transparent text-slate-400 hover:text-slate-200'
+                        className={`flex items-center gap-1.5 py-3 px-3 text-sm font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap ${
+                          activeModeTab === mode
+                            ? 'border-brand text-brand-ink'
+                            : 'border-transparent text-ink-muted hover:text-ink'
                         }`}
                       >
                         {getModeIcon(mode)}
@@ -243,35 +242,36 @@ export function Leaderboard({ student }) {
                       </button>
                     ))}
                   </div>
-                  
-                  {uniqueMaterials.length > 0 && (
-                    <div className="flex items-center space-x-2 px-2 md:px-0 py-2 sm:py-0">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Material:</span>
-                      <select
-                        value={activeMaterialFilter}
-                        onChange={(e) => setActiveMaterialFilter(e.target.value)}
-                        className="bg-slate-950 border border-slate-800 text-slate-300 text-xs rounded-lg px-2 py-2 md:py-1.5 focus:outline-none focus:border-purple-500 flex-1 min-w-0 sm:flex-none sm:max-w-[200px] truncate"
-                      >
-                        <option value="all">All Materials</option>
-                        {uniqueMaterials.map(mat => (
-                          <option key={mat} value={mat}>{mat}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
                 </div>
 
+                {uniqueMaterials.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 px-4 md:px-6 py-3 border-b border-line">
+                    <label htmlFor="leaderboard-material" className="text-sm font-semibold text-ink-muted">Material</label>
+                    <select
+                      id="leaderboard-material"
+                      value={activeMaterialFilter}
+                      onChange={(e) => setActiveMaterialFilter(e.target.value)}
+                      className="bg-surface border border-line-strong text-ink text-sm rounded-lg px-2.5 min-h-[40px] focus:outline-none focus:border-brand focus:ring-4 focus:ring-brand-ring flex-1 min-w-0 sm:flex-none sm:w-72"
+                    >
+                      <option value="all">All materials</option>
+                      {uniqueMaterials.map(mat => (
+                        <option key={mat} value={mat}>{mat}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 {getSortedRankings(activeModeTab).length === 0 ? (
-                  <div className="px-6 py-12 md:p-16 text-center space-y-2 text-slate-500">
-                    <Award className="w-10 h-10 mx-auto text-slate-700" />
-                    <h5 className="text-sm font-bold">No records found</h5>
-                    <p className="text-xs max-w-xs mx-auto">Be the first to complete a practice test in {getModeLabel(activeModeTab)} to rank on the leaderboard!</p>
+                  <div className="px-6 py-12 md:p-16 text-center space-y-2 text-ink-subtle">
+                    <Award className="w-10 h-10 mx-auto text-ink-subtle" />
+                    <h5 className="text-base font-semibold text-ink">No scores yet</h5>
+                    <p className="text-sm max-w-xs mx-auto">Be the first to complete a practice test in {getModeLabel(activeModeTab)} to rank on the leaderboard!</p>
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                       <thead>
-                        <tr className="bg-slate-900/30 text-slate-400 text-[10px] font-semibold uppercase tracking-wider border-b border-slate-850">
+                        <tr className="bg-surface-muted text-ink-muted text-[13px] font-semibold border-b border-line">
                           <th className="py-3.5 px-2 md:px-6 w-12 md:w-16 text-center">Rank</th>
                           <th className="py-3.5 px-2 md:px-6">Student</th>
                           <th className="hidden md:table-cell py-3.5 px-6">Material</th>
@@ -280,30 +280,30 @@ export function Leaderboard({ student }) {
                           <th className="hidden md:table-cell py-3.5 px-6">Feedback Summary</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-850 text-slate-300 text-xs">
+                      <tbody className="divide-y divide-line text-ink-muted text-sm">
                         {getSortedRankings(activeModeTab).slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((record, index) => (
-                          <tr key={record.id} className="hover:bg-slate-900/40 transition">
+                          <tr key={record.id} className="hover:bg-surface-muted transition">
                             <td className="py-3 md:py-4 px-2 md:px-6 text-center">{getRankBadge((currentPage - 1) * itemsPerPage + index)}</td>
-                            <td className="py-3 md:py-4 px-2 md:px-6 font-bold text-white">
+                            <td className="py-3 md:py-4 px-2 md:px-6 font-bold text-ink">
                               {record.student?.full_name}
                               {/* Phones: material and date sit under the name instead of in their own columns */}
-                              <div className="md:hidden mt-0.5 text-[11px] font-normal text-slate-400 line-clamp-1">
+                              <div className="md:hidden mt-0.5 text-xs font-normal text-ink-muted line-clamp-1">
                                 {record.feedback?.material_title || record.feedback?.motion || 'Default Material'}
                               </div>
-                              <div className="md:hidden text-[10px] font-normal font-mono text-slate-500">
+                              <div className="md:hidden text-xs font-normal tabular-nums text-ink-subtle">
                                 {new Date(record.created_at).toLocaleDateString()}
                               </div>
                             </td>
-                            <td className="hidden md:table-cell py-4 px-6 text-slate-300 font-medium truncate max-w-[150px]" title={record.feedback?.material_title || record.feedback?.motion || 'Default Material'}>
+                            <td className="hidden md:table-cell py-4 px-6 text-ink-muted font-medium truncate max-w-[150px]" title={record.feedback?.material_title || record.feedback?.motion || 'Default Material'}>
                               {record.feedback?.material_title || record.feedback?.motion || 'Default Material'}
                             </td>
-                            <td className="hidden md:table-cell py-4 px-6 text-slate-400 font-mono text-[10px]">
+                            <td className="hidden md:table-cell py-4 px-6 text-ink-muted tabular-nums text-xs">
                               {new Date(record.created_at).toLocaleString()}
                             </td>
                             <td className="py-3 md:py-4 px-3 md:px-6">
                               {formatScoreDisplay(record.mode, record.score, record.feedback)}
                             </td>
-                            <td className="hidden md:table-cell py-4 px-6 max-w-xs truncate text-slate-400 italic" title={record.feedback?.feedback || record.feedback?.overall_feedback || (typeof record.feedback === 'string' ? record.feedback : 'See detailed scores')}>
+                            <td className="hidden md:table-cell py-4 px-6 max-w-xs truncate text-ink-muted italic" title={record.feedback?.feedback || record.feedback?.overall_feedback || (typeof record.feedback === 'string' ? record.feedback : 'See detailed scores')}>
                               {record.feedback?.feedback || record.feedback?.overall_feedback || (typeof record.feedback === 'string' ? record.feedback : 'See detailed scores')}
                             </td>
                           </tr>
@@ -313,22 +313,22 @@ export function Leaderboard({ student }) {
                   </div>
                 )}
                 {getSortedRankings(activeModeTab).length > itemsPerPage && (
-                  <div className="flex items-center justify-between gap-3 px-3 md:px-6 py-3 md:py-4 bg-slate-900/40 border-t border-slate-850">
-                    <span className="text-xs text-slate-400">
+                  <div className="flex items-center justify-between gap-3 px-3 md:px-6 py-3 md:py-4 bg-surface-muted border-t border-line">
+                    <span className="text-[13px] text-ink-muted">
                       Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, getSortedRankings(activeModeTab).length)} of {getSortedRankings(activeModeTab).length} entries
                     </span>
                     <div className="flex space-x-2 shrink-0">
                       <button
                         onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                         disabled={currentPage === 1}
-                        className="px-3.5 py-2 md:px-3 md:py-1 text-xs font-medium rounded-md bg-slate-800 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700"
+                        className="min-h-[40px] px-3.5 text-sm font-semibold rounded-lg bg-surface border border-line-strong text-ink disabled:opacity-50 disabled:cursor-not-allowed hover:bg-surface-muted"
                       >
                         Previous
                       </button>
                       <button
                         onClick={() => setCurrentPage(p => p + 1)}
                         disabled={currentPage * itemsPerPage >= getSortedRankings(activeModeTab).length}
-                        className="px-3.5 py-2 md:px-3 md:py-1 text-xs font-medium rounded-md bg-slate-800 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700"
+                        className="min-h-[40px] px-3.5 text-sm font-semibold rounded-lg bg-surface border border-line-strong text-ink disabled:opacity-50 disabled:cursor-not-allowed hover:bg-surface-muted"
                       >
                         Next
                       </button>
@@ -342,16 +342,16 @@ export function Leaderboard({ student }) {
             {activeSource === 'local' && (
               <div>
                 {localHistory.length === 0 ? (
-                  <div className="px-6 py-12 md:p-16 text-center space-y-2 text-slate-500">
-                    <Calendar className="w-12 h-12 text-slate-700 mx-auto" />
-                    <h5 className="text-sm font-bold text-slate-400">No activities logged yet</h5>
-                    <p className="text-xs text-slate-500">Your practice assessment scores will appear here after you finish your tests.</p>
+                  <div className="px-6 py-12 md:p-16 text-center space-y-2 text-ink-subtle">
+                    <Calendar className="w-12 h-12 text-ink-subtle mx-auto" />
+                    <h5 className="text-base font-semibold text-ink">No attempts yet</h5>
+                    <p className="text-sm text-ink-muted">Your practice assessment scores will appear here after you finish your tests.</p>
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                       <thead>
-                        <tr className="bg-slate-900/30 text-slate-400 text-[10px] font-semibold uppercase tracking-wider border-b border-slate-850">
+                        <tr className="bg-surface-muted text-ink-muted text-[13px] font-semibold border-b border-line">
                           <th className="hidden md:table-cell py-3 px-6">Date & Time</th>
                           <th className="py-3 px-3 md:px-6"><span className="md:hidden">Attempt</span><span className="hidden md:inline">Assessment Mode</span></th>
                           <th className="hidden md:table-cell py-3 px-6">Material</th>
@@ -359,32 +359,32 @@ export function Leaderboard({ student }) {
                           <th className="hidden md:table-cell py-3 px-6">Feedback Summary</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-850 text-slate-300 text-xs">
+                      <tbody className="divide-y divide-line text-ink-muted text-sm">
                         {localHistory.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((record) => (
-                          <tr key={record.id} className="hover:bg-slate-900/40 transition">
-                            <td className="hidden md:table-cell py-4 px-6 text-slate-400 font-mono text-[10px]">
+                          <tr key={record.id} className="hover:bg-surface-muted transition">
+                            <td className="hidden md:table-cell py-4 px-6 text-ink-muted tabular-nums text-xs">
                               {new Date(record.created_at).toLocaleString()}
                             </td>
-                            <td className="py-3 md:py-4 px-3 md:px-6 font-semibold text-white">
+                            <td className="py-3 md:py-4 px-3 md:px-6 font-semibold text-ink">
                               <div className="flex items-center space-x-2">
                                 {getModeIcon(record.mode)}
                                 <span>{getModeLabel(record.mode)}</span>
                               </div>
                               {/* Phones: material and date sit under the mode instead of in their own columns */}
-                              <div className="md:hidden mt-0.5 text-[11px] font-normal text-slate-400 line-clamp-1">
+                              <div className="md:hidden mt-0.5 text-xs font-normal text-ink-muted line-clamp-1">
                                 {record.feedback?.material_title || record.feedback?.motion || 'Default Material'}
                               </div>
-                              <div className="md:hidden text-[10px] font-normal font-mono text-slate-500">
+                              <div className="md:hidden text-xs font-normal tabular-nums text-ink-subtle">
                                 {new Date(record.created_at).toLocaleString()}
                               </div>
                             </td>
-                            <td className="hidden md:table-cell py-4 px-6 text-slate-300 font-medium truncate max-w-[150px]" title={record.feedback?.material_title || record.feedback?.motion || 'Default Material'}>
+                            <td className="hidden md:table-cell py-4 px-6 text-ink-muted font-medium truncate max-w-[150px]" title={record.feedback?.material_title || record.feedback?.motion || 'Default Material'}>
                               {record.feedback?.material_title || record.feedback?.motion || 'Default Material'}
                             </td>
                             <td className="py-3 md:py-4 px-3 md:px-6">
                               {formatScoreDisplay(record.mode, record.score, record.feedback)}
                             </td>
-                            <td className="hidden md:table-cell py-4 px-6 max-w-xs truncate text-slate-400 italic" title={record.feedback?.feedback || record.feedback?.overall_feedback || (typeof record.feedback === 'string' ? record.feedback : 'See detailed scores')}>
+                            <td className="hidden md:table-cell py-4 px-6 max-w-xs truncate text-ink-muted italic" title={record.feedback?.feedback || record.feedback?.overall_feedback || (typeof record.feedback === 'string' ? record.feedback : 'See detailed scores')}>
                               {record.feedback?.feedback || record.feedback?.overall_feedback || (typeof record.feedback === 'string' ? record.feedback : 'See detailed scores')}
                             </td>
                           </tr>
@@ -394,22 +394,22 @@ export function Leaderboard({ student }) {
                   </div>
                 )}
                 {localHistory.length > itemsPerPage && (
-                  <div className="flex items-center justify-between gap-3 px-3 md:px-6 py-3 md:py-4 bg-slate-900/40 border-t border-slate-850">
-                    <span className="text-xs text-slate-400">
+                  <div className="flex items-center justify-between gap-3 px-3 md:px-6 py-3 md:py-4 bg-surface-muted border-t border-line">
+                    <span className="text-[13px] text-ink-muted">
                       Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, localHistory.length)} of {localHistory.length} entries
                     </span>
                     <div className="flex space-x-2 shrink-0">
                       <button
                         onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                         disabled={currentPage === 1}
-                        className="px-3.5 py-2 md:px-3 md:py-1 text-xs font-medium rounded-md bg-slate-800 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700"
+                        className="min-h-[40px] px-3.5 text-sm font-semibold rounded-lg bg-surface border border-line-strong text-ink disabled:opacity-50 disabled:cursor-not-allowed hover:bg-surface-muted"
                       >
                         Previous
                       </button>
                       <button
                         onClick={() => setCurrentPage(p => p + 1)}
                         disabled={currentPage * itemsPerPage >= localHistory.length}
-                        className="px-3.5 py-2 md:px-3 md:py-1 text-xs font-medium rounded-md bg-slate-800 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700"
+                        className="min-h-[40px] px-3.5 text-sm font-semibold rounded-lg bg-surface border border-line-strong text-ink disabled:opacity-50 disabled:cursor-not-allowed hover:bg-surface-muted"
                       >
                         Next
                       </button>

@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Clock, RotateCcw, Save, ChevronDown } from 'lucide-react';
 import { TIMER_FIELDS, resolveTimers, describeDuration } from '../../utils/timerSettings';
+import { MODE_LABELS } from '../../utils/modes';
 
-const MODE_TITLES = { debate: 'Debate', mattering: 'Mattering Drill' };
+const MODE_TITLES = { debate: MODE_LABELS.debate, mattering: MODE_LABELS.mattering };
 
 const split = (seconds) => ({ m: String(Math.floor(seconds / 60)), s: String(seconds % 60).padStart(2, '0') });
 
@@ -58,7 +59,7 @@ export function TimerSettings({ selectedClass, handleUpdateClass }) {
   const summary = `Debate ${describeDuration(saved.debate.prep)} prep · ${describeDuration(saved.debate.speech)} speech — Mattering ${describeDuration(saved.mattering.breakdown)} / ${describeDuration(saved.mattering.argument)} / ${describeDuration(saved.mattering.rebuttal)}`;
 
   return (
-    <div className="border border-slate-800 rounded-xl bg-slate-900/40">
+    <div className="border border-line rounded-xl bg-surface-muted">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -66,29 +67,29 @@ export function TimerSettings({ selectedClass, handleUpdateClass }) {
         aria-expanded={open}
       >
         <div className="flex items-start gap-3 min-w-0">
-          <Clock className="w-4 h-4 text-indigo-400 mt-0.5 shrink-0" />
+          <Clock className="w-4 h-4 text-brand-ink mt-0.5 shrink-0" />
           <div className="min-w-0">
-            <div className="text-sm font-bold text-white">
+            <div className="text-sm font-bold text-ink">
               Debate &amp; Mattering timers
-              <span className={`ml-2 text-[10px] font-semibold px-1.5 py-0.5 rounded ${isDefault ? 'bg-slate-800 text-slate-400' : 'bg-indigo-500/15 text-indigo-300'}`}>
+              <span className={`ml-2 text-xs font-semibold px-1.5 py-0.5 rounded ${isDefault ? 'bg-surface-muted text-ink-muted' : 'bg-brand-tint text-brand-ink'}`}>
                 {isDefault ? 'Default' : 'Custom'}
               </span>
             </div>
-            <div className="text-[11px] text-slate-500 truncate">{summary}</div>
+            <div className="text-xs text-ink-subtle truncate">{summary}</div>
           </div>
         </div>
-        <ChevronDown className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`w-4 h-4 text-ink-muted shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
-        <div className="px-4 pb-4 space-y-4 border-t border-slate-800 pt-4">
-          <p className="text-[11px] text-slate-400 leading-relaxed">
-            Applies to every student in <strong className="text-slate-200">{selectedClass.class_name}</strong>. Students get the new times the next time they open the Debate or Mattering tab.
+        <div className="px-4 pb-4 space-y-4 border-t border-line pt-4">
+          <p className="text-xs text-ink-muted leading-relaxed">
+            Applies to every student in <strong className="text-ink">{selectedClass.class_name}</strong>. Students get the new times the next time they open the Debate or Mattering tab.
           </p>
 
           {Object.entries(TIMER_FIELDS).map(([mode, fields]) => (
             <div key={mode} className="space-y-2">
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{MODE_TITLES[mode]}</div>
+              <div className="text-xs font-bold text-ink-muted ">{MODE_TITLES[mode]}</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {fields.map((f) => {
                   const id = `${mode}.${f.key}`;
@@ -97,32 +98,32 @@ export function TimerSettings({ selectedClass, handleUpdateClass }) {
                   const raw = (parseInt(v.m, 10) || 0) * 60 + (parseInt(v.s, 10) || 0);
                   const adjusted = raw !== secs;
                   return (
-                    <div key={id} className="bg-slate-950/60 border border-slate-800 rounded-lg p-3">
+                    <div key={id} className="bg-surface border border-line rounded-lg p-3">
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="text-xs font-bold text-slate-200">{f.label}</div>
-                          <div className="text-[10px] text-slate-500">{f.hint}</div>
+                          <div className="text-xs font-bold text-ink">{f.label}</div>
+                          <div className="text-xs text-ink-subtle">{f.hint}</div>
                         </div>
-                        <div className="flex items-center gap-1 font-mono shrink-0">
+                        <div className="flex items-center gap-1 tabular-nums shrink-0">
                           <input
                             inputMode="numeric"
                             aria-label={`${MODE_TITLES[mode]} ${f.label} minutes`}
                             value={v.m}
                             onChange={(e) => setPart(id, 'm', e.target.value)}
-                            className="w-11 px-1.5 py-1.5 bg-slate-900 border border-slate-700 rounded-md text-white text-sm text-center focus:border-indigo-500 outline-none"
+                            className="w-11 px-1.5 py-1.5 bg-surface border border-line-strong rounded-md text-ink text-sm text-center focus:border-brand outline-none"
                           />
-                          <span className="text-slate-500">:</span>
+                          <span className="text-ink-subtle">:</span>
                           <input
                             inputMode="numeric"
                             aria-label={`${MODE_TITLES[mode]} ${f.label} seconds`}
                             value={v.s}
                             onChange={(e) => setPart(id, 's', e.target.value)}
                             onBlur={() => setValues((prev) => ({ ...prev, [id]: split(toSeconds(mode, f)) }))}
-                            className="w-11 px-1.5 py-1.5 bg-slate-900 border border-slate-700 rounded-md text-white text-sm text-center focus:border-indigo-500 outline-none"
+                            className="w-11 px-1.5 py-1.5 bg-surface border border-line-strong rounded-md text-ink text-sm text-center focus:border-brand outline-none"
                           />
                         </div>
                       </div>
-                      <div className={`text-[10px] mt-1.5 ${adjusted ? 'text-amber-400' : 'text-slate-600'}`}>
+                      <div className={`text-xs mt-1.5 ${adjusted ? 'text-warning' : 'text-ink-subtle'}`}>
                         {adjusted
                           ? `Will be saved as ${describeDuration(secs)} (allowed ${describeDuration(f.min)}–${describeDuration(f.max)})`
                           : `Default ${describeDuration(f.default)}`}
@@ -140,7 +141,7 @@ export function TimerSettings({ selectedClass, handleUpdateClass }) {
                 type="button"
                 disabled={saving}
                 onClick={() => save(null)}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold transition disabled:opacity-50 cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-2 bg-surface-muted hover:bg-line text-ink-muted rounded-lg text-xs font-semibold transition disabled:opacity-50 cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Back to defaults</span>
@@ -150,7 +151,7 @@ export function TimerSettings({ selectedClass, handleUpdateClass }) {
               type="button"
               disabled={saving}
               onClick={() => save(build())}
-              className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition disabled:opacity-50 cursor-pointer"
+              className="flex items-center gap-1.5 px-4 py-2 bg-brand hover:bg-brand-hover text-white rounded-lg text-xs font-bold transition disabled:opacity-50 cursor-pointer"
             >
               <Save className="w-3.5 h-3.5" />
               <span>{saving ? 'Saving…' : 'Save timers'}</span>

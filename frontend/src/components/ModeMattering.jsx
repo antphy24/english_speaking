@@ -1,9 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Mic, Square, Loader2, CheckCircle2, ArrowRight, Clock, AlertTriangle, Lightbulb,
-  Users, GitBranch, Scale, FileText, Swords, BookOpen, Target, SkipForward,
+  Users, GitBranch, Scale, FileText, Swords, BookOpen, Target, SkipForward, RotateCcw,
 } from 'lucide-react';
 import Spinner from './UI/Spinner';
+import { Button } from './UI/Button';
+import { Badge } from './UI/Badge';
+import { Field, Select, Textarea } from './UI/Field';
+import { RecordButton } from './UI/Recorder';
+import { ErrorPanel } from './UI/ErrorPanel';
+import { TextSizeControl, useReadingSize } from './UI/TextSizeControl';
 import SubmissionProgress from './UI/SubmissionProgress';
 import PinnedBar from './UI/PinnedBar';
 import { DEFAULT_TIMERS, describeDuration } from '../utils/timerSettings';
@@ -122,6 +128,8 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
   const [result, setResult] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [errorType, setErrorType] = useState(null); // 'argument' | 'rebuttal' | 'opposition' | 'grading' | 'mic'
+  const readingSize = useReadingSize();
+  const { style: readingStyle, ...readingSizeControl } = readingSize;
 
   const {
     isRecording, recordingTime, audioBlob, error: recordingError,
@@ -452,32 +460,42 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
 
   // ---------------- Shared pieces ----------------
 
+  const roleBadge = (
+    <Badge tone={d.role === 'Affirmative' ? 'brand' : 'warning'}>
+      {d.role === 'Affirmative' ? 'Affirmative (Government)' : 'Negative (Opposition)'}
+    </Badge>
+  );
+
   const issuePanel = (
-    <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl">
-      <span className="text-xs text-slate-500 uppercase font-bold tracking-wider">Motion</span>
-      <p className="text-sm font-medium text-slate-200 mt-1">{d.motion}</p>
-      <span className="text-xs text-slate-500 uppercase font-bold tracking-wider block mt-4">Your side</span>
-      <p className={`text-sm font-bold mt-1 ${d.role === 'Affirmative' ? 'text-indigo-400' : 'text-rose-400'}`}>{d.role}</p>
+    <div className="bg-surface border border-line rounded-2xl shadow-card p-5 md:p-6 space-y-2">
+      <span className="block text-[13px] font-semibold text-ink-muted">Motion</span>
+      <p className="text-[15px] font-semibold text-ink leading-snug">{d.motion}</p>
+      {roleBadge}
       {d.background && (
-        <>
-          <span className="text-xs text-slate-500 uppercase font-bold tracking-wider block mt-4">Background</span>
-          <p className="text-xs text-slate-400 mt-1 leading-relaxed whitespace-pre-wrap">{d.background}</p>
-        </>
+        <div className="pt-3">
+          <span className="block text-[13px] font-semibold text-ink-muted">Background</span>
+          <p className="text-sm text-ink-muted mt-1 leading-relaxed whitespace-pre-wrap">{d.background}</p>
+        </div>
       )}
     </div>
   );
 
   const notesPanel = (
-    <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl h-full flex flex-col">
-      <div className="flex items-center space-x-3 mb-4">
-        <FileText className="w-5 h-5 text-slate-400" />
-        <h3 className="font-bold text-white">Your breakdown</h3>
+    <section className="bg-surface border border-line rounded-2xl shadow-card p-5 md:p-6 h-full flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <FileText className="w-5 h-5 text-ink-subtle" aria-hidden="true" />
+          <h2 className="text-base font-bold text-ink">Your breakdown</h2>
+        </div>
+        <TextSizeControl {...readingSizeControl} />
       </div>
-      <div className="flex-1 w-full bg-slate-950 border border-slate-800 text-slate-400 rounded-xl p-4 font-mono text-sm leading-relaxed overflow-y-auto whitespace-pre-wrap">
-        {d.notes || 'No notes written during the breakdown.'}
+      <div className="flex-1 min-h-[200px] bg-surface-muted rounded-xl p-4 text-ink whitespace-pre-wrap overflow-y-auto" style={readingStyle}>
+        {d.notes || <span className="text-ink-subtle">No notes written during the breakdown.</span>}
       </div>
-    </div>
+    </section>
   );
+
+  const overtimeNote = (limit) => `Time is up - finish your sentence (stops in ${Math.max(0, limit + GRACE_SECONDS - recordingTime)}s).`;
 
   // Phones/tablets: the same timer and record button, pinned to the top of the screen
   const pinnedRecorder = (which, limit, label, note = '') => {
@@ -486,25 +504,13 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
     return (
       <PinnedBar
         time={isRecording ? formatTime(left) : formatTime(limit)}
-        tone={overtime ? 'text-rose-400' : isRecording ? 'text-rose-300' : 'text-slate-200'}
-        note={overtime ? `Time is up - finish your sentence (stops in ${Math.max(0, limit + GRACE_SECONDS - recordingTime)}s).` : note}
+        tone={isRecording ? 'text-danger' : 'text-ink'}
+        note={overtime ? overtimeNote(limit) : note}
       >
         {!isRecording ? (
-          <button
-            onClick={() => beginRecording(which)}
-            className="w-full font-bold py-2.5 px-3 rounded-xl text-sm flex items-center justify-center space-x-2 cursor-pointer bg-indigo-600 text-white"
-          >
-            <Mic className="w-4 h-4" />
-            <span>{label}</span>
-          </button>
+          <Button size="sm" fullWidth icon={Mic} onClick={() => beginRecording(which)}>{label}</Button>
         ) : (
-          <button
-            onClick={stopRecording}
-            className="w-full font-bold py-2.5 px-3 rounded-xl text-sm flex items-center justify-center space-x-2 cursor-pointer bg-rose-600 text-white"
-          >
-            <Square className="w-4 h-4 fill-current" />
-            <span>Stop Recording</span>
-          </button>
+          <Button size="sm" fullWidth variant="danger" icon={Square} onClick={stopRecording}>Stop and submit</Button>
         )}
       </PinnedBar>
     );
@@ -515,32 +521,19 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
     const left = limit - recordingTime;
     const overtime = isRecording && left <= 0;
     return (
-      <div className="hidden lg:block">
-        <div className={`text-4xl font-mono font-bold text-center tracking-wider mb-2 bg-slate-950 py-4 rounded-xl border border-slate-800 ${overtime ? 'text-rose-400' : 'text-slate-200'}`}>
+      <div className="hidden lg:flex flex-col items-center gap-3">
+        <div className={`text-[44px] font-bold tabular-nums leading-none ${isRecording ? 'text-danger' : 'text-ink'}`}>
           {isRecording ? formatTime(left) : formatTime(limit)}
         </div>
-        <p className="text-xs mb-4 h-4 text-rose-400">
-          {overtime ? `Time is up - finish your sentence (stops in ${Math.max(0, limit + GRACE_SECONDS - recordingTime)}s).` : ''}
-        </p>
-        {!isRecording ? (
-          <button
-            onClick={() => beginRecording(which)}
-            aria-label={label}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-4 rounded-xl transition-all flex justify-center items-center space-x-3 shadow-lg shadow-indigo-900/20 cursor-pointer"
-          >
-            <Mic className="w-5 h-5" />
-            <span>{label}</span>
-          </button>
-        ) : (
-          <button
-            onClick={stopRecording}
-            aria-label={`Stop recording, ${recordingTime} seconds elapsed`}
-            className="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-4 px-4 rounded-xl transition-all flex justify-center items-center space-x-3 animate-pulse shadow-lg shadow-rose-900/20 cursor-pointer"
-          >
-            <Square className="w-5 h-5 fill-current" />
-            <span>Stop Recording</span>
-          </button>
-        )}
+        <p className="text-[13px] min-h-[1.25rem] text-danger" aria-live="polite">{overtime ? overtimeNote(limit) : ''}</p>
+        <RecordButton
+          isRecording={isRecording}
+          onClick={isRecording ? stopRecording : () => beginRecording(which)}
+          aria-label={isRecording ? `Stop recording, ${recordingTime} seconds recorded` : label}
+        />
+        <span className={`text-sm font-semibold ${isRecording ? 'text-danger' : 'text-ink'}`}>
+          {isRecording ? 'Tap to stop and submit' : label}
+        </span>
       </div>
     );
   };
@@ -549,75 +542,67 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
 
   if (step === 'setup') {
     return (
-      <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl p-6 md:p-8 animate-fadeIn shadow-2xl">
-        <div className="flex items-center space-x-3 mb-6">
-          <div className="p-3 bg-indigo-500/10 text-indigo-400 rounded-xl border border-indigo-500/20">
-            <Lightbulb className="w-6 h-6" />
-          </div>
+      <section className="bg-surface border border-line rounded-2xl shadow-card p-5 md:p-7 max-w-3xl animate-fadeIn">
+        <div className="flex items-center gap-3">
+          <span className="w-11 h-11 rounded-full bg-brand-tint text-brand-ink flex items-center justify-center shrink-0">
+            <Lightbulb className="w-5 h-5" aria-hidden="true" />
+          </span>
           <div>
-            <h3 className="text-xl font-bold text-white">Mattering Drill</h3>
-            <p className="text-sm text-slate-400">Break an issue down, build one argument, then defend it.</p>
+            <h2 className="text-lg font-bold text-ink">Mattering</h2>
+            <p className="text-sm text-ink-muted">Break an issue down, build one argument, then defend it.</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-6">
+        <ol className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
             ['1', 'Breakdown', `${describeDuration(BREAKDOWN_SECONDS)}, written`],
             ['2', 'Argument', `${describeDuration(ARGUMENT_SECONDS)}, spoken`],
             ['3', 'Rebuttal', REBUTTAL_PREP_SECONDS > 0 ? `${describeDuration(REBUTTAL_PREP_SECONDS)} prep + ${describeDuration(REBUTTAL_SECONDS)}` : describeDuration(REBUTTAL_SECONDS)],
             ['4', 'Speaker score', '69-81 scale'],
           ].map(([n, name, detail]) => (
-            <div key={n} className="bg-slate-950/60 border border-slate-800 rounded-xl p-3">
-              <span className="text-[10px] font-mono text-indigo-400">STEP {n}</span>
-              <p className="text-sm font-bold text-white">{name}</p>
-              <p className="text-[11px] text-slate-500">{detail}</p>
-            </div>
+            <li key={n} className="bg-surface-muted rounded-xl p-3.5">
+              <span className="w-6 h-6 rounded-full bg-surface text-brand-ink text-xs font-bold flex items-center justify-center">{n}</span>
+              <p className="mt-2 text-sm font-semibold text-ink">{name}</p>
+              <p className="text-[13px] text-ink-subtle">{detail}</p>
+            </li>
           ))}
-        </div>
+        </ol>
 
-        <div className="space-y-6">
-          <div>
-            <label className="block text-sm font-semibold text-slate-300 mb-2">Select Issue</label>
-            <select
-              value={issueId}
-              onChange={(e) => setIssueId(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-xl p-3 focus:outline-none focus:border-indigo-500/50 transition-colors"
-            >
-              <option value="" disabled>-- Choose a motion --</option>
+        <div className="mt-6 space-y-5">
+          <Field label="Issue">
+            <Select value={issueId} onChange={(e) => setIssueId(e.target.value)}>
+              <option value="" disabled>Choose a motion</option>
               {issues.map((i) => (
                 <option key={i.id} value={i.id}>{i.motion}</option>
               ))}
-            </select>
-          </div>
+            </Select>
+          </Field>
 
-          <div>
-            <label className="block text-sm font-semibold text-slate-300 mb-2">Select Side</label>
-            <div className="flex space-x-4">
-              {[['Affirmative', 'Affirmative (Gov)', 'bg-indigo-600/20 border-indigo-500 text-indigo-300'],
-                ['Negative', 'Negative (Opp)', 'bg-rose-600/20 border-rose-500 text-rose-300']].map(([value, label, active]) => (
+          <fieldset>
+            <legend className="text-sm font-semibold text-ink mb-1.5">Your side</legend>
+            <div className="grid grid-cols-2 gap-3">
+              {[['Affirmative', 'Affirmative', 'Government'], ['Negative', 'Negative', 'Opposition']].map(([value, label, sub]) => (
                 <button
                   key={value}
+                  type="button"
                   onClick={() => setRole(value)}
-                  className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm transition-all border cursor-pointer ${
-                    role === value ? active : 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-800'
+                  aria-pressed={role === value}
+                  className={`min-h-[56px] px-4 py-2.5 rounded-xl border text-left transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-ring ${
+                    role === value ? 'bg-brand-tint border-brand ring-1 ring-inset ring-brand' : 'bg-surface border-line-strong hover:bg-surface-muted'
                   }`}
                 >
-                  {label}
+                  <span className={`block text-[15px] font-semibold ${role === value ? 'text-brand-ink' : 'text-ink'}`}>{label}</span>
+                  <span className="block text-[13px] text-ink-subtle">{sub}</span>
                 </button>
               ))}
             </div>
-          </div>
+          </fieldset>
 
-          <button
-            onClick={handleStartBreakdown}
-            disabled={!issueId}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3.5 px-4 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 shadow-lg shadow-indigo-900/20 cursor-pointer"
-          >
-            <span>Start Breakdown</span>
-            <ArrowRight className="w-5 h-5" />
-          </button>
+          <Button size="lg" fullWidth iconRight={ArrowRight} onClick={handleStartBreakdown} disabled={!issueId}>
+            Start the breakdown
+          </Button>
         </div>
-      </div>
+      </section>
     );
   }
 
@@ -625,57 +610,43 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
     return (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 animate-fadeIn">
         <PinnedBar time={formatTime(timer)}>
-          <button
-            onClick={handleGoToArgument}
-            className="w-full font-bold py-2.5 px-3 rounded-xl text-sm flex items-center justify-center space-x-2 cursor-pointer bg-emerald-600/20 text-emerald-400 border border-emerald-500/30"
-          >
-            <span>Deliver Argument</span>
-            <Mic className="w-4 h-4" />
-          </button>
+          <Button size="sm" fullWidth icon={Mic} onClick={handleGoToArgument}>Deliver argument</Button>
         </PinnedBar>
-        <div className="lg:col-span-1 space-y-4 lg:space-y-6">
-          <div className="hidden lg:block bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl">
-            <div className="flex items-center space-x-3 mb-4">
-              <Clock className="w-5 h-5 text-indigo-400" />
-              <h3 className="font-bold text-white">Breakdown Time</h3>
+        <aside className="lg:col-span-1 space-y-4">
+          <div className="hidden lg:block bg-surface border border-line rounded-2xl shadow-card p-5 md:p-6 space-y-4">
+            <div>
+              <span className="flex items-center gap-2 text-[13px] font-semibold text-ink-muted">
+                <Clock className="w-4 h-4" aria-hidden="true" /> Breakdown time left
+              </span>
+              <div className="mt-1 text-[44px] font-bold tabular-nums text-ink leading-none">{formatTime(timer)}</div>
             </div>
-            <div className="text-4xl font-mono font-bold text-center text-indigo-300 tracking-wider mb-4 bg-slate-950 py-4 rounded-xl border border-slate-800">
-              {formatTime(timer)}
-            </div>
-            <button
-              onClick={handleGoToArgument}
-              className="w-full bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 font-bold py-3 px-4 rounded-xl transition-colors flex items-center justify-center space-x-2 cursor-pointer"
-            >
-              <span>Ready? Deliver Argument</span>
-              <Mic className="w-4 h-4" />
-            </button>
+            <Button fullWidth icon={Mic} onClick={handleGoToArgument}>I'm ready - deliver my argument</Button>
           </div>
           {issuePanel}
-        </div>
+        </aside>
 
-        <div className="lg:col-span-2 bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl space-y-5">
+        <section className="lg:col-span-2 bg-surface border border-line rounded-2xl shadow-card p-5 md:p-6 space-y-5">
           {NOTE_FIELDS.map(({ key, label, icon: Icon, hint, placeholder }) => (
-            <div key={key}>
-              <label htmlFor={`mattering-${key}`} className="flex items-center space-x-2 text-sm font-bold text-white">
-                <Icon className="w-4 h-4 text-indigo-400" />
-                <span>{label}</span>
+            <div key={key} className="space-y-1.5">
+              <label htmlFor={`mattering-${key}`} className="flex items-center gap-2 text-sm font-semibold text-ink">
+                <Icon className="w-4 h-4 text-brand-ink" aria-hidden="true" />
+                {label}
               </label>
-              <p className="text-xs text-slate-500 mt-0.5 mb-2">{hint}</p>
-              <textarea
+              <p className="text-[13px] text-ink-subtle">{hint}</p>
+              <Textarea
                 id={`mattering-${key}`}
                 rows={key === 'outline' ? 4 : 2}
                 maxLength={900}
                 value={notes[key]}
                 onChange={(e) => setNotes((prev) => ({ ...prev, [key]: e.target.value }))}
                 placeholder={placeholder}
-                className="w-full bg-slate-950 border border-slate-800 text-slate-300 rounded-xl p-3 focus:outline-none focus:border-indigo-500/50 resize-y font-mono text-sm leading-relaxed"
               />
             </div>
           ))}
-          <p className="text-[11px] text-slate-500">
+          <p className="text-[13px] text-ink-subtle">
             Your notes stay visible while you speak. They are not scored - only your speech is.
           </p>
-        </div>
+        </section>
       </div>
     );
   }
@@ -683,15 +654,18 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
   if (step === 'argument') {
     return (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 animate-fadeIn">
-        {pinnedRecorder('argument', ARGUMENT_SECONDS, 'Record Argument')}
-        <div className="lg:col-span-1 space-y-4 lg:space-y-6">
-          <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl text-center">
-            <h3 className="font-bold text-white mb-1">Round 1: Your Argument</h3>
-            <p className="text-xs text-slate-400 lg:mb-5">One argument, {describeDuration(ARGUMENT_SECONDS)}: claim, reasoning, example, link back.</p>
-            {recorder('argument', ARGUMENT_SECONDS, 'Record Argument')}
+        {pinnedRecorder('argument', ARGUMENT_SECONDS, 'Record argument')}
+        <aside className="lg:col-span-1 space-y-4">
+          <div className="bg-surface border border-line rounded-2xl shadow-card p-5 md:p-6 space-y-4">
+            <div className="text-center">
+              <span className="text-[13px] font-semibold text-brand-ink">Round 1</span>
+              <h2 className="text-base font-bold text-ink">Your argument</h2>
+              <p className="text-sm text-ink-muted mt-1">One argument, {describeDuration(ARGUMENT_SECONDS)}: claim, reasoning, example, link back.</p>
+            </div>
+            {recorder('argument', ARGUMENT_SECONDS, 'Record argument')}
           </div>
           {issuePanel}
-        </div>
+        </aside>
         <div className="lg:col-span-2">{notesPanel}</div>
       </div>
     );
@@ -699,18 +673,16 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
 
   if (step === 'working') {
     return (
-      <div className="flex flex-col items-center justify-center py-16 animate-fadeIn">
+      <div className="animate-fadeIn">
         {working === 'opposition' ? (
-          <>
-            <Spinner message="Your sparring partner is preparing a counter-argument..." />
+          <div className="bg-surface border border-line rounded-2xl shadow-card py-6">
+            <Spinner message="The other side is preparing a counter-argument..." />
             {sparringBusy && (
-              <p className="text-xs text-amber-300/90 -mt-2">The AI is busy right now - still trying, please wait.</p>
+              <p className="text-sm text-warning text-center -mt-2 pb-2">The AI is busy right now - still trying, please wait.</p>
             )}
-          </>
-        ) : (
-          <div className="w-full max-w-xl">
-            <SubmissionProgress progress={turn.progress} transcriptLabel="Your Speech" />
           </div>
+        ) : (
+          <SubmissionProgress progress={turn.progress} transcriptLabel="What you said" />
         )}
       </div>
     );
@@ -720,46 +692,48 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
     const prepping = !isRecording && timer > 0;
     return (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 animate-fadeIn">
-        {pinnedRecorder('rebuttal', REBUTTAL_SECONDS, 'Record Rebuttal')}
-        <div className="lg:col-span-1 space-y-4 lg:space-y-6">
-          <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl text-center">
-            <h3 className="font-bold text-white mb-1">Round 2: Rebuttal</h3>
-            <p className="text-xs text-slate-400 lg:mb-5">
-              {prepping
-                ? `Prep time left: ${formatTime(timer)}. You can start early.`
-                : `Answer the opposing argument in ${describeDuration(REBUTTAL_SECONDS)}.`}
-            </p>
-            {recorder('rebuttal', REBUTTAL_SECONDS, 'Record Rebuttal')}
+        {pinnedRecorder('rebuttal', REBUTTAL_SECONDS, 'Record rebuttal')}
+        <aside className="lg:col-span-1 space-y-4">
+          <div className="bg-surface border border-line rounded-2xl shadow-card p-5 md:p-6 space-y-4">
+            <div className="text-center">
+              <span className="text-[13px] font-semibold text-brand-ink">Round 2</span>
+              <h2 className="text-base font-bold text-ink">Rebuttal</h2>
+              <p className="text-sm text-ink-muted mt-1">
+                {prepping
+                  ? `Prep time left: ${formatTime(timer)}. You can start early.`
+                  : `Answer the other side in ${describeDuration(REBUTTAL_SECONDS)}.`}
+              </p>
+            </div>
+            {recorder('rebuttal', REBUTTAL_SECONDS, 'Record rebuttal')}
             {!isRecording && (
-              <button
-                onClick={handleSkipRebuttal}
-                className="w-full mt-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-2.5 px-4 rounded-xl transition-colors text-xs flex justify-center items-center space-x-2 cursor-pointer"
-              >
-                <SkipForward className="w-4 h-4" />
-                <span>Skip rebuttal and get my score</span>
-              </button>
+              <Button variant="subtle" fullWidth icon={SkipForward} onClick={handleSkipRebuttal}>
+                Skip rebuttal and get my score
+              </Button>
             )}
-            <p className="text-[11px] text-slate-500 mt-3 leading-relaxed">
+            <p className="text-[13px] text-ink-subtle leading-relaxed">
               Scores of 76 and above need rebuttal and engagement, so skipping limits how high you can score.
             </p>
           </div>
-        </div>
+        </aside>
 
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-rose-950/20 border border-rose-500/20 rounded-2xl p-4 md:p-6">
-            <div className="flex items-center space-x-2 mb-3">
-              <Swords className="w-5 h-5 text-rose-400" />
-              <h3 className="font-bold text-white">The other side says</h3>
+        <div className="lg:col-span-2 space-y-4">
+          <section className="bg-warning-tint rounded-2xl p-5 md:p-6">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div className="flex items-center gap-2">
+                <Swords className="w-5 h-5 text-warning" aria-hidden="true" />
+                <h2 className="text-base font-bold text-ink">The other side says</h2>
+              </div>
+              <TextSizeControl {...readingSizeControl} />
             </div>
-            <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{opposition}</p>
-            <p className="text-xs text-slate-500 mt-4">
+            <p className="text-ink whitespace-pre-wrap" style={readingStyle}>{opposition}</p>
+            <p className="text-[13px] text-ink-muted mt-4">
               Tip: say which point you are answering, why it is wrong or not enough, and why your side still wins.
             </p>
-          </div>
-          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 md:p-6">
-            <span className="text-xs text-slate-500 uppercase font-bold tracking-wider">Your argument (what we heard)</span>
-            <p className="text-sm text-slate-400 font-mono leading-relaxed mt-2 whitespace-pre-wrap">{argument}</p>
-          </div>
+          </section>
+          <section className="bg-surface border border-line rounded-2xl p-5 md:p-6">
+            <span className="block text-[13px] font-semibold text-ink-muted">Your argument (what the AI heard)</span>
+            <p className="text-ink-muted leading-relaxed mt-2 whitespace-pre-wrap" style={readingStyle}>{argument}</p>
+          </section>
         </div>
       </div>
     );
@@ -767,14 +741,11 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
 
   if (step === 'grading') {
     return (
-      <div className="flex flex-col items-center justify-center py-16 animate-fadeIn">
-        <h3 className="text-xl font-bold text-white mb-2">Adjudicating your drill</h3>
-        <p className="text-slate-400 text-sm max-w-md text-center mb-2">
+      <div className="space-y-4 animate-fadeIn">
+        <p className="text-[15px] text-ink-muted">
           Your argument{rebuttal ? ' and rebuttal are' : ' is'} being scored on the speaker scale.
         </p>
-        <div className="w-full max-w-xl">
-          <SubmissionProgress progress={grader.progress} transcriptLabel="Your Argument" />
-        </div>
+        <SubmissionProgress progress={grader.progress} transcriptLabel="Your argument" />
       </div>
     );
   }
@@ -783,43 +754,24 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
     const retryable = errorType === 'opposition' || errorType === 'grading'
       || ((errorType === 'argument' || errorType === 'rebuttal') && turn.progress?.retryable && turn.hasRecording());
     return (
-      <div className="glass-panel p-4 md:p-6 rounded-xl border border-red-500/20 text-center space-y-4 animate-fadeIn">
-        <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto text-red-500">
-          <AlertTriangle className="w-6 h-6" />
-        </div>
-        <div className="space-y-1">
-          <h4 className="text-lg font-bold text-white">{retryable ? 'Not finished yet' : 'Something went wrong'}</h4>
-          <p className="text-sm text-rose-300">{errorMessage}</p>
-          {retryable && errorType !== 'mic' && (
-            <p className="text-xs text-slate-400">Your work so far is kept. Tap Retry - you do not need to speak again.</p>
-          )}
-        </div>
-        <div className="flex flex-wrap justify-center gap-3 mt-4">
-          {retryable && (
-            <button onClick={handleRetry} className="px-5 py-2.5 md:py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer">
-              Retry
-            </button>
-          )}
-          {(errorType === 'argument' || errorType === 'rebuttal' || (errorType === 'mic' && d.motion)) && (
-            <button onClick={handleRecordAgain} className="px-5 py-2.5 md:py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer">
-              Record Again
-            </button>
-          )}
-          {errorType === 'rebuttal' && (
-            <button onClick={handleSkipRebuttal} className="px-5 py-2.5 md:py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer">
-              Skip Rebuttal
-            </button>
-          )}
-          {errorType === 'opposition' && (
-            <button onClick={handleGradeWithoutRebuttal} className="px-5 py-2.5 md:py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer">
-              Score My Argument Only
-            </button>
-          )}
-          <button onClick={handleReset} className="px-5 py-2.5 md:py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer">
-            Start Over
-          </button>
-        </div>
-      </div>
+      <ErrorPanel
+        icon={AlertTriangle}
+        title={retryable ? 'Not finished yet' : 'Something went wrong'}
+        message={errorMessage}
+        note={retryable && errorType !== 'mic' ? 'Your work so far is kept. Tap Retry - you do not need to speak again.' : undefined}
+      >
+        {retryable && <Button onClick={handleRetry}>Retry</Button>}
+        {(errorType === 'argument' || errorType === 'rebuttal' || (errorType === 'mic' && d.motion)) && (
+          <Button variant="secondary" icon={Mic} onClick={handleRecordAgain}>Record again</Button>
+        )}
+        {errorType === 'rebuttal' && (
+          <Button variant="secondary" onClick={handleSkipRebuttal}>Skip rebuttal</Button>
+        )}
+        {errorType === 'opposition' && (
+          <Button variant="secondary" onClick={handleGradeWithoutRebuttal}>Score my argument only</Button>
+        )}
+        <Button variant="subtle" onClick={handleReset}>Start over</Button>
+      </ErrorPanel>
     );
   }
 
@@ -830,104 +782,98 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
       return score >= low && score <= (high || low);
     };
     return (
-      <div className="space-y-8 animate-fadeIn pb-10">
-        <div className="bg-gradient-to-r from-indigo-900/40 to-slate-900/80 backdrop-blur-xl border border-indigo-500/20 rounded-3xl p-5 md:p-8 flex flex-col md:flex-row items-center md:items-stretch justify-between gap-6 shadow-2xl">
-          <div className="flex-1 w-full text-center md:text-left">
-            <div className="inline-block px-3 py-1 bg-indigo-500/20 text-indigo-300 text-[10px] font-bold uppercase tracking-wider rounded-lg border border-indigo-500/20 mb-4">
-              Mattering Drill
-            </div>
-            <h3 className="text-3xl font-extrabold text-white mb-2 tracking-tight">{result.band}</h3>
-            <p className="text-sm text-slate-300 mb-1">{d.motion}</p>
-            <p className={`text-xs font-bold ${d.role === 'Affirmative' ? 'text-indigo-400' : 'text-rose-400'}`}>{d.role}</p>
-          </div>
-          <div className="flex flex-col items-center justify-center px-10 py-4 bg-slate-950/40 rounded-2xl border border-slate-800/50 min-w-[200px]">
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Speaker Score</span>
-            <div className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-indigo-400">
-              {score}
-            </div>
-            <span className="text-sm text-slate-400 font-medium mt-1">scale 69-81 · 75 is average</span>
-          </div>
-        </div>
-
-        {/* Where the score sits on the scale */}
-        <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
-          {BANDS.map(([range, label]) => (
-            <div
-              key={range}
-              className={`rounded-xl border p-2 text-center ${
-                inBand(range) ? 'bg-indigo-600/20 border-indigo-500 text-white' : 'bg-slate-900/50 border-slate-800 text-slate-500'
-              }`}
-            >
-              <div className="text-sm font-bold font-mono">{range}</div>
-              <div className="text-[10px] leading-tight mt-0.5">{label}</div>
-            </div>
-          ))}
-        </div>
-
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 md:p-6">
-          <h4 className="font-bold text-white mb-3">Adjudicator Feedback</h4>
-          <p className="text-sm text-indigo-200/90 leading-relaxed">{result.overall_feedback}</p>
-        </div>
-
-        <div className={`grid grid-cols-1 gap-6 ${result.rebuttal_feedback ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
-          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 md:p-6">
-            <h4 className="font-bold text-white mb-3 flex items-center space-x-2">
-              <Target className="w-4 h-4 text-blue-400" /><span>Your Argument</span>
-            </h4>
-            <p className="text-sm text-slate-300 leading-relaxed">{result.argument_feedback}</p>
-          </div>
-          {result.rebuttal_feedback && (
-            <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 md:p-6">
-              <h4 className="font-bold text-white mb-3 flex items-center space-x-2">
-                <Swords className="w-4 h-4 text-rose-400" /><span>Your Rebuttal</span>
-              </h4>
-              <p className="text-sm text-slate-300 leading-relaxed">{result.rebuttal_feedback}</p>
-            </div>
-          )}
-          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 md:p-6">
-            <h4 className="font-bold text-white mb-3 flex items-center space-x-2">
-              <BookOpen className="w-4 h-4 text-emerald-400" /><span>Read Up On</span>
-            </h4>
-            <p className="text-sm text-slate-300 leading-relaxed">{result.knowledge_gaps}</p>
-          </div>
-        </div>
-
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 md:p-6 space-y-5">
-          <div>
-            <h4 className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-2">Your argument (transcript)</h4>
-            <p className="text-sm text-slate-400 font-mono leading-loose bg-slate-950/50 p-4 rounded-xl border border-slate-800/50 whitespace-pre-wrap">{argument}</p>
-          </div>
-          {opposition && (
-            <div>
-              <h4 className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-2">The other side said</h4>
-              <p className="text-sm text-slate-400 leading-relaxed bg-slate-950/50 p-4 rounded-xl border border-slate-800/50 whitespace-pre-wrap">{opposition}</p>
-            </div>
-          )}
-          {opposition && (
-            <div>
-              <h4 className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-2">Your rebuttal (transcript)</h4>
-              <p className="text-sm text-slate-400 font-mono leading-loose bg-slate-950/50 p-4 rounded-xl border border-slate-800/50 whitespace-pre-wrap">
-                {rebuttal || 'Skipped.'}
+      <div className="space-y-5 animate-fadeIn">
+        <section className="bg-surface border border-line rounded-2xl shadow-card p-5 md:p-7">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <span className="text-[13px] font-semibold text-brand-ink">Mattering result</span>
+              <h2 className="text-lg md:text-xl font-bold text-ink leading-snug">{d.motion}</h2>
+              <div className="mt-2">{roleBadge}</div>
+              <p className="mt-3 text-[13px] flex items-center gap-1.5 text-ink-muted" aria-live="polite">
+                {isSaving && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
+                {saveStatus === 'success' && <CheckCircle2 className="w-4 h-4 text-success" aria-hidden="true" />}
+                <span className={saveStatus === 'error' ? 'text-danger' : saveStatus === 'success' ? 'text-success font-semibold' : ''}>
+                  {saveStatus === 'success' ? 'Saved to your record'
+                    : saveStatus === 'error' ? 'The score was not saved' : 'Saving your score...'}
+                </span>
               </p>
             </div>
+            <div className="flex items-center gap-4 p-4 border border-line rounded-2xl">
+              <div className="text-center">
+                <div className="text-[13px] font-semibold text-ink-muted">Speaker score</div>
+                <div className="text-5xl font-bold text-ink tabular-nums leading-tight">{score}</div>
+                <div className="text-[13px] text-ink-subtle">scale 69-81 · 75 is average</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Where the score sits on the scale */}
+          <div className="mt-5">
+            <span className="block text-[13px] font-semibold text-ink-muted mb-2">{result.band}</span>
+            <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
+              {BANDS.map(([range, label]) => {
+                const here = inBand(range);
+                return (
+                  <div
+                    key={range}
+                    aria-current={here ? 'true' : undefined}
+                    className={`rounded-xl p-2 text-center ${here ? 'bg-brand text-white' : 'bg-surface-muted text-ink-muted'}`}
+                  >
+                    <div className="text-sm font-bold tabular-nums">{range}</div>
+                    <div className="text-xs leading-tight mt-0.5">{label}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        <section className="flex gap-3 p-5 md:p-6 rounded-2xl bg-brand-tint">
+          <Lightbulb className="w-5 h-5 text-brand-ink shrink-0 mt-0.5" aria-hidden="true" />
+          <div>
+            <h3 className="text-[15px] font-semibold text-brand-ink">Adjudicator's feedback</h3>
+            <p className="text-[15px] text-ink leading-relaxed mt-1 whitespace-pre-wrap">{result.overall_feedback}</p>
+          </div>
+        </section>
+
+        <div className={`grid grid-cols-1 gap-4 ${result.rebuttal_feedback ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+          <section className="bg-surface border border-line rounded-2xl p-5">
+            <h3 className="flex items-center gap-2 text-base font-bold text-ink"><Target className="w-4 h-4 text-brand-ink" aria-hidden="true" />Your argument</h3>
+            <p className="mt-2 text-[15px] text-ink-muted leading-relaxed">{result.argument_feedback}</p>
+          </section>
+          {result.rebuttal_feedback && (
+            <section className="bg-surface border border-line rounded-2xl p-5">
+              <h3 className="flex items-center gap-2 text-base font-bold text-ink"><Swords className="w-4 h-4 text-warning" aria-hidden="true" />Your rebuttal</h3>
+              <p className="mt-2 text-[15px] text-ink-muted leading-relaxed">{result.rebuttal_feedback}</p>
+            </section>
           )}
+          <section className="bg-surface border border-line rounded-2xl p-5">
+            <h3 className="flex items-center gap-2 text-base font-bold text-ink"><BookOpen className="w-4 h-4 text-success" aria-hidden="true" />Read up on</h3>
+            <p className="mt-2 text-[15px] text-ink-muted leading-relaxed">{result.knowledge_gaps}</p>
+          </section>
         </div>
 
-        <div className="flex flex-col sm:flex-row justify-end items-center gap-4 pt-4 border-t border-slate-800">
-          <span className={`text-xs flex items-center space-x-1.5 ${saveStatus === 'error' ? 'text-rose-400' : 'text-slate-400'}`}>
-            {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-            {saveStatus === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
-            <span>
-              {saveStatus === 'success' ? 'Saved to the leaderboard'
-                : saveStatus === 'error' ? 'Score was not saved' : 'Saving your score...'}
-            </span>
-          </span>
-          <button
-            onClick={handleReset}
-            className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-colors text-sm cursor-pointer"
-          >
-            Start New Drill
-          </button>
+        <section className="bg-surface border border-line rounded-2xl p-5 md:p-6 space-y-5">
+          <div>
+            <h3 className="text-[15px] font-semibold text-ink mb-2">Your argument (what the AI heard)</h3>
+            <p className="text-[15px] text-ink leading-relaxed bg-surface-muted rounded-xl p-4 whitespace-pre-wrap">{argument}</p>
+          </div>
+          {opposition && (
+            <div>
+              <h3 className="text-[15px] font-semibold text-ink mb-2">The other side said</h3>
+              <p className="text-[15px] text-ink leading-relaxed bg-surface-muted rounded-xl p-4 whitespace-pre-wrap">{opposition}</p>
+            </div>
+          )}
+          {opposition && (
+            <div>
+              <h3 className="text-[15px] font-semibold text-ink mb-2">Your rebuttal (what the AI heard)</h3>
+              <p className="text-[15px] text-ink leading-relaxed bg-surface-muted rounded-xl p-4 whitespace-pre-wrap">{rebuttal || 'Skipped.'}</p>
+            </div>
+          )}
+        </section>
+
+        <div className="flex justify-end">
+          <Button icon={RotateCcw} onClick={handleReset}>Start a new drill</Button>
         </div>
       </div>
     );

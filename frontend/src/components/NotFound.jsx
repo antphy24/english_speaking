@@ -1,22 +1,23 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { Logo } from './UI/Logo';
 
 function NotFound() {
   return (
-    <div className="min-h-screen bg-[#0b0f19] flex items-center justify-center p-4 text-white">
-      <div className="text-center space-y-6">
-        <h1 className="text-9xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-purple-500">
-          404
-        </h1>
-        <h2 className="text-3xl font-semibold">Page Not Found</h2>
-        <p className="text-slate-400 max-w-md mx-auto">
-          The page you are looking for might have been removed, had its name changed, or is temporarily unavailable.
+    <div className="min-h-screen bg-canvas text-ink flex items-center justify-center p-4">
+      <div className="text-center flex flex-col items-center gap-4 max-w-md">
+        <Logo size="lg" markOnly />
+        <p className="text-[13px] font-semibold text-brand-ink">Error 404</p>
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">This page does not exist</h1>
+        <p className="text-[15px] text-ink-muted">
+          The link may be old or mistyped. Go back to the start and try again.
         </p>
-        <div className="pt-4">
-          <Link to="/" className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 rounded-lg font-medium transition shadow-lg shadow-indigo-500/20">
-            Go to Homepage
-          </Link>
-        </div>
+        <Link
+          to="/"
+          className="mt-2 inline-flex items-center justify-center min-h-[44px] px-5 rounded-[10px] bg-brand hover:bg-brand-hover text-white text-sm font-semibold transition-colors"
+        >
+          Go to the start page
+        </Link>
       </div>
     </div>
   );

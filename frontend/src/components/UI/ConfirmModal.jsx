@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { AlertTriangle, Info, Trash2, LogOut, X } from 'lucide-react';
+import { Button } from './Button';
 
 // --- Context ---
 const ConfirmContext = createContext(null);
@@ -47,42 +48,10 @@ export function ConfirmProvider({ children }) {
 
 // --- Variant configs ---
 const VARIANTS = {
-  danger: {
-    icon: Trash2,
-    iconBg: 'bg-rose-500/10',
-    iconBorder: 'border-rose-500/20',
-    iconColor: 'text-rose-400',
-    confirmBg: 'bg-rose-600 hover:bg-rose-500',
-    confirmShadow: 'shadow-rose-600/20',
-    accentGlow: 'bg-rose-600/8',
-  },
-  warning: {
-    icon: AlertTriangle,
-    iconBg: 'bg-amber-500/10',
-    iconBorder: 'border-amber-500/20',
-    iconColor: 'text-amber-400',
-    confirmBg: 'bg-amber-600 hover:bg-amber-500',
-    confirmShadow: 'shadow-amber-600/20',
-    accentGlow: 'bg-amber-600/8',
-  },
-  info: {
-    icon: Info,
-    iconBg: 'bg-indigo-500/10',
-    iconBorder: 'border-indigo-500/20',
-    iconColor: 'text-indigo-400',
-    confirmBg: 'bg-indigo-600 hover:bg-indigo-500',
-    confirmShadow: 'shadow-indigo-600/20',
-    accentGlow: 'bg-indigo-600/8',
-  },
-  logout: {
-    icon: LogOut,
-    iconBg: 'bg-purple-500/10',
-    iconBorder: 'border-purple-500/20',
-    iconColor: 'text-purple-400',
-    confirmBg: 'bg-purple-600 hover:bg-purple-500',
-    confirmShadow: 'shadow-purple-600/20',
-    accentGlow: 'bg-purple-600/8',
-  },
+  danger: { icon: Trash2, iconBox: 'bg-danger-tint text-danger', confirm: 'danger' },
+  warning: { icon: AlertTriangle, iconBox: 'bg-warning-tint text-warning', confirm: 'primary' },
+  info: { icon: Info, iconBox: 'bg-brand-tint text-brand-ink', confirm: 'primary' },
+  logout: { icon: LogOut, iconBox: 'bg-surface-muted text-ink-muted', confirm: 'primary' },
 };
 
 // --- Modal Component ---
@@ -103,57 +72,32 @@ function ConfirmModal({ title, message, confirmLabel, cancelLabel, variant, onCo
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center p-4 confirm-overlay"
       onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-title"
     >
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-[rgb(16_24_40/0.5)] pointer-events-none" />
 
-      {/* Modal card */}
-      <div className="relative w-full max-w-md confirm-card">
-        {/* Background glow */}
-        <div className={`absolute -top-16 left-1/2 -translate-x-1/2 w-64 h-64 ${v.accentGlow} rounded-full blur-[80px] pointer-events-none`} />
+      <div className="relative w-full max-w-sm confirm-card bg-surface text-ink border border-line rounded-2xl shadow-pop p-6">
+        <button
+          type="button"
+          onClick={onCancel}
+          aria-label="Close"
+          className="absolute top-3 right-3 w-9 h-9 flex items-center justify-center rounded-lg text-ink-subtle hover:text-ink hover:bg-surface-muted"
+        >
+          <X className="w-4 h-4" aria-hidden="true" />
+        </button>
 
-        <div className="relative glass-panel rounded-2xl border border-slate-800/80 shadow-2xl overflow-hidden">
-          {/* Close button */}
-          <button
-            onClick={onCancel}
-            className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800/60 transition z-10 cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+        <div className={`w-11 h-11 rounded-full flex items-center justify-center ${v.iconBox}`}>
+          <Icon className="w-5 h-5" aria-hidden="true" />
+        </div>
 
-          <div className="p-6 pt-8 space-y-5">
-            {/* Icon */}
-            <div className="flex justify-center">
-              <div className={`w-14 h-14 ${v.iconBg} border ${v.iconBorder} rounded-2xl flex items-center justify-center ${v.iconColor}`}>
-                <Icon className="w-7 h-7" />
-              </div>
-            </div>
+        <h3 id="confirm-title" className="mt-4 text-lg font-bold">{title}</h3>
+        {message && <p className="mt-1.5 text-sm text-ink-muted leading-relaxed">{message}</p>}
 
-            {/* Text */}
-            <div className="text-center space-y-2">
-              <h3 className="text-lg font-bold text-white tracking-tight">{title}</h3>
-              {message && (
-                <p className="text-sm text-slate-400 leading-relaxed px-2">{message}</p>
-              )}
-            </div>
-
-            {/* Actions */}
-            <div className="flex space-x-3 pt-1">
-              <button
-                onClick={onCancel}
-                className="flex-1 py-2.5 bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white rounded-xl text-sm font-bold transition-all active:scale-[0.98] cursor-pointer"
-              >
-                {cancelLabel}
-              </button>
-              <button
-                onClick={onConfirm}
-                autoFocus
-                className={`flex-1 py-2.5 ${v.confirmBg} text-white rounded-xl text-sm font-bold shadow-lg ${v.confirmShadow} transition-all active:scale-[0.98] cursor-pointer`}
-              >
-                {confirmLabel}
-              </button>
-            </div>
-          </div>
+        <div className="mt-6 grid grid-cols-2 gap-3">
+          <Button variant="secondary" onClick={onCancel}>{cancelLabel}</Button>
+          <Button variant={v.confirm} onClick={onConfirm} autoFocus>{confirmLabel}</Button>
         </div>
       </div>
     </div>

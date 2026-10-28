@@ -20,18 +20,20 @@ export default function StudentTestBanner({ studentId }) {
 
   if (!tests.length) return null;
   return (
-    <div className="mb-5 space-y-2">
+    <div className="space-y-2.5">
       {tests.map((t) => (
-        <button key={t.test_id} onClick={() => navigate(`/speaking-test/${t.test_id}`)}
-                className="w-full flex items-center gap-3 text-left bg-amber-500/10 border border-amber-500/30 hover:border-amber-400/60 rounded-2xl p-4 transition">
-          <ClipboardCheck className="w-6 h-6 text-amber-300 shrink-0" />
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-bold text-white">{t.title}</div>
-            <div className="text-xs text-amber-200/80">
+        <button key={t.test_id} type="button" onClick={() => navigate(`/speaking-test/${t.test_id}`)}
+                className="w-full flex items-center gap-4 text-left bg-warning-tint border border-warning/30 hover:border-warning/60 rounded-2xl px-4 py-3.5 md:px-5 transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-ring">
+          <span className="w-10 h-10 rounded-full bg-surface text-warning flex items-center justify-center shrink-0">
+            <ClipboardCheck className="w-5 h-5" aria-hidden="true" />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block text-[15px] font-semibold text-ink">{t.title}</span>
+            <span className="block text-sm text-ink-muted">
               {t.status === 'in_progress' ? 'Continue your speaking test' : 'Your teacher opened a speaking test for you'} · about {t.minutes} min
-            </div>
-          </div>
-          <ChevronRight className="w-5 h-5 text-amber-300" />
+            </span>
+          </span>
+          <ChevronRight className="w-5 h-5 text-warning shrink-0" aria-hidden="true" />
         </button>
       ))}
     </div>

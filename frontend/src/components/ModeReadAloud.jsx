@@ -2,7 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useMediaRecorder } from '../hooks/useMediaRecorder';
 import ScoreCard from './UI/ScoreCard';
 import Spinner from './UI/Spinner';
-import { Mic, Info, RefreshCw, Volume2 } from 'lucide-react';
+import { Mic, MicOff, RefreshCw, Volume2, Square, ArrowRight, AlertCircle } from 'lucide-react';
+import { Button } from './UI/Button';
+import { TextSizeControl, useReadingSize } from './UI/TextSizeControl';
 import useSubmission from '../hooks/useSubmission';
 import SubmissionProgress from './UI/SubmissionProgress';
 import { speakEnglish, stopSpeaking } from '../utils/speech';
@@ -37,6 +39,7 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, getSessionSec
 
   const [selectedParagraph, setSelectedParagraph] = useState(paragraphsList[0]);
   const swipeRef = useSwipeRow();
+  const readingSize = useReadingSize();
 
   useEffect(() => {
     if (paragraphsList.length > 0) {
@@ -273,68 +276,82 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, getSessionSec
     setIsSpeaking(false);
   }, [selectedParagraph?.id]);
 
+  const { style: readingStyle, ...readingSizeControl } = readingSize;
+  const wordCount = (text = '') => text.trim().split(/\s+/).filter(Boolean).length;
+  const clock = `${Math.floor(recordingTime / 60)}:${String(recordingTime % 60).padStart(2, '0')}`;
+  const selectedIndex = Math.max(0, paragraphsList.findIndex((p) => p.id === selectedParagraph?.id));
+  const goToNextParagraph = () => {
+    handleRestart();
+    setSelectedParagraph(paragraphsList[(selectedIndex + 1) % paragraphsList.length]);
+  };
+
   return (
     <div className="space-y-6">
-      
-      {/* Intro info */}
-      <div className="hidden md:flex items-start space-x-3 bg-indigo-500/10 border border-indigo-500/20 p-4 rounded-xl">
-        <Info className="w-5 h-5 text-indigo-400 mt-0.5 flex-shrink-0" />
-        <div className="text-xs text-indigo-200 leading-relaxed">
-          <strong className="text-white block mb-0.5">Mode 1: Read Aloud Assessment</strong>
-          Select a text paragraph, review it, then tap the microphone button and read it aloud. Tap the button again when you finish to transcribe and automatically grade your pronunciation and accuracy.
-        </div>
-      </div>
-
       {status === 'idle' && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 md:gap-6">
-          {/* Paragraph selector: swipeable row on phones, list on desktop */}
-          <div className="md:col-span-1 space-y-2 md:space-y-3 min-w-0">
-            <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              Select Paragraph{paragraphsList.length > 1 && <span className="md:hidden normal-case font-normal text-slate-500"> · swipe for more</span>}
-            </h4>
-            <div ref={swipeRef} className="no-scrollbar flex md:flex-col gap-2 md:gap-0 md:space-y-2 overflow-x-auto md:overflow-visible -mx-4 px-4 md:mx-0 md:px-0">
-              {paragraphsList.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => setSelectedParagraph(p)}
-                  className={`p-3 text-left rounded-xl border transition-all duration-200 shrink-0 md:w-auto ${paragraphsList.length > 1 ? 'w-[72%]' : 'w-full'} ${
-                    selectedParagraph.id === p.id
-                      ? 'bg-purple-600/15 border-purple-500 text-white shadow-md shadow-purple-500/5'
-                      : 'bg-slate-900/40 border-slate-800 text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
-                  }`}
-                >
-                  <div className="font-bold text-sm line-clamp-2 md:line-clamp-none">{p.title}</div>
-                  <div className="text-[10px] opacity-80 mt-1 line-clamp-1">{p.text}</div>
-                </button>
-              ))}
+        <div className="flex flex-col md:flex-row md:items-start gap-4 md:gap-6">
+          {/* Paragraph picker: swipeable cards on phones, list on laptops */}
+          <section aria-label="Paragraphs" className="md:w-64 lg:w-72 shrink-0 min-w-0 space-y-2.5">
+            <h2 className="text-sm font-semibold text-ink-muted">
+              Paragraphs
+              {paragraphsList.length > 1 && <span className="md:hidden font-normal text-ink-subtle"> · swipe for more</span>}
+            </h2>
+            <div ref={swipeRef} className="no-scrollbar flex md:flex-col gap-2.5 overflow-x-auto md:overflow-visible -mx-4 px-4 md:mx-0 md:px-0 pb-1 md:pb-0">
+              {paragraphsList.map((p) => {
+                const active = selectedParagraph.id === p.id;
+                const words = wordCount(p.text);
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setSelectedParagraph(p)}
+                    aria-pressed={active}
+                    className={`shrink-0 md:w-full text-left px-4 py-3.5 rounded-xl border transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-ring ${
+                      paragraphsList.length > 1 ? 'w-[72%]' : 'w-full'
+                    } ${
+                      active
+                        ? 'bg-brand-tint border-brand ring-1 ring-inset ring-brand'
+                        : 'bg-surface border-line hover:border-line-strong'
+                    }`}
+                  >
+                    <span className={`block text-[15px] font-semibold line-clamp-2 ${active ? 'text-brand-ink' : 'text-ink'}`}>{p.title}</span>
+                    <span className="block text-[13px] text-ink-subtle mt-1">{words} words</span>
+                  </button>
+                );
+              })}
             </div>
-          </div>
+          </section>
 
-          {/* Reading Arena */}
-          <div className="md:col-span-3 min-w-0 flex flex-col justify-between glass-panel rounded-2xl p-4 md:p-6 border-slate-800 space-y-4 md:space-y-6">
-            <div className="flex justify-between items-center">
-              <span className="text-xs font-medium text-purple-400 tracking-widest uppercase">Target Text</span>
-              <button 
-                onClick={speakParagraph}
-                className="flex items-center space-x-1.5 px-3 py-2 md:py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs transition-colors"
-                title="Listen to a model reading in American English"
-              >
-                <Volume2 className="w-3.5 h-3.5" />
-                <span>{isSpeaking ? 'Stop Sample' : 'Hear Sample'}</span>
-              </button>
+          {/* Reading card */}
+          <section className="flex-1 min-w-0 bg-surface border border-line rounded-2xl shadow-card">
+            <div className="p-5 md:p-7 space-y-4 md:space-y-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <span className="block text-[13px] font-semibold text-brand-ink">Read this aloud</span>
+                  <h2 className="text-lg font-bold text-ink leading-snug">{selectedParagraph.title}</h2>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <TextSizeControl {...readingSizeControl} />
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon={Volume2}
+                    onClick={speakParagraph}
+                    title="Listen to a model reading in American English"
+                  >
+                    {isSpeaking ? 'Stop' : 'Listen first'}
+                  </Button>
+                </div>
+              </div>
+              {speechNotice && <p className="text-sm text-warning">{speechNotice}</p>}
+
+              <p className="text-ink select-none" style={readingStyle}>
+                {selectedParagraph.text}
+              </p>
             </div>
-            {speechNotice && <p className="text-xs text-amber-300">{speechNotice}</p>}
-            
-            <p className="text-lg text-white font-medium leading-relaxed tracking-wide py-4 border-y border-slate-850 px-1 md:px-2 select-none">
-              {selectedParagraph.text}
-            </p>
 
-            {/* Recording controls: pinned to the bottom of the screen on phones (so the text
-                stays readable while recording), inline on desktop */}
-            <div className="
-              sticky bottom-0 z-20 -mx-4 -mb-4 px-5 pt-3 pb-safe flex flex-row-reverse items-center justify-between bg-[#0a0f1a] border-t border-slate-800 rounded-b-2xl shadow-[0_-10px_30px_rgba(0,0,0,0.5)]
-              md:static md:mx-0 md:mb-0 md:px-0 md:pt-2 md:flex-col md:justify-center md:space-y-3 md:bg-transparent md:border-0 md:rounded-none md:shadow-none
-            ">
+            {/* Recorder: always pinned to the bottom of the screen (phones and laptops), so the
+                mic stays in reach while the student reads from the first sentence */}
+            <div className="sticky bottom-0 z-20 flex items-center gap-4 md:gap-5 px-5 md:px-7 pt-3.5 pb-safe md:py-4 bg-surface border-t border-line rounded-b-2xl shadow-[0_-6px_16px_rgb(16_24_40/0.08)]">
               <button
                 onPointerDown={handlePointerDown}
                 onPointerUp={handlePointerUp}
@@ -344,40 +361,44 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, getSessionSec
                 type="button"
                 aria-label={isRecording ? `Recording in progress, ${recordingTime} seconds. Tap to stop` : 'Tap to record your reading'}
                 style={{ touchAction: 'manipulation', WebkitTouchCallout: 'none', WebkitTapHighlightColor: 'transparent' }}
-                className={`relative w-16 h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center transition-all duration-350 select-none shrink-0 ${
-                  isRecording 
-                    ? 'bg-red-500 text-white animate-record-pulse'
-                    : 'bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-600/30 active:scale-95'
+                className={`relative w-16 h-16 md:w-[72px] md:h-[72px] rounded-full flex items-center justify-center text-white transition-colors select-none shrink-0 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-ring ${
+                  isRecording
+                    ? 'bg-danger-solid animate-mic-ring'
+                    : 'bg-brand hover:bg-brand-hover shadow-mic active:scale-95'
                 }`}
               >
-                <Mic className="w-6 h-6 md:w-8 md:h-8" />
+                {isRecording ? <Square className="w-6 h-6 fill-current" aria-hidden="true" /> : <Mic className="w-7 h-7 md:w-8 md:h-8" aria-hidden="true" />}
               </button>
-              
-              <div className="text-left md:text-center flex-1 md:flex-none min-w-0">
-                <span className="block text-sm font-semibold text-slate-300">
-                  {isRecording ? `Recording... ${recordingTime}s` : 'Read Aloud'}
+
+              <div className="flex-1 min-w-0" aria-live="polite">
+                <span className={`block text-base font-semibold ${isRecording ? 'text-danger' : 'text-ink'}`}>
+                  {isRecording ? `Recording ${clock}` : 'Tap the microphone to start'}
                 </span>
-                <span className="text-xs text-slate-500 block mt-0.5 max-w-[200px] md:max-w-none">
-                  {isRecording 
-                    ? (isToggleRecording ? 'Tap button to stop' : 'Release to submit') 
-                    : 'Tap to start, tap again to finish'}
+                <span className="block text-[13px] md:text-sm text-ink-muted mt-0.5">
+                  {isRecording
+                    ? (isToggleRecording ? 'Tap the button when you finish reading.' : 'Release to submit.')
+                    : 'Find a quiet spot and read at a natural pace. Tap again when you finish.'}
                 </span>
               </div>
+
+              {isRecording && (
+                <div className="flex items-center gap-1 h-7 shrink-0" aria-hidden="true">
+                  {[0, 0.15, 0.3, 0.45].map((d) => (
+                    <span key={d} className="w-1 h-[22px] rounded-sm bg-danger animate-level-bar" style={{ animationDelay: `${d}s` }} />
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
+          </section>
         </div>
       )}
 
       {/* Loading State */}
       {status === 'processing' && <SubmissionProgress progress={submission.progress} />}
 
-      {/* Evaluated Score Card */}
+      {/* Result */}
       {status === 'graded' && (
         <div className="space-y-4">
-          <div className="p-4 bg-slate-900/40 border border-slate-800 rounded-xl">
-            <span className="block text-xs text-indigo-400 font-semibold tracking-wider uppercase mb-1">Your Speech Transcript</span>
-            <p className="text-sm italic text-white">"{transcript}"</p>
-          </div>
           <ScoreCard
             mode="read_aloud"
             score={evaluation}
@@ -385,44 +406,40 @@ export function ModeReadAloud({ studentName, apiBase, onSaveScore, getSessionSec
             isSaving={isSaving}
             saveStatus={saveStatus}
             onSaveToLeaderboard={handleSaveToLeaderboard}
+            nextAction={paragraphsList.length > 1 && (
+              <Button icon={ArrowRight} onClick={goToNextParagraph}>Next paragraph</Button>
+            )}
           />
+          <div className="bg-surface border border-line rounded-2xl p-5 md:px-7">
+            <span className="block text-[13px] font-semibold text-ink-muted mb-1.5">What the AI heard</span>
+            <p className="text-[15px] text-ink leading-relaxed">“{transcript}”</p>
+          </div>
         </div>
       )}
 
       {/* Error state */}
       {status === 'error' && (
-        <div className="glass-panel p-4 md:p-6 rounded-xl border border-red-500/20 text-center space-y-4">
-          <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto text-red-500">
-            <Mic className="w-6 h-6" />
+        <div className="bg-surface border border-line rounded-2xl shadow-card p-6 md:p-8 flex flex-col items-center text-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-danger-tint text-danger flex items-center justify-center">
+            {submission.progress?.retryable ? <AlertCircle className="w-6 h-6" aria-hidden="true" /> : <MicOff className="w-6 h-6" aria-hidden="true" />}
           </div>
-          <div className="space-y-1">
-            <h4 className="text-lg font-bold text-white">
-              {submission.progress?.retryable ? 'Not finished yet' : 'Recording Failed'}
-            </h4>
-            <p className="text-sm text-rose-300">{errorMessage}</p>
+          <div className="space-y-1.5 max-w-md">
+            <h3 className="text-lg font-bold text-ink">
+              {submission.progress?.retryable ? 'Not finished yet' : 'Recording failed'}
+            </h3>
+            <p className="text-[15px] text-ink-muted">{errorMessage}</p>
             {submission.progress?.retryable && (
-              <p className="text-xs text-slate-400">Your recording is saved. Tap Retry - you do not need to record again.</p>
+              <p className="text-sm text-ink-subtle">Your recording is saved. Tap Retry - you do not need to record again.</p>
             )}
           </div>
           <div className="flex flex-wrap justify-center gap-3">
             {submission.progress?.retryable && submission.hasRecording() && (
-              <button 
-                onClick={handleRetry}
-                className="px-5 py-2.5 md:py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
-              >
-                Retry
-              </button>
+              <Button icon={RefreshCw} onClick={handleRetry}>Retry</Button>
             )}
-            <button 
-              onClick={handleRestart}
-              className="px-5 py-2.5 md:py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer"
-            >
-              Record Again
-            </button>
+            <Button variant="secondary" icon={Mic} onClick={handleRestart}>Record again</Button>
           </div>
         </div>
       )}
-      
     </div>
   );
 }

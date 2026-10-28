@@ -1,17 +1,16 @@
 import React from 'react';
 
-export function Spinner({ message = 'Processing...' }) {
+/**
+ * Loading indicator with an optional message.
+ * `size` = sm | md | lg (default md). Other props are accepted for old callers and ignored.
+ */
+const SIZES = { sm: 'w-6 h-6 border-[3px]', md: 'w-10 h-10 border-4', lg: 'w-12 h-12 border-4' };
+
+export function Spinner({ message = 'Loading...', size = 'md' }) {
   return (
-    <div className="flex flex-col items-center justify-center p-8 space-y-4">
-      <div className="relative w-16 h-16">
-        {/* Outer glowing ring */}
-        <div className="absolute inset-0 rounded-full border-4 border-purple-500/10 border-t-purple-500 animate-spin"></div>
-        {/* Inner reverse rotating ring */}
-        <div className="absolute inset-2 rounded-full border-4 border-indigo-500/10 border-t-indigo-500 animate-spin [animation-duration:1.5s] [animation-direction:reverse]"></div>
-        {/* Core pulse */}
-        <div className="absolute inset-5 rounded-full bg-slate-800 animate-pulse"></div>
-      </div>
-      <p className="text-slate-400 text-sm font-medium animate-pulse">{message}</p>
+    <div className="flex flex-col items-center justify-center p-8 gap-4" role="status" aria-live="polite">
+      <div className={`${SIZES[size] || SIZES.md} rounded-full border-brand/15 border-t-brand animate-spin`} aria-hidden="true" />
+      {message && <p className="text-ink-muted text-sm font-medium text-center">{message}</p>}
     </div>
   );
 }

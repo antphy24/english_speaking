@@ -1,5 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Square, Loader2, Save, Mic, ShieldAlert, CheckCircle2, ChevronRight, XCircle, BrainCircuit, Users, Target, FileText, ArrowRight, Clock, AlertTriangle } from 'lucide-react';
+import { Square, Save, Mic, CheckCircle2, Users, FileText, ArrowRight, Clock, AlertTriangle, RotateCcw, Lightbulb } from 'lucide-react';
+import { Button } from './UI/Button';
+import { Badge } from './UI/Badge';
+import { Field, Select, Textarea } from './UI/Field';
+import { RecordButton } from './UI/Recorder';
+import { ErrorPanel } from './UI/ErrorPanel';
+import { ScoreRing, scoreBand } from './UI/ScoreCard';
+import { TextSizeControl, useReadingSize } from './UI/TextSizeControl';
 import Spinner from './UI/Spinner';
 import useSubmission from '../hooks/useSubmission';
 import { saveSubmissionOnServer } from '../utils/api';
@@ -41,6 +48,8 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
   } = useMediaRecorder();
   
   const [errorMessage, setErrorMessage] = useState('');
+  const readingSize = useReadingSize();
+  const { style: readingStyle, ...readingSizeControl } = readingSize;
   
   const [resultData, setResultData] = useState(null);
   const submission = useSubmission(apiBase, 'debate');
@@ -226,72 +235,70 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
 
   // ---------------- Render Helpers ----------------
 
+  const roleBadge = (
+    <Badge tone={role === 'Affirmative' ? 'brand' : 'warning'}>
+      {role === 'Affirmative' ? 'Affirmative (Government)' : 'Negative (Opposition)'}
+    </Badge>
+  );
+
+  const motionCard = (
+    <div className="space-y-2">
+      <span className="block text-[13px] font-semibold text-ink-muted">Motion</span>
+      <p className="text-[15px] font-semibold text-ink leading-snug">{motion}</p>
+      {roleBadge}
+    </div>
+  );
+
   if (step === 'setup') {
     return (
-      <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl p-6 md:p-8 animate-fadeIn shadow-2xl">
-        <div className="flex items-center space-x-3 mb-6">
-          <div className="p-3 bg-indigo-500/10 text-indigo-400 rounded-xl border border-indigo-500/20">
-            <Users className="w-6 h-6" />
-          </div>
+      <section className="bg-surface border border-line rounded-2xl shadow-card p-5 md:p-7 max-w-2xl animate-fadeIn">
+        <div className="flex items-center gap-3">
+          <span className="w-11 h-11 rounded-full bg-brand-tint text-brand-ink flex items-center justify-center shrink-0">
+            <Users className="w-5 h-5" aria-hidden="true" />
+          </span>
           <div>
-            <h3 className="text-xl font-bold text-white">Debate Setup</h3>
-            <p className="text-sm text-slate-400">Select your motion and role before building your case.</p>
+            <h2 className="text-lg font-bold text-ink">Set up your debate</h2>
+            <p className="text-sm text-ink-muted">
+              Choose a motion and your side. You get {describeDuration(PREP_SECONDS)} to prepare and {describeDuration(SPEECH_SECONDS)} to speak.
+            </p>
           </div>
         </div>
 
-        <div className="space-y-6">
-          <div>
-            <label className="block text-sm font-semibold text-slate-300 mb-2">Select Motion</label>
-            <select
-              value={motion}
-              onChange={(e) => setMotion(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-xl p-3 focus:outline-none focus:border-indigo-500/50 transition-colors"
-            >
-              <option value="" disabled>-- Choose a motion --</option>
+        <div className="mt-6 space-y-5">
+          <Field label="Motion">
+            <Select value={motion} onChange={(e) => setMotion(e.target.value)}>
+              <option value="" disabled>Choose a motion</option>
               {availableMotions.map((m, i) => (
                 <option key={i} value={m}>{m}</option>
               ))}
-            </select>
-          </div>
+            </Select>
+          </Field>
 
-          <div>
-            <label className="block text-sm font-semibold text-slate-300 mb-2">Select Role</label>
-            <div className="flex space-x-4">
-              <button
-                onClick={() => setRole('Affirmative')}
-                className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm transition-all border ${
-                  role === 'Affirmative' 
-                    ? 'bg-indigo-600/20 border-indigo-500 text-indigo-300' 
-                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-800'
-                }`}
-              >
-                Affirmative (Gov)
-              </button>
-              <button
-                onClick={() => setRole('Negative')}
-                className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm transition-all border ${
-                  role === 'Negative' 
-                    ? 'bg-rose-600/20 border-rose-500 text-rose-300' 
-                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-800'
-                }`}
-              >
-                Negative (Opp)
-              </button>
+          <fieldset>
+            <legend className="text-sm font-semibold text-ink mb-1.5">Your side</legend>
+            <div className="grid grid-cols-2 gap-3">
+              {[['Affirmative', 'Affirmative', 'Government'], ['Negative', 'Negative', 'Opposition']].map(([value, label, sub]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setRole(value)}
+                  aria-pressed={role === value}
+                  className={`min-h-[56px] px-4 py-2.5 rounded-xl border text-left transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-ring ${
+                    role === value ? 'bg-brand-tint border-brand ring-1 ring-inset ring-brand' : 'bg-surface border-line-strong hover:bg-surface-muted'
+                  }`}
+                >
+                  <span className={`block text-[15px] font-semibold ${role === value ? 'text-brand-ink' : 'text-ink'}`}>{label}</span>
+                  <span className="block text-[13px] text-ink-subtle">{sub}</span>
+                </button>
+              ))}
             </div>
-          </div>
+          </fieldset>
 
-          <div className="pt-4">
-            <button
-              onClick={handleStartCaseBuilding}
-              disabled={!motion}
-              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3.5 px-4 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 shadow-lg shadow-indigo-900/20"
-            >
-              <span>Start Case Building</span>
-              <ArrowRight className="w-5 h-5" />
-            </button>
-          </div>
+          <Button size="lg" fullWidth iconRight={ArrowRight} onClick={handleStartCaseBuilding} disabled={!motion}>
+            Start preparing
+          </Button>
         </div>
-      </div>
+      </section>
     );
   }
 
@@ -299,57 +306,40 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
     return (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 animate-fadeIn">
         <PinnedBar time={formatTime(timer)}>
-          <button
-            onClick={handleSkipToSpeech}
-            className="w-full font-bold py-2.5 px-3 rounded-xl text-sm flex items-center justify-center space-x-2 cursor-pointer bg-emerald-600/20 text-emerald-400 border border-emerald-500/30"
-          >
-            <span>Start Speech</span>
-            <Mic className="w-4 h-4" />
-          </button>
+          <Button size="sm" fullWidth icon={Mic} onClick={handleSkipToSpeech}>I'm ready - speak</Button>
         </PinnedBar>
-        <div className="lg:col-span-1 space-y-6">
-          <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl">
-            <div className="hidden lg:flex items-center space-x-3 mb-4">
-              <Clock className="w-5 h-5 text-indigo-400" />
-              <h3 className="font-bold text-white">Case Building Time</h3>
-            </div>
-            <div className="hidden lg:block text-4xl font-mono font-bold text-center text-indigo-300 tracking-wider mb-6 bg-slate-950 py-4 rounded-xl border border-slate-800">
-              {formatTime(timer)}
-            </div>
-            <div className="mb-4">
-              <span className="text-xs text-slate-500 uppercase font-bold tracking-wider">Motion</span>
-              <p className="text-sm font-medium text-slate-200 mt-1">{motion}</p>
-            </div>
-            <div className="lg:mb-6">
-              <span className="text-xs text-slate-500 uppercase font-bold tracking-wider">Role</span>
-              <p className={`text-sm font-bold mt-1 ${role === 'Affirmative' ? 'text-indigo-400' : 'text-rose-400'}`}>
-                {role}
-              </p>
-            </div>
-            <button
-              onClick={handleSkipToSpeech}
-              className="hidden lg:flex w-full bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 font-bold py-3 px-4 rounded-xl transition-colors items-center justify-center space-x-2"
-            >
-              <span>Ready? Start Speech</span>
-              <Mic className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
 
-        <div className="lg:col-span-2">
-          <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl h-full flex flex-col">
-            <div className="flex items-center space-x-3 mb-4">
-              <FileText className="w-5 h-5 text-slate-400" />
-              <h3 className="font-bold text-white">Scratchpad</h3>
+        <aside className="lg:col-span-1">
+          <div className="bg-surface border border-line rounded-2xl shadow-card p-5 md:p-6 space-y-5 lg:sticky lg:top-6">
+            <div className="hidden lg:block">
+              <span className="flex items-center gap-2 text-[13px] font-semibold text-ink-muted">
+                <Clock className="w-4 h-4" aria-hidden="true" /> Preparation time left
+              </span>
+              <div className="mt-1 text-[44px] font-bold tabular-nums text-ink leading-none">{formatTime(timer)}</div>
             </div>
-            <textarea
-              value={scratchpad}
-              onChange={(e) => setScratchpad(e.target.value)}
-              placeholder="Outline your AEL structure here. (Assertion, Explanation, Link-back). This will remain visible during your speech..."
-              className="flex-1 w-full min-h-[240px] lg:min-h-0 bg-slate-950 border border-slate-800 text-slate-300 rounded-xl p-4 focus:outline-none focus:border-indigo-500/50 resize-none font-mono text-sm leading-relaxed"
-            />
+            {motionCard}
+            <Button fullWidth icon={Mic} onClick={handleSkipToSpeech} className="hidden lg:inline-flex">
+              I'm ready - start my speech
+            </Button>
           </div>
-        </div>
+        </aside>
+
+        <section className="lg:col-span-2 bg-surface border border-line rounded-2xl shadow-card p-5 md:p-6 flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <FileText className="w-5 h-5 text-ink-subtle" aria-hidden="true" />
+            <h2 className="text-base font-bold text-ink">Notes</h2>
+          </div>
+          <p className="text-sm text-ink-muted">
+            Plan your arguments: Assertion, Explanation, Link back. Your notes stay on screen while you speak.
+          </p>
+          <Textarea
+            value={scratchpad}
+            onChange={(e) => setScratchpad(e.target.value)}
+            placeholder="Argument 1: ..."
+            aria-label="Notes"
+            className="flex-1 min-h-[260px] lg:min-h-[360px] resize-none"
+          />
+        </section>
       </div>
     );
   }
@@ -357,278 +347,173 @@ export default function ModeDebate({ studentName, apiBase, onSaveScore, getSessi
   if (step === 'recording') {
     return (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 animate-fadeIn">
-        <PinnedBar time={formatTime(timer)} tone={isRecording ? 'text-rose-300' : 'text-slate-200'}>
+        <PinnedBar time={formatTime(timer)} tone={isRecording ? 'text-danger' : 'text-ink'}>
           {!isRecording ? (
-            <button
-              onClick={handleBeginSpeech}
-              className="w-full font-bold py-2.5 px-3 rounded-xl text-sm flex items-center justify-center space-x-2 cursor-pointer bg-indigo-600 text-white"
-            >
-              <Mic className="w-4 h-4" />
-              <span>Record Speech</span>
-            </button>
+            <Button size="sm" fullWidth icon={Mic} onClick={handleBeginSpeech}>Record speech</Button>
           ) : (
-            <button
-              onClick={handleFinishSpeech}
-              className="w-full font-bold py-2.5 px-3 rounded-xl text-sm flex items-center justify-center space-x-2 cursor-pointer bg-rose-600 text-white"
-            >
-              <Square className="w-4 h-4 fill-current" />
-              <span>Stop Recording</span>
-            </button>
+            <Button size="sm" fullWidth variant="danger" icon={Square} onClick={handleFinishSpeech}>Stop and submit</Button>
           )}
         </PinnedBar>
-        <div className="lg:col-span-1 space-y-6">
-          <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl text-center">
-            <h3 className="font-bold text-white mb-2">Speech Delivery</h3>
-            <p className="text-xs text-slate-400 lg:mb-6">Speech time is {describeDuration(SPEECH_SECONDS)}. Speak clearly.</p>
-            
-            <div className="hidden lg:block text-4xl font-mono font-bold text-center text-slate-200 tracking-wider mb-6 bg-slate-950 py-4 rounded-xl border border-slate-800 relative overflow-hidden">
-              <div className={`absolute top-0 left-0 h-1 bg-indigo-500 transition-all duration-1000 ${isRecording ? 'w-full' : 'w-0'}`} style={{ animationDuration: `${SPEECH_SECONDS}s` }}></div>
-              {formatTime(timer)}
-            </div>
 
-            {!isRecording ? (
-              <button
-                onClick={handleBeginSpeech}
-                aria-label="Record Speech"
-                className="hidden lg:flex w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-4 rounded-xl transition-all transform hover:scale-105 justify-center items-center space-x-3 shadow-lg shadow-indigo-900/20"
-              >
-                <Mic className="w-5 h-5" />
-                <span>Record Speech</span>
-              </button>
-            ) : (
-              <button
-                onClick={handleFinishSpeech}
-                aria-label={`Stop Recording, ${recordingTime} seconds elapsed`}
-                className="hidden lg:flex w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-4 px-4 rounded-xl transition-all transform hover:scale-105 justify-center items-center space-x-3 animate-pulse shadow-lg shadow-rose-900/20"
-              >
-                <Square className="w-5 h-5 fill-current" />
-                <span>Stop Recording</span>
-              </button>
-            )}
-            
-            {isRecording && (
-               <div className="mt-4 text-xs text-rose-400 flex items-center justify-center space-x-2">
-                 <div className="w-2 h-2 rounded-full bg-rose-500 animate-ping"></div>
-                 <span>Recording in progress ({formatTime(recordingTime)})</span>
-               </div>
-            )}
+        <aside className="lg:col-span-1 space-y-4">
+          <div className="bg-surface border border-line rounded-2xl shadow-card p-5 md:p-6 space-y-5 lg:sticky lg:top-6">
+            <div className="hidden lg:flex flex-col items-center text-center gap-3">
+              <span className="text-[13px] font-semibold text-ink-muted">Speech time {describeDuration(SPEECH_SECONDS)}</span>
+              <div className={`text-[44px] font-bold tabular-nums leading-none ${isRecording ? 'text-danger' : 'text-ink'}`}>{formatTime(timer)}</div>
+              <RecordButton
+                isRecording={isRecording}
+                onClick={isRecording ? handleFinishSpeech : handleBeginSpeech}
+                aria-label={isRecording ? `Stop recording, ${recordingTime} seconds recorded` : 'Record speech'}
+              />
+              <span className={`text-sm font-semibold ${isRecording ? 'text-danger' : 'text-ink'}`} aria-live="polite">
+                {isRecording ? `Recording ${formatTime(recordingTime)} - tap to stop and submit` : 'Tap the microphone to start your speech'}
+              </span>
+            </div>
+            {motionCard}
           </div>
 
-          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5">
-              <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Reminder</span>
-              <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                The AI strictly grades based on: <br/>
-                1. <strong>Matter (40%)</strong>: Logic, structure, depth.<br/>
-                2. <strong>Manner (40%)</strong>: Fluency, vocabulary, delivery.<br/>
-                3. <strong>Method (20%)</strong>: Signposting, time management.
-              </p>
+          <div className="bg-surface border border-line rounded-2xl p-5">
+            <h3 className="text-sm font-semibold text-ink">How you are scored</h3>
+            <ul className="mt-2 space-y-1.5 text-sm text-ink-muted">
+              <li><strong className="text-ink">Matter (40%)</strong> - logic, structure, depth</li>
+              <li><strong className="text-ink">Manner (40%)</strong> - fluency, vocabulary, delivery</li>
+              <li><strong className="text-ink">Method (20%)</strong> - signposting, time management</li>
+            </ul>
           </div>
-        </div>
+        </aside>
 
-        <div className="lg:col-span-2">
-          <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl h-full flex flex-col">
-            <div className="flex items-center space-x-3 mb-4">
-              <FileText className="w-5 h-5 text-slate-400" />
-              <h3 className="font-bold text-white">Your Notes</h3>
+        <section className="lg:col-span-2 bg-surface border border-line rounded-2xl shadow-card p-5 md:p-6 flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-ink-subtle" aria-hidden="true" />
+              <h2 className="text-base font-bold text-ink">Your notes</h2>
             </div>
-            <div className="flex-1 w-full bg-slate-950 border border-slate-800 text-slate-400 rounded-xl p-4 font-mono text-sm leading-relaxed overflow-y-auto whitespace-pre-wrap">
-              {scratchpad || "No notes taken during case building."}
-            </div>
+            <TextSizeControl {...readingSizeControl} />
           </div>
-        </div>
+          <div className="flex-1 min-h-[200px] bg-surface-muted rounded-xl p-4 text-ink whitespace-pre-wrap overflow-y-auto" style={readingStyle}>
+            {scratchpad || <span className="text-ink-subtle">You did not write notes during preparation.</span>}
+          </div>
+        </section>
       </div>
     );
   }
 
   if (step === 'error') {
     return (
-      <div className="glass-panel p-4 md:p-6 rounded-xl border border-red-500/20 text-center space-y-4 animate-fadeIn">
-        <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto text-red-500">
-          <AlertTriangle className="w-6 h-6" />
-        </div>
-        <div className="space-y-1">
-          <h4 className="text-lg font-bold text-white">
-            {submission.progress?.retryable ? 'Not finished yet' : 'Error'}
-          </h4>
-          <p className="text-sm text-rose-300">{errorMessage}</p>
-          {submission.progress?.retryable && (
-            <p className="text-xs text-slate-400">Your speech is saved. Tap Retry - you do not need to deliver it again.</p>
-          )}
-        </div>
-        <div className="flex flex-wrap justify-center gap-3 mt-4">
-          {submission.progress?.retryable && submission.hasRecording() && (
-            <button 
-              onClick={handleRetry}
-              className="px-5 py-2.5 md:py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
-            >
-              Retry
-            </button>
-          )}
-          {motion && (
-            <button 
-              onClick={handleBackToSpeech}
-              className="px-5 py-2.5 md:py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer"
-            >
-              Record Speech Again
-            </button>
-          )}
-          <button 
-            onClick={handleReset}
-            className="px-5 py-2.5 md:py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer"
-          >
-            Start Over
-          </button>
-        </div>
-      </div>
+      <ErrorPanel
+        icon={AlertTriangle}
+        title={submission.progress?.retryable ? 'Not finished yet' : 'Something went wrong'}
+        message={errorMessage}
+        note={submission.progress?.retryable ? 'Your speech is saved. Tap Retry - you do not need to deliver it again.' : undefined}
+      >
+        {submission.progress?.retryable && submission.hasRecording() && (
+          <Button onClick={handleRetry}>Retry</Button>
+        )}
+        {motion && (
+          <Button variant="secondary" icon={Mic} onClick={handleBackToSpeech}>Record the speech again</Button>
+        )}
+        <Button variant="subtle" onClick={handleReset}>Start over</Button>
+      </ErrorPanel>
     );
   }
 
   if (step === 'grading') {
     return (
-      <div className="flex flex-col items-center justify-center py-20 animate-fadeIn">
-        <div className="w-20 h-20 bg-indigo-500/10 rounded-full flex items-center justify-center mb-6 border border-indigo-500/20 relative">
-           <div className="absolute inset-0 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin"></div>
-           <BrainCircuit className="w-8 h-8 text-indigo-400" />
-        </div>
-        <h3 className="text-xl font-bold text-white mb-2">Adjudicating your speech</h3>
-        <p className="text-slate-400 text-sm max-w-md text-center mb-2">
-          Your speech is transcribed and then judged on Matter, Manner and Method.
+      <div className="space-y-4 animate-fadeIn">
+        <p className="text-[15px] text-ink-muted">
+          Your speech is turned into text and then judged on Matter, Manner and Method.
         </p>
-        <div className="w-full max-w-xl">
-          <SubmissionProgress progress={submission.progress} transcriptLabel="Speech Transcript" />
-        </div>
+        <SubmissionProgress progress={submission.progress} />
       </div>
     );
   }
 
   if (step === 'results' && resultData) {
+    const parts = [
+      { key: 'Matter', sub: 'Substance · 40%', score: resultData.matter_score, feedback: resultData.matter_feedback },
+      { key: 'Manner', sub: 'Delivery · 40%', score: resultData.manner_score, feedback: resultData.manner_feedback },
+      { key: 'Method', sub: 'Structure · 20%', score: resultData.method_score, feedback: resultData.method_feedback },
+    ];
+    const band = scoreBand(resultData.finalScore);
     return (
-      <div className="space-y-8 animate-fadeIn pb-10">
-        
-        {/* Score Banner */}
-        <div className="bg-gradient-to-r from-indigo-900/40 to-slate-900/80 backdrop-blur-xl border border-indigo-500/20 rounded-3xl p-5 md:p-8 relative overflow-hidden flex flex-col md:flex-row items-center md:items-stretch justify-between shadow-2xl">
-           <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-[80px] pointer-events-none"></div>
-           
-           <div className="flex-1 w-full text-center md:text-left z-10">
-             <div className="inline-block px-3 py-1 bg-indigo-500/20 text-indigo-300 text-[10px] font-bold uppercase tracking-wider rounded-lg border border-indigo-500/20 mb-4">
-               Debate Adjudication
-             </div>
-             <h3 className="text-3xl font-extrabold text-white mb-2 tracking-tight">Final Verdict</h3>
-             <p className="text-sm text-indigo-200/80 mb-6 max-w-lg leading-relaxed">
-               Your speech has been rigorously evaluated based on conventional debate standards.
-             </p>
-             
-             {audioUrl && (
-                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800/50 block md:inline-block max-w-full">
-                  <audio controls src={audioUrl} className="h-8 w-full md:w-auto max-w-full grayscale contrast-125" />
+      <div className="space-y-5 animate-fadeIn">
+        <section className="bg-surface border border-line rounded-2xl shadow-card p-5 md:p-7">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <span className="text-[13px] font-semibold text-brand-ink">Debate result</span>
+              <h2 className="text-lg md:text-xl font-bold text-ink leading-snug">{motion}</h2>
+              <div className="mt-2">{roleBadge}</div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" icon={RotateCcw} onClick={handleReset}>New debate</Button>
+              <Button
+                onClick={handleSaveToLeaderboard}
+                disabled={isSaving || saveStatus === 'success'}
+                loading={isSaving}
+                icon={saveStatus === 'success' ? CheckCircle2 : Save}
+                variant={saveStatus === 'success' ? 'secondary' : 'primary'}
+              >
+                {isSaving ? 'Saving...' : saveStatus === 'success' ? 'Saved to your record' : 'Save score'}
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-12">
+            <div className="md:col-span-5 flex items-center gap-5 p-4 md:p-5 border border-line rounded-2xl">
+              <ScoreRing value={resultData.finalScore} size={104} label="Overall score" />
+              <div>
+                <div className="text-[13px] font-semibold text-ink-muted">Overall score</div>
+                <div className={`text-xl font-bold ${band.text}`}>{band.label}</div>
+                <div className="text-[13px] text-ink-subtle mt-1">out of 100</div>
+              </div>
+            </div>
+            <div className="md:col-span-7 grid grid-cols-3 gap-3">
+              {parts.map((p) => (
+                <div key={p.key} className="p-4 border border-line rounded-2xl">
+                  <div className="text-[13px] font-semibold text-ink-muted">{p.key}</div>
+                  <div className="text-[28px] font-bold text-ink tabular-nums leading-tight">
+                    {p.score}<span className="text-base font-medium text-ink-subtle">/10</span>
+                  </div>
+                  <div className="text-xs text-ink-subtle">{p.sub}</div>
                 </div>
-             )}
-           </div>
+              ))}
+            </div>
+          </div>
 
-           <div className="mt-8 md:mt-0 flex flex-col items-center justify-center px-10 bg-slate-950/40 rounded-2xl border border-slate-800/50 z-10 min-w-[200px]">
-             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Overall Score</span>
-             <div className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-indigo-400 drop-shadow-sm">
-               {resultData.finalScore}
-             </div>
-             <span className="text-sm text-slate-400 font-medium mt-1">out of 100</span>
-           </div>
-        </div>
+          {audioUrl && (
+            <div className="mt-5">
+              <span className="block text-[13px] font-semibold text-ink-muted mb-1.5">Your speech</span>
+              <audio controls src={audioUrl} className="w-full h-10" />
+            </div>
+          )}
+        </section>
 
-        {/* Detailed Rubric Breakdown */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-           {/* Matter */}
-           <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 md:p-6 flex flex-col hover:border-blue-500/30 transition-colors">
-              <div className="flex justify-between items-start mb-4">
-                 <div>
-                   <h4 className="font-bold text-white">Matter</h4>
-                   <span className="text-[10px] text-slate-500 font-mono tracking-wider">SUBSTANCE (40%)</span>
-                 </div>
-                 <div className="px-3 py-1 bg-blue-500/10 text-blue-400 font-bold rounded-lg border border-blue-500/20 text-lg">
-                   {resultData.matter_score}/10
-                 </div>
+        <section className="flex gap-3 p-5 md:p-6 rounded-2xl bg-brand-tint">
+          <Lightbulb className="w-5 h-5 text-brand-ink shrink-0 mt-0.5" aria-hidden="true" />
+          <div>
+            <h3 className="text-[15px] font-semibold text-brand-ink">Adjudicator's overall feedback</h3>
+            <p className="text-[15px] text-ink leading-relaxed mt-1 whitespace-pre-wrap">{resultData.overall_feedback}</p>
+          </div>
+        </section>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          {parts.map((p) => (
+            <section key={p.key} className="bg-surface border border-line rounded-2xl p-5">
+              <div className="flex items-baseline justify-between gap-2">
+                <h3 className="text-base font-bold text-ink">{p.key}</h3>
+                <span className="text-sm font-semibold text-ink-muted tabular-nums">{p.score}/10</span>
               </div>
-              <p className="text-sm text-slate-300 leading-relaxed flex-1">
-                {resultData.matter_feedback}
-              </p>
-           </div>
-           
-           {/* Manner */}
-           <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 md:p-6 flex flex-col hover:border-purple-500/30 transition-colors">
-              <div className="flex justify-between items-start mb-4">
-                 <div>
-                   <h4 className="font-bold text-white">Manner</h4>
-                   <span className="text-[10px] text-slate-500 font-mono tracking-wider">DELIVERY (40%)</span>
-                 </div>
-                 <div className="px-3 py-1 bg-purple-500/10 text-purple-400 font-bold rounded-lg border border-purple-500/20 text-lg">
-                   {resultData.manner_score}/10
-                 </div>
-              </div>
-              <p className="text-sm text-slate-300 leading-relaxed flex-1">
-                {resultData.manner_feedback}
-              </p>
-           </div>
-
-           {/* Method */}
-           <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 md:p-6 flex flex-col hover:border-emerald-500/30 transition-colors">
-              <div className="flex justify-between items-start mb-4">
-                 <div>
-                   <h4 className="font-bold text-white">Method</h4>
-                   <span className="text-[10px] text-slate-500 font-mono tracking-wider">STRUCTURE (20%)</span>
-                 </div>
-                 <div className="px-3 py-1 bg-emerald-500/10 text-emerald-400 font-bold rounded-lg border border-emerald-500/20 text-lg">
-                   {resultData.method_score}/10
-                 </div>
-              </div>
-              <p className="text-sm text-slate-300 leading-relaxed flex-1">
-                {resultData.method_feedback}
-              </p>
-           </div>
+              <p className="mt-2 text-[15px] text-ink-muted leading-relaxed">{p.feedback}</p>
+            </section>
+          ))}
         </div>
 
-        {/* Overall Summary & Transcript */}
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden">
-           <div className="p-4 md:p-6 border-b border-slate-800 bg-slate-900/80">
-             <h4 className="font-bold text-white mb-3">Overall Adjudicator Feedback</h4>
-             <p className="text-sm text-indigo-200/90 leading-relaxed">
-               {resultData.overall_feedback}
-             </p>
-           </div>
-           <div className="p-4 md:p-6">
-             <h4 className="font-bold text-white mb-3 flex items-center space-x-2">
-               <Target className="w-4 h-4 text-slate-400" />
-               <span>Speech Transcript</span>
-             </h4>
-             <p className="text-sm text-slate-400 font-mono leading-loose bg-slate-950/50 p-4 rounded-xl border border-slate-800/50 whitespace-pre-wrap">
-               {resultData.transcript}
-             </p>
-           </div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-4 pt-4 border-t border-slate-800">
-           <button
-             onClick={handleReset}
-             className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors text-sm"
-           >
-             Start New Debate
-           </button>
-           <button
-             onClick={handleSaveToLeaderboard}
-             disabled={isSaving || saveStatus === 'success'}
-             className={`px-6 py-3 rounded-xl font-bold flex justify-center items-center space-x-2 transition-all text-sm ${
-               saveStatus === 'success'
-                 ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                 : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/20'
-             }`}
-           >
-             {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-             {saveStatus === 'success' && <CheckCircle2 className="w-4 h-4" />}
-             {!isSaving && saveStatus !== 'success' && <Save className="w-4 h-4" />}
-             <span>
-               {isSaving ? 'Saving...' : saveStatus === 'success' ? 'Saved to Leaderboard' : 'Log Score to Leaderboard'}
-             </span>
-           </button>
-        </div>
+        <section className="bg-surface border border-line rounded-2xl p-5 md:p-6">
+          <h3 className="text-[15px] font-semibold text-ink">What the AI heard</h3>
+          <p className="mt-2 text-[15px] text-ink leading-relaxed bg-surface-muted rounded-xl p-4 whitespace-pre-wrap">
+            {resultData.transcript}
+          </p>
+        </section>
       </div>
     );
   }

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Trash2, Edit2, X, Check } from 'lucide-react';
 import ReadingLengthHint from '../UI/ReadingLengthHint';
+import { MODE_LABELS, MODE_ORDER } from '../../utils/modes';
 
 export function MaterialsTab({
   teacher,
@@ -66,6 +67,30 @@ export function MaterialsTab({
     return Object.values(groups);
   }, [customMaterials]);
 
+  // Filters for the materials list
+  const [filterMode, setFilterMode] = useState('all');
+  const [filterClass, setFilterClass] = useState('all'); // 'all' | 'global' | class id
+  const [filterText, setFilterText] = useState('');
+
+  const visibleMaterials = useMemo(() => {
+    const q = filterText.trim().toLowerCase();
+    return groupedMaterials.filter((g) => {
+      if (filterMode !== 'all' && g.mode !== filterMode) return false;
+      if (filterClass === 'global' && !g.isGlobal) return false;
+      if (filterClass !== 'all' && filterClass !== 'global') {
+        if (g.isGlobal || !g.materials.some((m) => String(m.class_id) === String(filterClass))) return false;
+      }
+      if (q && !`${g.title || ''} ${g.content || ''}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [groupedMaterials, filterMode, filterClass, filterText]);
+
+  const modeCounts = useMemo(() => {
+    const c = {};
+    groupedMaterials.forEach((g) => { c[g.mode] = (c[g.mode] || 0) + 1; });
+    return c;
+  }, [groupedMaterials]);
+
   const startEditMaterialGroup = (group) => {
     setEditTitle(group.title);
     setEditContent(group.content);
@@ -96,14 +121,14 @@ export function MaterialsTab({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-fadeIn">
       {/* Left col: Add Material */}
-      <div className="lg:col-span-5 glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
-        <h3 className="font-bold text-base text-white">Add Class Material</h3>
+      <div className="lg:col-span-5 bg-surface border border-line p-6 rounded-2xl border border-line space-y-4">
+        <h3 className="font-bold text-base text-ink">Add Class Material</h3>
         
         <form onSubmit={handleCreateMaterial} className="space-y-4">
           {/* Admin Mode Toggle */}
           {teacher?.is_admin && (
             <div className="space-y-1 text-left">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Target Type</label>
+              <label className="text-xs font-bold text-ink-muted block">Target Type</label>
               <div className="flex space-x-4">
                 <label className="flex items-center space-x-2 text-xs">
                   <input
@@ -111,7 +136,7 @@ export function MaterialsTab({
                     value="class"
                     checked={materialCreationMode === 'class'}
                     onChange={() => setMaterialCreationMode('class')}
-                    className="text-indigo-500 bg-slate-900 border-slate-800"
+                    className="text-brand-ink bg-surface-muted border-line"
                   />
                   <span>Custom Class Material</span>
                 </label>
@@ -121,7 +146,7 @@ export function MaterialsTab({
                     value="global"
                     checked={materialCreationMode === 'global'}
                     onChange={() => setMaterialCreationMode('global')}
-                    className="text-indigo-500 bg-slate-900 border-slate-800"
+                    className="text-brand-ink bg-surface-muted border-line"
                   />
                   <span>Global Default Material</span>
                 </label>
@@ -132,16 +157,16 @@ export function MaterialsTab({
           {/* Class or Grade Dropdown */}
           {materialCreationMode === 'class' ? (
             <div className="space-y-2 text-left">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block flex justify-between items-center">
+              <label className="text-xs font-bold text-ink-muted block flex justify-between items-center">
                 <span>Target Classrooms</span>
-                <span className="text-indigo-400 lowercase font-normal">{selectedClassesMaterial.length} selected</span>
+                <span className="text-brand-ink lowercase font-normal">{selectedClassesMaterial.length} selected</span>
               </label>
-              <div className="max-h-32 overflow-y-auto space-y-1 bg-slate-900 border border-slate-800 rounded-xl p-2">
+              <div className="max-h-32 overflow-y-auto space-y-1 bg-surface-muted border border-line rounded-xl p-2">
                 {classesList.length === 0 ? (
-                  <div className="text-xs text-slate-500 p-2">No classes available</div>
+                  <div className="text-xs text-ink-subtle p-2">No classes available</div>
                 ) : (
                   classesList.map(c => (
-                    <label key={c.id} className="flex items-center space-x-2 text-xs text-slate-300 hover:bg-slate-800 p-1.5 rounded cursor-pointer transition">
+                    <label key={c.id} className="flex items-center space-x-2 text-xs text-ink-muted hover:bg-line p-1.5 rounded cursor-pointer transition">
                       <input 
                         type="checkbox" 
                         checked={selectedClassesMaterial.includes(c.id)}
@@ -152,9 +177,9 @@ export function MaterialsTab({
                             setSelectedClassesMaterial(prev => prev.filter(id => id !== c.id));
                           }
                         }}
-                        className="text-indigo-500 bg-slate-950 border-slate-700 rounded"
+                        className="text-brand-ink bg-surface border-line rounded"
                       />
-                      <span className="truncate">{c.class_name} <span className="text-[10px] text-slate-500">({c.grade_level || 'General'})</span></span>
+                      <span className="truncate">{c.class_name} <span className="text-xs text-ink-subtle">({c.grade_level || 'General'})</span></span>
                     </label>
                   ))
                 )}
@@ -162,11 +187,11 @@ export function MaterialsTab({
             </div>
           ) : (
             <div className="space-y-1 text-left">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Target Grade Level</label>
+              <label className="text-xs font-bold text-ink-muted block">Target Grade Level</label>
               <select
                 value={globalGradeLevel}
                 onChange={e => setGlobalGradeLevel(e.target.value)}
-                className="w-full px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-indigo-500 transition text-xs"
+                className="w-full px-4 py-2.5 bg-surface border border-line-strong rounded-[10px] text-ink focus:outline-none focus:border-brand transition text-sm"
               >
                 <option value="General">General</option>
                 <option value="Grade 10">Grade 10</option>
@@ -178,7 +203,7 @@ export function MaterialsTab({
 
           {/* Mode selection dropdown */}
           <div className="space-y-1 text-left">
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Practice Mode</label>
+            <label className="text-xs font-bold text-ink-muted block">Practice Mode</label>
             <select
               value={materialMode}
               onChange={e => {
@@ -186,36 +211,32 @@ export function MaterialsTab({
                 setActionError('');
                 setActionSuccess('');
               }}
-              className="w-full px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-indigo-500 transition text-xs"
+              className="w-full px-4 py-2.5 bg-surface border border-line-strong rounded-[10px] text-ink focus:outline-none focus:border-brand transition text-sm"
             >
-              <option value="read_aloud">1. Read Aloud</option>
-              <option value="qa">2. Q&A Mock Prompt</option>
-              <option value="conversation">3. AI Conversation</option>
-              <option value="debate">4. Debate Motion</option>
-              <option value="mattering">5. Mattering Issue</option>
+              {MODE_ORDER.map((m) => <option key={m} value={m}>{MODE_LABELS[m]}</option>)}
             </select>
           </div>
 
           {/* Title input (Hidden for Conversation mode since it's hardcoded) */}
           {materialMode !== 'conversation' && (
             <div className="space-y-1 text-left animate-fadeIn">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Material Title</label>
+              <label className="text-xs font-bold text-ink-muted block">Material Title</label>
               <input
                 type="text"
                 required
                 value={materialTitle}
                 onChange={e => setMaterialTitle(e.target.value)}
                 placeholder={materialMode === 'read_aloud' ? "e.g. Tech Essay (Hard)" : materialMode === 'debate' ? "e.g. AI in Education" : materialMode === 'mattering' ? "e.g. Phones in School" : "e.g. Hobbies Topic"}
-                className="w-full px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white placeholder-slate-650 focus:outline-none focus:border-indigo-500 transition text-xs"
+                className="w-full px-4 py-2.5 bg-surface border border-line-strong rounded-[10px] text-ink placeholder:text-ink-subtle focus:outline-none focus:border-brand transition text-sm"
               />
             </div>
           )}
 
           {/* Content text-area */}
           <div className="space-y-1 text-left">
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+            <label className="text-xs font-bold text-ink-muted block">
               {materialMode === 'read_aloud' && 'Paragraph Text (to read aloud)'}
-              {materialMode === 'qa' && 'IELTS Cue Card Prompt'}
+              {materialMode === 'qa' && 'Question prompt'}
               {materialMode === 'conversation' && 'AI Tutor Greeting & Context'}
               {materialMode === 'debate' && 'Debate Motion Statement'}
               {materialMode === 'mattering' && 'Motion (first line) + Background (optional)'}
@@ -236,11 +257,11 @@ export function MaterialsTab({
                   ? "This House would ban smartphones in schools.\nMany schools now collect phones in the morning. Supporters point to distraction; critics point to safety and digital skills..."
                   : "Hello! Today let's discuss your hobbies. What is something you enjoy doing in your free time?"
               }
-              className="w-full px-4 py-3 bg-slate-900 border border-slate-800 rounded-xl text-white placeholder-slate-755 focus:outline-none focus:border-indigo-500 transition text-xs font-medium leading-relaxed"
+              className="w-full px-4 py-3 bg-surface border border-line-strong rounded-[10px] text-ink placeholder:text-ink-subtle focus:outline-none focus:border-brand transition text-sm font-medium leading-relaxed"
             />
             {materialMode === 'read_aloud' && <ReadingLengthHint text={materialContent} />}
             {materialMode === 'mattering' && (
-              <p className="text-[11px] text-slate-500 leading-relaxed">
+              <p className="text-xs text-ink-subtle leading-relaxed">
                 Put the motion on the first line. Anything on the lines below is shown to students as background reading before they start.
               </p>
             )}
@@ -248,7 +269,7 @@ export function MaterialsTab({
 
           <button
             type="submit"
-            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-md transition cursor-pointer"
+            className="w-full py-2.5 bg-brand hover:bg-brand-hover text-white rounded-xl text-xs font-bold shadow-md transition cursor-pointer"
           >
             Add Material
           </button>
@@ -256,15 +277,78 @@ export function MaterialsTab({
       </div>
 
       {/* Right col: Materials List */}
-      <div className="lg:col-span-7 glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
-        <h3 className="font-bold text-base text-white">Current Custom Materials</h3>
-        
+      <div className="lg:col-span-7 bg-surface border border-line p-5 md:p-6 rounded-2xl shadow-card space-y-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="font-bold text-base text-ink">Your materials</h3>
+          <span className="text-[13px] text-ink-subtle">
+            {visibleMaterials.length === groupedMaterials.length
+              ? `${groupedMaterials.length} in total`
+              : `Showing ${visibleMaterials.length} of ${groupedMaterials.length}`}
+          </span>
+        </div>
+
+        {/* Mode filter chips */}
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by mode">
+          {['all', ...MODE_ORDER].map((m) => {
+            const active = filterMode === m;
+            const count = m === 'all' ? groupedMaterials.length : (modeCounts[m] || 0);
+            return (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setFilterMode(m)}
+                aria-pressed={active}
+                className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-full border text-sm transition-colors ${
+                  active ? 'bg-brand-tint border-brand text-brand-ink font-semibold' : 'bg-surface border-line-strong text-ink-muted hover:bg-surface-muted'
+                }`}
+              >
+                {m === 'all' ? 'All' : MODE_LABELS[m]}
+                <span className="text-xs tabular-nums opacity-75">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <input
+            type="search"
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+            placeholder="Search title or text"
+            aria-label="Search materials"
+            className="w-full min-h-[40px] px-3 bg-surface border border-line-strong rounded-[10px] text-ink text-sm placeholder:text-ink-subtle focus:outline-none focus:border-brand focus:ring-4 focus:ring-brand-ring"
+          />
+          <select
+            value={filterClass}
+            onChange={(e) => setFilterClass(e.target.value)}
+            aria-label="Filter by class"
+            className="w-full min-h-[40px] px-3 bg-surface border border-line-strong rounded-[10px] text-ink text-sm focus:outline-none focus:border-brand focus:ring-4 focus:ring-brand-ring"
+          >
+            <option value="all">All classes</option>
+            <option value="global">Global materials only</option>
+            {classesList.map((c) => (
+              <option key={c.id} value={c.id}>{c.class_name}</option>
+            ))}
+          </select>
+        </div>
+
         {groupedMaterials.length === 0 ? (
-          <p className="text-slate-500 text-xs italic py-16 text-center">No custom materials created yet.</p>
+          <p className="text-ink-subtle text-sm py-16 text-center">No materials yet. Add one with the form.</p>
+        ) : visibleMaterials.length === 0 ? (
+          <div className="py-12 text-center space-y-3">
+            <p className="text-ink-muted text-sm">No materials match these filters.</p>
+            <button
+              type="button"
+              onClick={() => { setFilterMode('all'); setFilterClass('all'); setFilterText(''); }}
+              className="text-sm font-semibold text-brand-ink hover:underline underline-offset-4"
+            >
+              Clear filters
+            </button>
+          </div>
         ) : (
-          <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
-            {groupedMaterials.map((group) => (
-              <div key={group.id} className="p-4 rounded-xl bg-slate-900/50 border border-slate-850 flex justify-between items-start gap-4">
+          <div className="space-y-3 max-h-[640px] overflow-y-auto pr-1">
+            {visibleMaterials.map((group) => (
+              <div key={group.id} className="p-4 rounded-xl bg-surface border border-line flex justify-between items-start gap-4">
                 {editingGroupId === group.id ? (
                   <div className="w-full space-y-3">
                     {group.mode !== 'conversation' && (
@@ -272,7 +356,7 @@ export function MaterialsTab({
                         type="text" 
                         value={editTitle} 
                         onChange={e => setEditTitle(e.target.value)} 
-                        className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white text-sm focus:border-indigo-500 outline-none" 
+                        className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg text-ink text-sm focus:border-brand outline-none" 
                         placeholder="Material Title"
                       />
                     )}
@@ -280,19 +364,19 @@ export function MaterialsTab({
                       rows={4}
                       value={editContent}
                       onChange={e => setEditContent(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white text-xs focus:border-indigo-500 outline-none"
+                      className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg text-ink text-sm focus:border-brand outline-none"
                     />
                     {group.mode === 'read_aloud' && <ReadingLengthHint text={editContent} />}
                     
                     {!group.isGlobal && (
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block flex justify-between items-center">
+                        <label className="text-xs font-bold text-ink-muted block flex justify-between items-center">
                           <span>Assigned Classes</span>
-                          <span className="text-indigo-400 lowercase font-normal">{editClassIds.length} selected</span>
+                          <span className="text-brand-ink lowercase font-normal">{editClassIds.length} selected</span>
                         </label>
-                        <div className="max-h-28 overflow-y-auto space-y-1 bg-slate-950 border border-slate-800 rounded-lg p-2">
+                        <div className="max-h-28 overflow-y-auto space-y-1 bg-surface border border-line rounded-lg p-2">
                           {classesList.map(c => (
-                            <label key={c.id} className="flex items-center space-x-2 text-xs text-slate-300 hover:bg-slate-800 p-1.5 rounded cursor-pointer transition">
+                            <label key={c.id} className="flex items-center space-x-2 text-xs text-ink-muted hover:bg-line p-1.5 rounded cursor-pointer transition">
                               <input 
                                 type="checkbox" 
                                 checked={editClassIds.includes(c.id)}
@@ -303,7 +387,7 @@ export function MaterialsTab({
                                     setEditClassIds(prev => prev.filter(id => id !== c.id));
                                   }
                                 }}
-                                className="text-indigo-500 bg-slate-900 border-slate-700 rounded"
+                                className="text-brand-ink bg-surface-muted border-line rounded"
                               />
                               <span className="truncate">{c.class_name}</span>
                             </label>
@@ -313,47 +397,43 @@ export function MaterialsTab({
                     )}
 
                     <div className="flex justify-end space-x-2 pt-2">
-                      <button onClick={() => saveEditMaterialGroup(group)} className="p-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-lg flex items-center space-x-1 text-xs px-3"><Check size={14} /> <span>Save</span></button>
-                      <button onClick={() => setEditingGroupId(null)} className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg flex items-center space-x-1 text-xs px-3"><X size={14} /> <span>Cancel</span></button>
+                      <button onClick={() => saveEditMaterialGroup(group)} className="p-1.5 bg-success-tint hover:brightness-95 text-success rounded-lg flex items-center space-x-1 text-xs px-3"><Check size={14} /> <span>Save</span></button>
+                      <button onClick={() => setEditingGroupId(null)} className="p-1.5 bg-surface-muted hover:bg-line text-ink-muted rounded-lg flex items-center space-x-1 text-xs px-3"><X size={14} /> <span>Cancel</span></button>
                     </div>
                   </div>
                 ) : (
                   <>
                     <div className="space-y-1.5 flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
-                        {group.mode === 'read_aloud' && <span className="px-2 py-0.5 bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Read Aloud</span>}
-                        {group.mode === 'qa' && <span className="px-2 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Q&A Mock</span>}
-                        {group.mode === 'conversation' && <span className="px-2 py-0.5 bg-pink-500/10 text-pink-400 border border-pink-500/20 rounded text-[9px] font-bold uppercase tracking-wider">AI Dialogue</span>}
-                        {group.mode === 'debate' && <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Debate</span>}
-                        {group.mode === 'mattering' && <span className="px-2 py-0.5 bg-teal-500/10 text-teal-400 border border-teal-500/20 rounded text-[9px] font-bold uppercase tracking-wider">Mattering</span>}
+                        <span className="inline-flex items-center h-6 px-2 bg-brand-tint text-brand-ink rounded-md text-xs font-semibold">{MODE_LABELS[group.mode] || group.mode}</span>
                         
                         {group.isGlobal ? (
-                          <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">Global: {group.grade_level}</span>
+                          <span className="text-xs text-success tabular-nums bg-success-tint border border-success/30 px-2 py-0.5 rounded">Global: {group.grade_level}</span>
                         ) : (
                           <div className="flex flex-wrap gap-1">
                             {group.classes.map(c => (
-                              <span key={c.class_name} className="text-[9px] text-slate-400 bg-slate-800/80 border border-slate-700 px-1.5 py-0.5 rounded">
+                              <span key={c.class_name} className="text-xs text-ink-muted bg-surface-muted border border-line px-1.5 py-0.5 rounded">
                                 {c.class_name}
                               </span>
                             ))}
                           </div>
                         )}
                       </div>
-                      <h4 className="font-bold text-white text-sm truncate">{group.title}</h4>
-                      <p className="text-xs text-slate-400 line-clamp-3 leading-relaxed whitespace-pre-wrap">{group.content}</p>
+                      <h4 className="font-bold text-ink text-sm truncate">{group.title}</h4>
+                      <p className="text-xs text-ink-muted line-clamp-3 leading-relaxed whitespace-pre-wrap">{group.content}</p>
                     </div>
 
                     <div className="flex flex-col space-y-2 shrink-0">
                       <button
                         onClick={() => startEditMaterialGroup(group)}
-                        className="p-2 bg-slate-950 border border-slate-850 hover:border-indigo-900/50 hover:bg-indigo-950/20 text-slate-500 hover:text-indigo-400 rounded-lg transition cursor-pointer"
+                        className="p-2 bg-surface border border-line hover:border-brand/30 hover:bg-brand-tint text-ink-subtle hover:text-brand-ink rounded-lg transition cursor-pointer"
                         title="Edit material and class assignments"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => handleDeleteMaterialGroup(group.materials.map(m => m.id))}
-                        className="p-2 bg-slate-950 border border-slate-850 hover:border-rose-900/50 hover:bg-rose-950/20 text-slate-500 hover:text-rose-400 rounded-lg transition cursor-pointer"
+                        className="p-2 bg-surface border border-line hover:border-danger/30 hover:bg-danger-tint text-ink-subtle hover:text-danger rounded-lg transition cursor-pointer"
                         title="Delete material from all classes"
                       >
                         <Trash2 className="w-3.5 h-3.5" />

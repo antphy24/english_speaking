@@ -2,6 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabaseAdmin as supabase } from '../utils/supabaseClient';
 import { LogOut, CheckCircle, XCircle, Users, UserCheck, Shield } from 'lucide-react';
+import { Button } from './UI/Button';
+import { Alert } from './UI/Alert';
+import { Logo } from './UI/Logo';
+import { StatTile } from './UI/StatTile';
 import Spinner from './UI/Spinner';
 
 export function AdminDashboard() {
@@ -77,8 +81,8 @@ export function AdminDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0b0f19] flex items-center justify-center">
-        <Spinner size="lg" color="text-fuchsia-500" />
+      <div className="min-h-screen bg-canvas flex items-center justify-center">
+        <Spinner size="lg" message="Loading..." />
       </div>
     );
   }
@@ -87,79 +91,49 @@ export function AdminDashboard() {
   const otherTeachers = teachers.filter(t => t.status !== 'pending');
 
   return (
-    <div className="min-h-screen bg-[#0b0f19] text-white">
+    <div className="min-h-screen bg-canvas text-ink">
       {/* Navbar */}
-      <nav className="border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-40">
+      <nav className="border-b border-line bg-surface sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-fuchsia-500/10 border border-fuchsia-500/20 rounded-xl flex items-center justify-center text-fuchsia-400">
-              <Shield className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="font-bold text-lg leading-tight tracking-tight">Admin Portal</h1>
-              <p className="text-[10px] text-fuchsia-400 font-mono tracking-wider uppercase">HreFSpeak System</p>
+            <Logo size="sm" markOnly />
+            <div className="leading-tight">
+              <h1 className="font-bold text-base">HreFSpeak admin</h1>
+              <p className="text-xs text-ink-subtle">Teacher accounts</p>
             </div>
           </div>
           
           <div className="flex items-center space-x-4">
-            <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 bg-slate-800 rounded-lg border border-slate-700">
-              <UserCheck className="w-4 h-4 text-fuchsia-400" />
-              <span className="text-xs font-medium text-slate-300">{adminProfile?.full_name}</span>
+            <div className="hidden sm:flex items-center gap-2 text-sm">
+              <UserCheck className="w-4 h-4 text-ink-subtle" aria-hidden="true" />
+              <span className="font-medium text-ink-muted">{adminProfile?.full_name}</span>
             </div>
-            <button 
-              onClick={handleSignOut}
-              className="p-2 text-slate-400 hover:text-white hover:bg-rose-500/10 hover:border-rose-500/20 border border-transparent rounded-lg transition"
-              title="Sign Out"
-            >
-              <LogOut className="w-5 h-5" />
-            </button>
+            <Button variant="subtle" size="sm" icon={LogOut} onClick={handleSignOut}>Sign out</Button>
           </div>
         </div>
       </nav>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {errorMsg && (
-          <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 px-4 py-3 rounded-xl text-sm">
-            {errorMsg}
-          </div>
+          <Alert tone="error">{errorMsg}</Alert>
         )}
 
         {/* Dashboard Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-slate-400 text-sm font-medium">Total Teachers</p>
-                <h3 className="text-3xl font-bold mt-1">{teachers.length}</h3>
-              </div>
-              <div className="w-12 h-12 bg-indigo-500/10 rounded-xl flex items-center justify-center text-indigo-400">
-                <Users className="w-6 h-6" />
-              </div>
-            </div>
-          </div>
-          <div className="bg-fuchsia-900/10 border border-fuchsia-500/20 rounded-2xl p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-fuchsia-400 text-sm font-medium">Pending Approvals</p>
-                <h3 className="text-3xl font-bold mt-1 text-white">{pendingTeachers.length}</h3>
-              </div>
-              <div className="w-12 h-12 bg-fuchsia-500/20 rounded-xl flex items-center justify-center text-fuchsia-400">
-                <UserCheck className="w-6 h-6" />
-              </div>
-            </div>
-          </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <StatTile label="Teachers" value={teachers.length} icon={Users} />
+          <StatTile label="Waiting for approval" value={pendingTeachers.length} icon={UserCheck} tone={pendingTeachers.length ? 'warning' : 'neutral'} />
         </div>
 
         {/* Pending Approvals */}
         {pendingTeachers.length > 0 && (
           <div className="space-y-4">
-            <h2 className="text-lg font-bold text-white flex items-center space-x-2">
-              <span className="w-2 h-2 rounded-full bg-fuchsia-500 animate-pulse"></span>
-              <span>Pending Approvals</span>
+            <h2 className="text-lg font-bold text-ink flex items-center space-x-2">
+              <span className="w-2 h-2 rounded-full bg-warning"></span>
+              <span>Waiting for approval</span>
             </h2>
-            <div className="bg-slate-900/60 border border-fuchsia-500/30 rounded-2xl overflow-hidden">
+            <div className="bg-surface border border-line rounded-2xl overflow-x-auto shadow-card">
               <table className="w-full text-left text-sm">
-                <thead className="bg-slate-800/50 text-slate-400 border-b border-slate-800">
+                <thead className="bg-surface-muted text-ink-muted text-[13px] border-b border-line">
                   <tr>
                     <th className="py-3 px-6 font-medium">Name</th>
                     <th className="py-3 px-6 font-medium">Email</th>
@@ -167,23 +141,23 @@ export function AdminDashboard() {
                     <th className="py-3 px-6 font-medium text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800">
+                <tbody className="divide-y divide-line">
                   {pendingTeachers.map(teacher => (
-                    <tr key={teacher.id} className="hover:bg-slate-800/30 transition">
-                      <td className="py-4 px-6 font-medium text-white">{teacher.full_name}</td>
-                      <td className="py-4 px-6 text-slate-300">{teacher.id}</td>
-                      <td className="py-4 px-6 text-slate-400">{new Date(teacher.created_at).toLocaleDateString()}</td>
+                    <tr key={teacher.id} className="hover:bg-surface-muted transition">
+                      <td className="py-4 px-6 font-medium text-ink">{teacher.full_name}</td>
+                      <td className="py-4 px-6 text-ink-muted">{teacher.id}</td>
+                      <td className="py-4 px-6 text-ink-muted">{new Date(teacher.created_at).toLocaleDateString()}</td>
                       <td className="py-4 px-6 flex justify-end space-x-2">
                         <button 
                           onClick={() => handleUpdateStatus(teacher.id, 'approved')}
-                          className="flex items-center space-x-1 px-3 py-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 rounded-lg transition"
+                          className="inline-flex items-center gap-1.5 min-h-[36px] px-3 bg-success text-white font-semibold hover:brightness-95 rounded-lg transition"
                         >
                           <CheckCircle className="w-4 h-4" />
                           <span>Approve</span>
                         </button>
                         <button 
                           onClick={() => handleUpdateStatus(teacher.id, 'rejected')}
-                          className="flex items-center space-x-1 px-3 py-1.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500/20 rounded-lg transition"
+                          className="inline-flex items-center gap-1.5 min-h-[36px] px-3 bg-surface text-danger border border-line-strong font-semibold hover:bg-danger-tint rounded-lg transition"
                         >
                           <XCircle className="w-4 h-4" />
                           <span>Reject</span>
@@ -199,10 +173,10 @@ export function AdminDashboard() {
 
         {/* All Teachers */}
         <div className="space-y-4">
-          <h2 className="text-lg font-bold text-white">Teacher Directory</h2>
-          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden">
+          <h2 className="text-lg font-bold text-ink">All teachers</h2>
+          <div className="bg-surface border border-line rounded-2xl overflow-x-auto shadow-card">
             <table className="w-full text-left text-sm">
-              <thead className="bg-slate-800/50 text-slate-400 border-b border-slate-800">
+              <thead className="bg-surface-muted text-ink-muted text-[13px] border-b border-line">
                 <tr>
                   <th className="py-3 px-6 font-medium">Name</th>
                   <th className="py-3 px-6 font-medium">Status</th>
@@ -210,28 +184,28 @@ export function AdminDashboard() {
                   <th className="py-3 px-6 font-medium">Registered Date</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800">
+              <tbody className="divide-y divide-line">
                 {otherTeachers.length === 0 ? (
                   <tr>
-                    <td colSpan="4" className="py-8 text-center text-slate-500 italic">No approved or rejected teachers found.</td>
+                    <td colSpan="4" className="py-8 text-center text-ink-subtle italic">No approved or rejected teachers found.</td>
                   </tr>
                 ) : (
                   otherTeachers.map(teacher => (
-                    <tr key={teacher.id} className="hover:bg-slate-800/30 transition">
-                      <td className="py-4 px-6 font-medium text-white">{teacher.full_name}</td>
+                    <tr key={teacher.id} className="hover:bg-surface-muted transition">
+                      <td className="py-4 px-6 font-medium text-ink">{teacher.full_name}</td>
                       <td className="py-4 px-6">
-                        <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                          teacher.status === 'approved' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
-                          teacher.status === 'rejected' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' :
-                          'bg-slate-500/10 text-slate-400 border border-slate-500/20'
+                        <span className={`inline-flex items-center h-6 px-2.5 rounded-full text-xs font-semibold capitalize ${
+                          teacher.status === 'approved' ? 'bg-success-tint text-success' :
+                          teacher.status === 'rejected' ? 'bg-danger-tint text-danger' :
+                          'bg-surface-muted text-ink-muted'
                         }`}>
                           {teacher.status}
                         </span>
                       </td>
-                      <td className="py-4 px-6 text-slate-400">
-                        {teacher.is_admin ? <span className="text-fuchsia-400 font-medium">Admin</span> : 'Teacher'}
+                      <td className="py-4 px-6 text-ink-muted">
+                        {teacher.is_admin ? <span className="text-brand-ink font-medium">Admin</span> : 'Teacher'}
                       </td>
-                      <td className="py-4 px-6 text-slate-400">{new Date(teacher.created_at).toLocaleDateString()}</td>
+                      <td className="py-4 px-6 text-ink-muted">{new Date(teacher.created_at).toLocaleDateString()}</td>
                     </tr>
                   ))
                 )}

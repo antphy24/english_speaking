@@ -1,9 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useMediaRecorder } from '../hooks/useMediaRecorder';
-import useSwipeRow from '../hooks/useSwipeRow';
 import ScoreCard from './UI/ScoreCard';
 import Spinner from './UI/Spinner';
-import { Mic, MicOff, Info, HelpCircle } from 'lucide-react';
+import { Mic, MicOff, RefreshCw } from 'lucide-react';
+import { Button } from './UI/Button';
+import { PickerList } from './UI/PickerList';
+import { RecorderBar } from './UI/Recorder';
+import { ErrorPanel } from './UI/ErrorPanel';
+import { TextSizeControl, useReadingSize } from './UI/TextSizeControl';
 import useSubmission from '../hooks/useSubmission';
 import SubmissionProgress from './UI/SubmissionProgress';
 
@@ -35,7 +39,7 @@ export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, c
   const questionsList = [...customMapped, ...QUESTIONS];
 
   const [selectedQuestion, setSelectedQuestion] = useState(questionsList[0]);
-  const swipeRef = useSwipeRow();
+  const readingSize = useReadingSize();
 
   useEffect(() => {
     if (questionsList.length > 0) {
@@ -202,93 +206,53 @@ export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, c
     }
   };
 
+  const { style: readingStyle, ...readingSizeControl } = readingSize;
+
   return (
     <div className="space-y-6">
-      
-      {/* Informative banner */}
-      <div className="hidden md:flex items-start space-x-3 bg-indigo-500/10 border border-indigo-500/20 p-4 rounded-xl">
-        <Info className="w-5 h-5 text-indigo-400 mt-0.5 flex-shrink-0" />
-        <div className="text-xs text-indigo-200 leading-relaxed">
-          <strong className="text-white block mb-0.5">Mode 2: IELTS Q&A Prompt</strong>
-          Select a topic card below to view the topic prompt. Click the record button to start speaking, and click it again to finish. Gemini will grade your speaking against official IELTS band rubrics.
-        </div>
-      </div>
-
       {(status === 'idle' || status === 'recording') && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 md:gap-6">
-          
-          {/* Topic selector */}
-          <div className="md:col-span-1 space-y-2 md:space-y-3 min-w-0">
-            <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              IELTS Topics{questionsList.length > 1 && <span className="md:hidden normal-case font-normal text-slate-500"> · swipe for more</span>}
-            </h4>
-            <div ref={swipeRef} className="no-scrollbar flex md:flex-col gap-2 md:gap-0 md:space-y-2 overflow-x-auto md:overflow-visible -mx-4 px-4 md:mx-0 md:px-0">
-              {questionsList.map((q) => (
-                <button
-                  key={q.id}
-                  disabled={isRecording}
-                  onClick={() => setSelectedQuestion(q)}
-                  className={`p-3 text-left rounded-xl border transition-all duration-200 shrink-0 md:w-auto ${questionsList.length > 1 ? 'w-[60%]' : 'w-full'} ${
-                    selectedQuestion.id === q.id
-                      ? 'bg-purple-600/15 border-purple-500 text-white'
-                      : 'bg-slate-900/40 border-slate-800 text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
-                  } ${isRecording ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  <div className="font-bold text-sm">{q.topic}</div>
-                  <div className="text-[10px] opacity-75 mt-0.5">IELTS Speaking Prompt</div>
-                </button>
-              ))}
-            </div>
-          </div>
+        <div className="flex flex-col md:flex-row md:items-start gap-4 md:gap-6">
+          <PickerList
+            title="Questions"
+            items={questionsList.map((q) => ({ id: q.id, title: q.topic, meta: 'Speaking prompt' }))}
+            selectedId={selectedQuestion.id}
+            onSelect={(item) => setSelectedQuestion(questionsList.find((q) => q.id === item.id))}
+            disabled={isRecording}
+          />
 
-          {/* Prompt Detail Arena */}
-          <div className="md:col-span-3 min-w-0 flex flex-col justify-between glass-panel rounded-2xl p-4 md:p-6 border-slate-800 space-y-4 md:space-y-6">
-            <div className="flex items-center space-x-2 text-xs font-medium text-purple-400 tracking-widest uppercase">
-              <HelpCircle className="w-4 h-4" />
-              <span>Prompt Card</span>
-            </div>
-            
-            <p className="text-lg text-slate-100 font-medium leading-relaxed py-4 border-y border-slate-850 px-2">
-              {selectedQuestion.prompt}
-            </p>
-
-            {/* Toggle-to-record Button Area */}
-            <div className="flex flex-col items-center justify-center space-y-3 pt-2">
-              <button
-                onClick={handleToggleRecord}
-                aria-label={isRecording ? `Stop recording, ${recordingTime} seconds elapsed` : 'Start recording response'}
-                className={`relative w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300 ${
-                  isRecording 
-                    ? 'bg-red-500 text-white animate-record-pulse glow-purple-lg'
-                    : 'bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-600/30'
-                }`}
-              >
-                {isRecording ? <MicOff className="w-8 h-8" /> : <Mic className="w-8 h-8" />}
-              </button>
-              
-              <div className="text-center">
-                <span className="block text-sm font-semibold text-slate-300">
-                  {isRecording ? `Recording in progress: ${recordingTime}s` : 'Start Assessment'}
-                </span>
-                <span className="text-xs text-slate-500">
-                  {isRecording ? 'Tap the button again to finish' : 'Tap to start recording your response'}
-                </span>
+          <section className="flex-1 min-w-0 bg-surface border border-line rounded-2xl shadow-card">
+            <div className="p-5 md:p-7 space-y-4 md:space-y-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <span className="block text-[13px] font-semibold text-brand-ink">Answer this question</span>
+                  <h2 className="text-lg font-bold text-ink leading-snug">{selectedQuestion.topic}</h2>
+                </div>
+                <TextSizeControl {...readingSizeControl} />
               </div>
+              <p className="text-ink" style={readingStyle}>{selectedQuestion.prompt}</p>
+              <p className="text-sm text-ink-subtle">
+                Aim for 1-2 minutes. You are scored on fluency, vocabulary, grammar and pronunciation.
+              </p>
             </div>
-          </div>
+
+            <RecorderBar
+              isRecording={isRecording}
+              seconds={recordingTime}
+              onToggle={handleToggleRecord}
+              idleTitle="Tap the microphone to answer"
+              idleHint="Think for a moment, then speak. Tap again when you finish."
+              recordingHint="Tap the button when you finish your answer."
+            />
+          </section>
         </div>
       )}
 
       {/* Loading state */}
-      {status === 'processing' && <SubmissionProgress progress={submission.progress} transcriptLabel="Your Speech Transcript" />}
+      {status === 'processing' && <SubmissionProgress progress={submission.progress} />}
 
-      {/* Evaluated Score Card */}
+      {/* Result */}
       {status === 'graded' && (
         <div className="space-y-4">
-          <div className="p-4 bg-slate-900/40 border border-slate-800 rounded-xl">
-            <span className="block text-xs text-indigo-400 font-semibold tracking-wider uppercase mb-1">Transcribed Response</span>
-            <p className="text-sm italic text-slate-300">"{transcript}"</p>
-          </div>
           <ScoreCard
             mode="qa"
             score={evaluation}
@@ -297,43 +261,27 @@ export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, c
             saveStatus={saveStatus}
             onSaveToLeaderboard={handleSaveToLeaderboard}
           />
+          <div className="bg-surface border border-line rounded-2xl p-5 md:px-7">
+            <span className="block text-[13px] font-semibold text-ink-muted mb-1.5">What the AI heard</span>
+            <p className="text-[15px] text-ink leading-relaxed">“{transcript}”</p>
+          </div>
         </div>
       )}
 
       {/* Error state */}
       {status === 'error' && (
-        <div className="glass-panel p-4 md:p-6 rounded-xl border border-red-500/20 text-center space-y-4 animate-fadeIn">
-          <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto text-red-500">
-            <MicOff className="w-6 h-6" />
-          </div>
-          <div className="space-y-1">
-            <h4 className="text-lg font-bold text-white">
-              {submission.progress?.retryable ? 'Not finished yet' : 'Assessment Interrupted'}
-            </h4>
-            <p className="text-sm text-rose-300">{errorMessage}</p>
-            {submission.progress?.retryable && (
-              <p className="text-xs text-slate-400">Your recording is saved. Tap Retry - you do not need to record again.</p>
-            )}
-          </div>
-          <div className="flex flex-wrap justify-center gap-3">
-            {submission.progress?.retryable && submission.hasRecording() && (
-              <button 
-                onClick={handleRetry}
-                className="px-5 py-2.5 md:py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
-              >
-                Retry
-              </button>
-            )}
-            <button 
-              onClick={handleRestart}
-              className="px-5 py-2.5 md:py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-sm font-semibold transition cursor-pointer"
-            >
-              Record Again
-            </button>
-          </div>
-        </div>
+        <ErrorPanel
+          icon={MicOff}
+          title={submission.progress?.retryable ? 'Not finished yet' : 'Recording stopped'}
+          message={errorMessage}
+          note={submission.progress?.retryable ? 'Your recording is saved. Tap Retry - you do not need to record again.' : undefined}
+        >
+          {submission.progress?.retryable && submission.hasRecording() && (
+            <Button icon={RefreshCw} onClick={handleRetry}>Retry</Button>
+          )}
+          <Button variant="secondary" icon={Mic} onClick={handleRestart}>Record again</Button>
+        </ErrorPanel>
       )}
-
     </div>
   );
 }

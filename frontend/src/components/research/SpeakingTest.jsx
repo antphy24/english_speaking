@@ -5,6 +5,8 @@ import { supabaseStudent } from '../../utils/supabaseClient';
 import { researchRequest, newId } from '../../utils/researchApi';
 import { speakEnglish, stopSpeaking, speechSupported } from '../../utils/speech';
 import useBeforeUnload from '../../hooks/useBeforeUnload';
+import { Button } from '../UI/Button';
+import { Logo } from '../UI/Logo';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const AUTO_START_SECONDS = 10; // after the question was read, recording starts by itself after this
@@ -77,17 +79,20 @@ function useMic() {
 
 function LevelBar({ level }) {
   return (
-    <div className="h-3 w-full bg-slate-800 rounded-full overflow-hidden">
-      <div className="h-full bg-gradient-to-r from-emerald-500 to-lime-400 transition-[width] duration-75" style={{ width: `${Math.round(level * 100)}%` }} />
+    <div className="h-3 w-full bg-surface-muted rounded-full overflow-hidden" role="meter" aria-label="Microphone level" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(level * 100)}>
+      <div className="h-full bg-success rounded-full transition-[width] duration-75" style={{ width: `${Math.round(level * 100)}%` }} />
     </div>
   );
 }
 
 function Shell({ children, title }) {
   return (
-    <div className="min-h-screen bg-[#0b0f19] text-slate-100 flex flex-col items-center px-4 py-6 md:py-10">
+    <div className="min-h-screen bg-canvas text-ink flex flex-col items-center px-4 py-6 md:py-10">
       <div className="w-full max-w-2xl">
-        {title && <div className="text-[11px] text-slate-500 uppercase tracking-wider mb-3">{title}</div>}
+        <div className="flex items-center justify-between gap-3 mb-5">
+          <Logo size="sm" />
+          {title && <div className="text-[13px] text-ink-subtle text-right">{title}</div>}
+        </div>
         {children}
       </div>
     </div>
@@ -325,15 +330,15 @@ export default function SpeakingTest() {
 
   // ------------------------------------------------------------------ screens
   if (stage === 'loading') {
-    return <Shell><div className="flex justify-center py-24"><Loader2 className="w-8 h-8 animate-spin text-indigo-400" /></div></Shell>;
+    return <Shell><div className="flex justify-center py-24"><Loader2 className="w-8 h-8 animate-spin text-brand-ink" /></div></Shell>;
   }
 
   if (stage === 'error') {
     return (
       <Shell>
-        <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-5 space-y-3">
-          <p className="text-sm text-rose-300 flex gap-2"><AlertTriangle className="w-5 h-5 shrink-0" />{error}</p>
-          <button onClick={load} className="px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-bold">Try again</button>
+        <div className="bg-danger-tint rounded-2xl p-5 space-y-3">
+          <p className="text-sm text-danger flex gap-2"><AlertTriangle className="w-5 h-5 shrink-0" />{error}</p>
+          <Button variant="secondary" onClick={load}>Try again</Button>
         </div>
       </Shell>
     );
@@ -342,9 +347,9 @@ export default function SpeakingTest() {
   if (stage === 'closed') {
     return (
       <Shell>
-        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 text-center space-y-3">
-          <p className="text-sm text-slate-300">This speaking test is not open for you right now. Ask your teacher.</p>
-          <button onClick={() => navigate('/practice')} className="px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-bold">Back</button>
+        <div className="bg-surface border border-line rounded-2xl shadow-card p-6 md:p-8 text-center space-y-3">
+          <p className="text-[15px] text-ink-muted">This speaking test is not open for you right now. Ask your teacher.</p>
+          <Button variant="secondary" onClick={() => navigate('/practice')}>Back</Button>
         </div>
       </Shell>
     );
@@ -353,11 +358,11 @@ export default function SpeakingTest() {
   if (stage === 'done') {
     return (
       <Shell>
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-6 text-center space-y-3">
-          <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
-          <h2 className="text-xl font-bold text-white">Thank you!</h2>
-          <p className="text-sm text-slate-300">Your answers have been saved. You can close this page now.</p>
-          <button onClick={() => navigate('/practice')} className="px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-bold">Back to HreFSpeak</button>
+        <div className="bg-surface border border-line rounded-2xl shadow-card p-6 md:p-8 text-center space-y-3">
+          <CheckCircle2 className="w-12 h-12 text-success mx-auto" />
+          <h2 className="text-xl font-bold text-ink">Thank you!</h2>
+          <p className="text-[15px] text-ink-muted">Your answers have been saved. You can close this page now.</p>
+          <Button variant="secondary" onClick={() => navigate('/practice')}>Back to HreFSpeak</Button>
         </div>
       </Shell>
     );
@@ -366,11 +371,11 @@ export default function SpeakingTest() {
   if (stage === 'declined') {
     return (
       <Shell>
-        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-3 text-center">
-          <p className="text-sm text-slate-300">Kamu memilih tidak setuju, jadi tes tidak dimulai. Beri tahu gurumu.</p>
+        <div className="bg-surface border border-line rounded-2xl shadow-card p-6 md:p-8 space-y-4 text-center">
+          <p className="text-[15px] text-ink-muted">Kamu memilih tidak setuju, jadi tes tidak dimulai. Beri tahu gurumu.</p>
           <div className="flex justify-center gap-2">
-            <button onClick={() => setStage('consent')} className="px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-bold">Baca lagi</button>
-            <button onClick={() => navigate('/practice')} className="px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-bold">Kembali</button>
+            <Button variant="secondary" onClick={() => setStage('consent')}>Baca lagi</Button>
+            <Button variant="subtle" onClick={() => navigate('/practice')}>Kembali</Button>
           </div>
         </div>
       </Shell>
@@ -380,19 +385,19 @@ export default function SpeakingTest() {
   if (stage === 'consent') {
     return (
       <Shell title={info?.title}>
-        <button onClick={() => navigate('/practice')} className="flex items-center gap-1 text-xs text-slate-400 mb-3"><ArrowLeft className="w-3.5 h-3.5" />Kembali</button>
-        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-4">
-          <h2 className="text-lg font-bold text-white flex items-center gap-2"><ShieldCheck className="w-5 h-5 text-indigo-300" />Persetujuan</h2>
-          <div className="text-sm text-slate-300 whitespace-pre-line leading-relaxed max-h-[50vh] overflow-y-auto">{info?.consent_text}</div>
-          <label className="flex items-start gap-2 text-sm text-white">
-            <input type="checkbox" className="mt-1" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
+        <Button variant="subtle" size="sm" icon={ArrowLeft} onClick={() => navigate('/practice')} className="mb-3 -ml-2">Kembali</Button>
+        <div className="bg-surface border border-line rounded-2xl shadow-card p-5 md:p-7 space-y-5">
+          <h2 className="text-lg font-bold text-ink flex items-center gap-2"><ShieldCheck className="w-5 h-5 text-brand-ink" />Persetujuan</h2>
+          <div className="text-[15px] text-ink whitespace-pre-line leading-relaxed max-h-[50vh] overflow-y-auto bg-surface-muted rounded-xl p-4">{info?.consent_text}</div>
+          <label className="flex items-start gap-3 text-[15px] text-ink cursor-pointer">
+            <input type="checkbox" className="mt-1 w-5 h-5 accent-brand shrink-0" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
             Saya sudah membaca dan memahami penjelasan di atas.
           </label>
           <div className="flex flex-col sm:flex-row gap-2">
-            <button disabled={!agree} onClick={() => giveConsent(true)} className="flex-1 py-3 rounded-xl bg-indigo-600 disabled:opacity-40 text-white text-sm font-bold">Saya setuju, mulai tes</button>
-            <button onClick={() => giveConsent(false)} className="sm:w-48 py-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 text-sm font-bold">Saya tidak setuju</button>
+            <Button size="lg" disabled={!agree} onClick={() => giveConsent(true)} className="flex-1">Saya setuju, mulai tes</Button>
+            <Button size="lg" variant="secondary" onClick={() => giveConsent(false)} className="sm:w-52">Saya tidak setuju</Button>
           </div>
-          <p className="text-[11px] text-slate-500">About {info?.questions} questions · around {info?.minutes} minutes. Use a quiet place and headphones or a loud enough speaker.</p>
+          <p className="text-[13px] text-ink-subtle">About {info?.questions} questions · around {info?.minutes} minutes. Use a quiet place and headphones or a loud enough speaker.</p>
         </div>
       </Shell>
     );
@@ -401,23 +406,21 @@ export default function SpeakingTest() {
   if (stage === 'miccheck') {
     return (
       <Shell title={attempt?.title}>
-        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-4">
-          <h2 className="text-lg font-bold text-white flex items-center gap-2"><Mic className="w-5 h-5 text-indigo-300" />Microphone check</h2>
-          <p className="text-sm text-slate-300">Tap the button, allow the microphone, then say "Hello, my name is ..." The green bar should move when you speak.</p>
+        <div className="bg-surface border border-line rounded-2xl shadow-card p-5 md:p-7 space-y-5">
+          <h2 className="text-lg font-bold text-ink flex items-center gap-2"><Mic className="w-5 h-5 text-brand-ink" />Microphone check</h2>
+          <p className="text-[15px] text-ink-muted">Tap the button, allow the microphone, then say "Hello, my name is ..." The green bar should move when you speak.</p>
           {!micReady ? (
-            <button onClick={startMic} className="w-full py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold">Turn on microphone</button>
+            <Button size="lg" fullWidth icon={Mic} onClick={startMic}>Turn on microphone</Button>
           ) : (
             <>
               <LevelBar level={mic.level} />
-              <button onClick={() => { speakEnglish('Can you hear me clearly?'); }} className="flex items-center gap-2 text-xs text-indigo-300">
-                <Volume2 className="w-4 h-4" />Test the speaker
-              </button>
-              <button onClick={() => setStage('intro')} className="w-full py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold">The bar moves - continue</button>
+              <Button variant="ghost" size="sm" icon={Volume2} onClick={() => { speakEnglish('Can you hear me clearly?'); }} className="-ml-3">Test the speaker</Button>
+              <Button size="lg" fullWidth onClick={() => setStage('intro')}>The bar moves - continue</Button>
             </>
           )}
-          {micError && <p className="text-xs text-rose-400">{micError}</p>}
+          {micError && <p className="text-sm text-danger">{micError}</p>}
           {attempt && attempt.total > queue.length && (
-            <p className="text-xs text-amber-300">You already answered {attempt.total - queue.length} of {attempt.total} questions. The test continues where you stopped.</p>
+            <p className="text-sm text-warning">You already answered {attempt.total - queue.length} of {attempt.total} questions. The test continues where you stopped.</p>
           )}
         </div>
       </Shell>
@@ -427,26 +430,27 @@ export default function SpeakingTest() {
   if (stage === 'intro') {
     return (
       <Shell title={attempt?.title}>
-        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-4">
-          <h2 className="text-lg font-bold text-white">How the test works</h2>
-          <p className="text-sm text-slate-200">{attempt.content.intro}</p>
-          <ul className="text-xs text-slate-400 list-disc pl-5 space-y-1">
+        <div className="bg-surface border border-line rounded-2xl shadow-card p-5 md:p-7 space-y-5">
+          <h2 className="text-lg font-bold text-ink">How the test works</h2>
+          <p className="text-[15px] text-ink leading-relaxed">{attempt.content.intro}</p>
+          <ul className="text-sm text-ink-muted list-disc pl-5 space-y-1.5">
             <li>Each question is read aloud and shown on the screen.</li>
             <li>Recording starts by itself a few seconds after the question (or tap "Start answering").</li>
             {maxRepeats > 0 && <li>You may hear each question again {maxRepeats === 1 ? 'once' : `${maxRepeats} times`} before you answer.</li>}
             <li>Each answer has a time limit. Tap "I'm finished" when you are done.</li>
             <li>You cannot go back to a question after answering it.</li>
           </ul>
-          <button onClick={() => { speakEnglish(attempt.content.intro); }} className="flex items-center gap-2 text-xs text-indigo-300"><Volume2 className="w-4 h-4" />Listen to the instructions</button>
-          <button onClick={() => { speakEnglish("Let's begin."); /* unlocks speech on iPhone */ if (queue.length === 0) submit(); else setStage('question'); }}
-                  className="w-full py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold">Start the test</button>
+          <Button variant="ghost" size="sm" icon={Volume2} onClick={() => { speakEnglish(attempt.content.intro); }} className="-ml-3">Listen to the instructions</Button>
+          <Button size="lg" fullWidth onClick={() => { speakEnglish("Let's begin."); /* unlocks speech on iPhone */ if (queue.length === 0) submit(); else setStage('question'); }}>
+            Start the test
+          </Button>
         </div>
       </Shell>
     );
   }
 
   if (stage === 'submitting') {
-    return <Shell><div className="flex flex-col items-center gap-3 py-24 text-sm text-slate-300"><Loader2 className="w-8 h-8 animate-spin text-indigo-400" />Finishing the test...</div></Shell>;
+    return <Shell><div className="flex flex-col items-center gap-3 py-24 text-[15px] text-ink-muted"><Loader2 className="w-8 h-8 animate-spin text-brand-ink" />Finishing the test...</div></Shell>;
   }
 
   // stage === 'question'
@@ -456,37 +460,34 @@ export default function SpeakingTest() {
 
   return (
     <Shell title={`${attempt.title} · Question ${answered + 1} of ${attempt.total}`}>
-      <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden mb-4">
-        <div className="h-full bg-indigo-500" style={{ width: `${(answered / attempt.total) * 100}%` }} />
+      <div className="h-2 w-full bg-line rounded-full overflow-hidden mb-4" role="progressbar" aria-label="Test progress" aria-valuemin={0} aria-valuemax={attempt.total} aria-valuenow={answered}>
+        <div className="h-full bg-brand rounded-full transition-[width]" style={{ width: `${(answered / attempt.total) * 100}%` }} />
       </div>
-      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-4">
+      <div className="bg-surface border border-line rounded-2xl shadow-card p-5 md:p-7 space-y-5">
         <div>
-          <div className="text-xs font-bold text-indigo-300 uppercase tracking-wider">{current.part.title}</div>
-          {showPartHeader && current.part.instructions && <p className="text-xs text-slate-400 mt-1">{current.part.instructions}</p>}
+          <div className="text-[13px] font-semibold text-brand-ink">{current.part.title}</div>
+          {showPartHeader && current.part.instructions && <p className="text-sm text-ink-muted mt-1">{current.part.instructions}</p>}
         </div>
         {current.part.image_url && (
-          <img src={current.part.image_url} alt="Look at this picture" className="w-full max-h-[45vh] object-contain rounded-xl bg-black" />
+          <img src={current.part.image_url} alt="Look at this picture" className="w-full max-h-[45vh] object-contain rounded-xl bg-surface-muted" />
         )}
-        <p className="text-lg md:text-xl font-bold text-white leading-snug">{current.prompt}</p>
+        <p className="text-lg md:text-xl font-semibold text-ink leading-snug">{current.prompt}</p>
 
         {phase === 'reading' && (
-          <p className="text-sm text-slate-400 flex items-center gap-2"><Volume2 className="w-4 h-4 animate-pulse text-indigo-300" />Listen to the question...</p>
+          <p className="text-[15px] text-ink-muted flex items-center gap-2" aria-live="polite"><Volume2 className="w-5 h-5 animate-pulse text-brand-ink" />Listen to the question...</p>
         )}
 
         {phase === 'waiting' && (
           <div className="space-y-3">
-            <p className="text-sm text-slate-300">
-              {current.prep_seconds > 0 ? 'Think about your answer.' : 'Get ready.'} Recording starts in <b className="text-white text-lg">{countdown}</b> s.
+            <p className="text-[15px] text-ink-muted" aria-live="polite">
+              {current.prep_seconds > 0 ? 'Think about your answer.' : 'Get ready.'} Recording starts in <b className="text-ink text-xl tabular-nums">{countdown}</b> s.
             </p>
             <div className="flex flex-col sm:flex-row gap-2">
-              <button onClick={startRecording} className="flex-1 py-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold flex items-center justify-center gap-2">
-                <Mic className="w-4 h-4" />Start answering now
-              </button>
+              <Button size="lg" icon={Mic} onClick={startRecording} className="flex-1">Start answering now</Button>
               {maxRepeats > 0 && (
-                <button onClick={repeatQuestion} disabled={repeats >= maxRepeats}
-                        className="sm:w-56 py-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40">
-                  <Repeat className="w-4 h-4" />{repeats >= maxRepeats ? 'Already repeated' : 'Hear the question again'}
-                </button>
+                <Button size="lg" variant="secondary" icon={Repeat} onClick={repeatQuestion} disabled={repeats >= maxRepeats} className="sm:w-60">
+                  {repeats >= maxRepeats ? 'Already repeated' : 'Hear the question again'}
+                </Button>
               )}
             </div>
           </div>
@@ -495,19 +496,18 @@ export default function SpeakingTest() {
         {phase === 'recording' && (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-sm font-bold text-rose-400"><span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" />Recording - speak now</span>
-              <span className="text-sm text-slate-300"><b className="text-white text-lg">{countdown}</b> s left</span>
+              <span className="flex items-center gap-2 text-[15px] font-semibold text-danger"><span className="w-2.5 h-2.5 rounded-full bg-danger-solid animate-pulse" />Recording - speak now</span>
+              <span className="text-[15px] text-ink-muted"><b className="text-ink text-xl tabular-nums">{countdown}</b> s left</span>
             </div>
             <LevelBar level={mic.level} />
-            <button onClick={stopRecording} disabled={Date.now() - startedAtRef.current < 3000}
-                    className="w-full py-3 rounded-xl bg-slate-100 text-slate-900 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-60">
-              <Square className="w-4 h-4" />I'm finished
-            </button>
+            <Button size="lg" fullWidth variant="danger" icon={Square} onClick={stopRecording} disabled={Date.now() - startedAtRef.current < 3000}>
+              I'm finished
+            </Button>
           </div>
         )}
 
         {phase === 'uploading' && (
-          <p className="text-sm text-slate-300 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin text-indigo-300" />{uploadMsg || 'Saving your answer...'}</p>
+          <p className="text-[15px] text-ink-muted flex items-center gap-2" aria-live="polite"><Loader2 className="w-5 h-5 animate-spin text-brand-ink" />{uploadMsg || 'Saving your answer...'}</p>
         )}
       </div>
     </Shell>

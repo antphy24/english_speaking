@@ -64,8 +64,8 @@ export function AppShell({
 
   return (
     <div className="min-h-screen bg-canvas text-ink md:flex">
-      {/* ---------- Phone: top bar ---------- */}
-      <div className="md:hidden sticky top-0 z-30 bg-surface border-b border-line">
+      {/* ---------- Phone: top bar (scrolls away, so reading space is not lost) ---------- */}
+      <div className="md:hidden bg-surface border-b border-line">
         <div className="flex items-center gap-2.5 px-4 pt-3 pb-2.5">
           <Logo size="sm" markOnly />
           <div className="flex-1 min-w-0 leading-tight">

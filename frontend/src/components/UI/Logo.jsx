@@ -12,6 +12,16 @@ const SIZES = {
   lg: { box: 'w-[52px] h-[52px] rounded-[14px] gap-1', bar: 'w-1', bars: ['h-3.5', 'h-[26px]', 'h-[19px]'], text: 'text-2xl' },
 };
 
+/** "HreFSpeak" with "HreF" in the text colour and "Speak" in the brand colour. */
+export function Wordmark({ className = '' }) {
+  return (
+    <span className={className}>
+      <span className="text-ink">HreF</span>
+      <span className="text-brand-ink">Speak</span>
+    </span>
+  );
+}
+
 export function Logo({ size = 'md', markOnly = false, className = '' }) {
   const s = SIZES[size] || SIZES.md;
   return (
@@ -24,7 +34,7 @@ export function Logo({ size = 'md', markOnly = false, className = '' }) {
       {markOnly ? (
         <span className="sr-only">HreFSpeak</span>
       ) : (
-        <span className={`${s.text} font-bold tracking-tight text-ink`}>HreFSpeak</span>
+        <Wordmark className={`${s.text} font-bold tracking-tight`} />
       )}
     </span>
   );

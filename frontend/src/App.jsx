@@ -20,8 +20,8 @@ const ScorerDashboard = lazy(() => import('./components/research/ScorerDashboard
 
 // Loading fallback
 const PageLoader = () => (
-  <div className="min-h-screen bg-[#0b0f19] flex items-center justify-center">
-    <Spinner size="lg" color="text-indigo-500" />
+  <div className="min-h-screen bg-canvas flex items-center justify-center">
+    <Spinner size="lg" message="" />
   </div>
 );
 

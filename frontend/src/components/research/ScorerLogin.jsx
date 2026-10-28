@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Headphones, LogIn, ShieldAlert } from 'lucide-react';
+import { LogIn } from 'lucide-react';
+import { Button } from '../UI/Button';
+import { Field, Input } from '../UI/Field';
+import { Alert } from '../UI/Alert';
+import { Logo } from '../UI/Logo';
 import { supabaseScorer } from '../../utils/supabaseClient';
 import { scorerEmail } from '../../utils/researchApi';
 
@@ -37,22 +41,28 @@ export default function ScorerLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0b0f19] flex items-center justify-center px-4">
-      <form onSubmit={submit} className="w-full max-w-sm bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
-        <div className="text-center space-y-1">
-          <Headphones className="w-8 h-8 text-indigo-400 mx-auto" />
-          <h1 className="text-lg font-bold text-white">HreFSpeak · Scorer</h1>
-          <p className="text-xs text-slate-400">Log in with the username and password from the teacher.</p>
+    <div className="min-h-screen bg-canvas text-ink flex flex-col items-center px-4 py-10 sm:py-16">
+      <div className="w-full max-w-[400px]">
+        <div className="flex flex-col items-center text-center gap-4 mb-7">
+          <Logo size="lg" markOnly />
+          <div className="space-y-1.5">
+            <h1 className="text-2xl font-bold tracking-tight">Scorer sign-in</h1>
+            <p className="text-[15px] text-ink-muted">Use the username and password your teacher gave you.</p>
+          </div>
         </div>
-        <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" autoCapitalize="none" autoComplete="username" required
-               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-500" />
-        <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" type="password" autoComplete="current-password" required
-               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-500" />
-        {error && <p className="text-xs text-rose-400 flex items-center gap-1.5"><ShieldAlert className="w-4 h-4" />{error}</p>}
-        <button disabled={loading} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-bold">
-          <LogIn className="w-4 h-4" />{loading ? 'Logging in...' : 'Log in'}
-        </button>
-      </form>
+        <form onSubmit={submit} className="bg-surface border border-line rounded-2xl shadow-card p-5 sm:p-6 flex flex-col gap-5">
+          {error && <Alert tone="error">{error}</Alert>}
+          <Field label="Username">
+            <Input value={username} onChange={(e) => setUsername(e.target.value)} autoCapitalize="none" autoComplete="username" required />
+          </Field>
+          <Field label="Password">
+            <Input value={password} onChange={(e) => setPassword(e.target.value)} type="password" autoComplete="current-password" required />
+          </Field>
+          <Button type="submit" size="lg" fullWidth icon={LogIn} loading={loading}>
+            {loading ? 'Signing in...' : 'Sign in'}
+          </Button>
+        </form>
+      </div>
     </div>
   );
 }

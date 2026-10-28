@@ -3,9 +3,9 @@ import { Volume2 } from 'lucide-react';
 import { speakWord, speechSupported } from '../../utils/speech';
 
 const TONES = {
-  amber: 'bg-amber-500/10 text-amber-300 border-amber-500/20 hover:bg-amber-500/25 active:bg-amber-500/30',
-  rose: 'bg-rose-500/10 text-rose-300 border-rose-500/20 hover:bg-rose-500/25 active:bg-rose-500/30',
-  slate: 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700 active:bg-slate-600',
+  amber: 'bg-warning-tint text-warning hover:brightness-95',
+  rose: 'bg-danger-tint text-danger hover:brightness-95',
+  slate: 'bg-surface-muted text-ink hover:brightness-95',
 };
 
 /** A list of words; tap any word to hear its correct (American English) pronunciation. */
@@ -22,7 +22,7 @@ export function SpeakableWords({ words, tone = 'amber', className = '' }) {
   };
 
   return (
-    <div className={`flex flex-wrap gap-1.5 ${className}`}>
+    <div className={`flex flex-wrap gap-2 ${className}`}>
       {list.map((w, idx) => (
         <button
           key={`${w}-${idx}`}
@@ -31,9 +31,9 @@ export function SpeakableWords({ words, tone = 'amber', className = '' }) {
           onClick={() => play(w, idx)}
           title={canSpeak ? `Hear "${w}"` : undefined}
           aria-label={`Hear the pronunciation of ${w}`}
-          className={`inline-flex items-center gap-1 text-xs px-2.5 py-2 md:px-2 md:py-1 border rounded-md font-medium transition-colors ${canSpeak ? 'cursor-pointer' : 'cursor-default'} ${TONES[tone] || TONES.amber} ${playing === idx ? 'ring-1 ring-white/60' : ''}`}
+          className={`inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-lg text-sm font-semibold transition ${canSpeak ? 'cursor-pointer' : 'cursor-default'} ${TONES[tone] || TONES.amber} ${playing === idx ? 'ring-2 ring-current' : ''}`}
         >
-          {canSpeak && <Volume2 className={`w-3 h-3 shrink-0 ${playing === idx ? 'opacity-100' : 'opacity-60'}`} />}
+          {canSpeak && <Volume2 className={`w-3.5 h-3.5 shrink-0 ${playing === idx ? 'opacity-100' : 'opacity-70'}`} aria-hidden="true" />}
           <span>{w}</span>
         </button>
       ))}
