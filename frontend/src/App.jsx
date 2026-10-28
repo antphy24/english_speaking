@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import ErrorBoundary from './components/ErrorBoundary';
 import { NetworkStatusBar } from './components/NetworkStatusBar';
 import { ConfirmProvider } from './components/UI/ConfirmModal';
+import { ToastProvider } from './components/UI/Toast';
 import NotFound from './components/NotFound';
 import Spinner from './components/UI/Spinner';
 
@@ -27,6 +28,7 @@ const PageLoader = () => (
 export function App() {
   return (
     <ErrorBoundary>
+      <ToastProvider>
       <ConfirmProvider>
         <NetworkStatusBar />
         <Router>
@@ -60,6 +62,7 @@ export function App() {
           </Suspense>
         </Router>
       </ConfirmProvider>
+      </ToastProvider>
     </ErrorBoundary>
   );
 }
