@@ -1,13 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { Clock, RotateCcw, Save, ChevronDown } from 'lucide-react';
-import { TIMER_FIELDS, resolveTimers, describeDuration } from '../../utils/timerSettings';
+import { TIMER_FIELDS, CLASS_TIMER_MODES, resolveTimers, describeDuration } from '../../utils/timerSettings';
 import { MODE_LABELS } from '../../utils/modes';
 
-const MODE_TITLES = { qa: MODE_LABELS.qa, debate: MODE_LABELS.debate, mattering: MODE_LABELS.mattering };
+const MODE_TITLES = { debate: MODE_LABELS.debate };
+
+// Q&A and Mattering times are set on each material (Materials tab); only Debate is per class.
+const CLASS_FIELDS = Object.entries(TIMER_FIELDS).filter(([mode]) => CLASS_TIMER_MODES.includes(mode));
 
 const split = (seconds) => ({ m: String(Math.floor(seconds / 60)), s: String(seconds % 60).padStart(2, '0') });
 
-/** Per-class timers for Q&A, Debate and Mattering, shown in the Classes tab. */
+/** Per-class Debate timers, shown in the Classes tab. */
 export function TimerSettings({ selectedClass, handleUpdateClass }) {
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState({});
@@ -18,7 +21,7 @@ export function TimerSettings({ selectedClass, handleUpdateClass }) {
   // Load the class's current times whenever another class is picked (or after saving)
   useEffect(() => {
     const next = {};
-    for (const [mode, fields] of Object.entries(TIMER_FIELDS)) {
+    for (const [mode, fields] of CLASS_FIELDS) {
       for (const f of fields) next[`${mode}.${f.key}`] = split(saved[mode][f.key]);
     }
     setValues(next);
@@ -39,7 +42,7 @@ export function TimerSettings({ selectedClass, handleUpdateClass }) {
 
   const build = () => {
     const out = {};
-    for (const [mode, fields] of Object.entries(TIMER_FIELDS)) {
+    for (const [mode, fields] of CLASS_FIELDS) {
       out[mode] = {};
       for (const f of fields) out[mode][f.key] = toSeconds(mode, f);
     }
@@ -56,7 +59,7 @@ export function TimerSettings({ selectedClass, handleUpdateClass }) {
   };
 
   const isDefault = !selectedClass?.timer_settings;
-  const summary = `Q&A ${describeDuration(saved.qa.think)} think · ${describeDuration(saved.qa.answer)} per answer — Debate ${describeDuration(saved.debate.prep)} prep · ${describeDuration(saved.debate.speech)} speech — Mattering ${describeDuration(saved.mattering.breakdown)} / ${describeDuration(saved.mattering.argument)} / ${describeDuration(saved.mattering.rebuttal)}`;
+  const summary = `${describeDuration(saved.debate.prep)} case building · ${describeDuration(saved.debate.speech)} speech`;
 
   return (
     <div className="border border-line rounded-xl bg-surface-muted">
@@ -70,7 +73,7 @@ export function TimerSettings({ selectedClass, handleUpdateClass }) {
           <Clock className="w-4 h-4 text-brand-ink mt-0.5 shrink-0" />
           <div className="min-w-0">
             <div className="text-sm font-bold text-ink">
-              Practice timers
+              Debate timers
               <span className={`ml-2 text-xs font-semibold px-1.5 py-0.5 rounded ${isDefault ? 'bg-surface-muted text-ink-muted' : 'bg-brand-tint text-brand-ink'}`}>
                 {isDefault ? 'Default' : 'Custom'}
               </span>
@@ -84,10 +87,10 @@ export function TimerSettings({ selectedClass, handleUpdateClass }) {
       {open && (
         <div className="px-4 pb-4 space-y-4 border-t border-line pt-4">
           <p className="text-xs text-ink-muted leading-relaxed">
-            Applies to every student in <strong className="text-ink">{selectedClass.class_name}</strong>. Students get the new times the next time they open the Q&amp;A, Debate or Mattering tab.
+            Applies to every student in <strong className="text-ink">{selectedClass.class_name}</strong>. Students get the new times the next time they open the Debate tab. Q&amp;A and Mattering times are set on each material in the Materials tab.
           </p>
 
-          {Object.entries(TIMER_FIELDS).map(([mode, fields]) => (
+          {CLASS_FIELDS.map(([mode, fields]) => (
             <div key={mode} className="space-y-2">
               <div className="text-xs font-bold text-ink-muted ">{MODE_TITLES[mode]}</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">

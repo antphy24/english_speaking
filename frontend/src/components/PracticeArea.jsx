@@ -50,7 +50,7 @@ export function PracticeArea() {
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [activeTab, setActiveTab] = useState('read_aloud'); // 'read_aloud' | 'qa' | 'conversation' | 'debate' | 'mattering' | 'leaderboard'
   const [customMaterials, setCustomMaterials] = useState([]);
-  const [timers, setTimers] = useState(DEFAULT_TIMERS); // Q&A / Debate / Mattering times set by the teacher for this class
+  const [timers, setTimers] = useState(DEFAULT_TIMERS); // Debate times set by the teacher for this class (Q&A / Mattering times come with each material)
 
   // Verification state for scores saving
   const [isSaving, setIsSaving] = useState(false);
@@ -134,11 +134,11 @@ export function PracticeArea() {
     checkAuth();
   }, [navigate]);
 
-  // The teacher can change the Q&A / Debate / Mattering times for the class at any time, so read
-  // them again whenever one of those tabs is opened. Any problem (for example the database
+  // The teacher can change the Debate times for the class at any time, so read
+  // them again whenever that tab is opened. Any problem (for example the database
   // not updated yet) simply keeps the default times.
   useEffect(() => {
-    if (!student?.class_id || !['qa', 'debate', 'mattering'].includes(activeTab)) return undefined;
+    if (!student?.class_id || activeTab !== 'debate') return undefined;
     let cancelled = false;
     (async () => {
       try {
@@ -316,7 +316,6 @@ export function PracticeArea() {
               saveStatus={saveStatus}
               customQuestions={qaMaterials}
               getSessionSeconds={getSessionSeconds}
-              timers={timers.qa}
             />
           )}
           {activeTab === 'conversation' && (
@@ -350,7 +349,6 @@ export function PracticeArea() {
               saveStatus={saveStatus}
               customIssues={matteringMaterials}
               getSessionSeconds={getSessionSeconds}
-              timers={timers.mattering}
             />
           )}
           {activeTab === 'leaderboard' && (

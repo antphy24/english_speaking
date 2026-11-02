@@ -55,10 +55,15 @@ export function countQuestionLines(content) {
   return String(content || '').split(/\r?\n/).map(stripNumbering).filter(Boolean).length;
 }
 
-/** custom_materials rows (mode 'qa') + built-in sets -> [{ id, title, questions }] */
+/** custom_materials rows (mode 'qa') + built-in sets -> [{ id, title, questions, timers }] */
 export function buildQaSets(materials = []) {
   const custom = (materials || [])
-    .map((m, idx) => ({ id: m.id, title: m.title || `Question set ${idx + 1}`, questions: parseQuestions(m.content) }))
+    .map((m, idx) => ({
+      id: m.id,
+      title: m.title || `Question set ${idx + 1}`,
+      questions: parseQuestions(m.content),
+      timers: m.timer_settings || null, // set by the teacher on this material (null = standard times)
+    }))
     .filter((s) => s.questions.length > 0);
   return [...custom, ...BUILTIN_QA_SETS];
 }

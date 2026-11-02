@@ -228,6 +228,8 @@ export function TeacherDashboard() {
                 setMaterialTitle={data.setMaterialTitle}
                 materialContent={data.materialContent}
                 setMaterialContent={data.setMaterialContent}
+                materialTimers={data.materialTimers}
+                setMaterialTimers={data.setMaterialTimers}
                 handleCreateMaterial={data.handleCreateMaterial}
                 customMaterials={data.customMaterials}
                 handleUpdateMaterialGroup={data.handleUpdateMaterialGroup}

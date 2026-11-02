@@ -12,7 +12,7 @@ import { ErrorPanel } from './UI/ErrorPanel';
 import { TextSizeControl, useReadingSize } from './UI/TextSizeControl';
 import SubmissionProgress from './UI/SubmissionProgress';
 import PinnedBar from './UI/PinnedBar';
-import { DEFAULT_TIMERS, describeDuration } from '../utils/timerSettings';
+import { resolveModeTimers, describeDuration } from '../utils/timerSettings';
 import useSubmission from '../hooks/useSubmission';
 import { useMediaRecorder } from '../hooks/useMediaRecorder';
 import { getMatteringOpposition, saveSubmissionOnServer } from '../utils/api';
@@ -91,6 +91,7 @@ function parseIssue(material, idx) {
     title: (material.title || '').trim() || motion,
     motion,
     background: lines.join('\n').trim(),
+    timers: material.timer_settings || null, // set by the teacher on this material (null = standard times)
   };
 }
 
@@ -108,15 +109,23 @@ const formatTime = (seconds) => {
   return `${m}:${s}`;
 };
 
-export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds, isSaving, saveStatus, customIssues = [], timers = DEFAULT_TIMERS.mattering }) {
-  // Times set by the teacher for this class (seconds)
+export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds, isSaving, saveStatus, customIssues = [] }) {
+  // setup -> breakdown -> argument -> working -> rebuttal -> working -> grading -> results   (or error)
+  const [step, setStep] = useState('setup');
+  const [issueId, setIssueId] = useState('');
+
+  const issues = [
+    ...(customIssues || []).map(parseIssue),
+    ...DEFAULT_ISSUES.map((m, i) => parseIssue({ ...m, id: `default-${i}` }, i)),
+  ].filter(i => i.motion);
+
+  // Times the teacher set on the chosen issue (seconds); standard times for built-in issues.
+  // The issue can only be changed on the setup screen, so they stay fixed during a drill.
+  const timers = resolveModeTimers('mattering', issues.find(i => i.id === issueId)?.timers);
   const BREAKDOWN_SECONDS = timers.breakdown;
   const ARGUMENT_SECONDS = timers.argument;
   const REBUTTAL_PREP_SECONDS = timers.rebuttal_prep;
   const REBUTTAL_SECONDS = timers.rebuttal;
-  // setup -> breakdown -> argument -> working -> rebuttal -> working -> grading -> results   (or error)
-  const [step, setStep] = useState('setup');
-  const [issueId, setIssueId] = useState('');
   const [role, setRole] = useState('Affirmative');
   const [notes, setNotes] = useState(EMPTY_NOTES);
   const [timer, setTimer] = useState(BREAKDOWN_SECONDS);
@@ -140,11 +149,6 @@ export default function ModeMattering({ apiBase, onSaveScore, getSessionSeconds,
   // adjudication is one resumable text submission, like AI Conversation.
   const turn = useSubmission(apiBase, 'mattering_turn', { persist: false });
   const grader = useSubmission(apiBase, 'mattering');
-
-  const issues = [
-    ...(customIssues || []).map(parseIssue),
-    ...DEFAULT_ISSUES.map((m, i) => parseIssue({ ...m, id: `default-${i}` }, i)),
-  ].filter(i => i.motion);
 
   // Everything the grader needs, readable from async handlers without stale state.
   const dataRef = useRef({ title: '', motion: '', background: '', role: 'Affirmative', notes: '', argument: '', opposition: '', rebuttal: '' });

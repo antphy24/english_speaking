@@ -1,8 +1,70 @@
 import React, { useState, useMemo } from 'react';
-import { Trash2, Edit2, X, Check } from 'lucide-react';
+import { Trash2, Edit2, X, Check, Clock } from 'lucide-react';
 import ReadingLengthHint from '../UI/ReadingLengthHint';
 import { MODE_LABELS, MODE_ORDER } from '../../utils/modes';
 import { QA_MAX_QUESTIONS, countQuestionLines } from '../../utils/qaSets';
+import {
+  TIMER_FIELDS, MATERIAL_TIMER_MODES, resolveModeTimers, compactModeTimers, summarizeModeTimers, describeDuration,
+} from '../../utils/timerSettings';
+
+/** Minutes : seconds box for one time; clamps to the allowed range when the teacher leaves it. */
+function DurationInput({ field, seconds, onChange, label }) {
+  const [text, setText] = useState(null); // {m, s} while typing
+  const shown = text || { m: String(Math.floor(seconds / 60)), s: String(seconds % 60).padStart(2, '0') };
+  const commit = (next) => {
+    const total = (parseInt(next.m, 10) || 0) * 60 + (parseInt(next.s, 10) || 0);
+    onChange(Math.min(field.max, Math.max(field.min, total)));
+  };
+  const set = (part, raw) => {
+    const next = { ...shown, [part]: raw.replace(/\D/g, '').slice(0, 2) };
+    setText(next);
+    commit(next);
+  };
+  const box = 'w-11 px-1.5 py-1.5 bg-surface border border-line-strong rounded-md text-ink text-sm text-center focus:border-brand outline-none';
+  return (
+    <div className="flex items-center gap-1 tabular-nums shrink-0">
+      <input inputMode="numeric" aria-label={`${label} minutes`} value={shown.m} onChange={(e) => set('m', e.target.value)} onBlur={() => setText(null)} className={box} />
+      <span className="text-ink-subtle">:</span>
+      <input inputMode="numeric" aria-label={`${label} seconds`} value={shown.s} onChange={(e) => set('s', e.target.value)} onBlur={() => setText(null)} className={box} />
+    </div>
+  );
+}
+
+/** The times students get for this Q&A set / Mattering issue. `value` null = standard times. */
+function MaterialTimerFields({ mode, value, onChange }) {
+  if (!MATERIAL_TIMER_MODES.includes(mode)) return null;
+  const times = resolveModeTimers(mode, value);
+  const isDefault = compactModeTimers(mode, value) === null;
+  return (
+    <div className="space-y-2 text-left">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-bold text-ink-muted flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" />Times for this material</span>
+        {!isDefault && (
+          <button type="button" onClick={() => onChange(null)} className="text-xs font-semibold text-brand-ink hover:underline underline-offset-4">
+            Use standard times
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {TIMER_FIELDS[mode].map((f) => (
+          <div key={f.key} className="flex items-center justify-between gap-2 bg-surface border border-line rounded-lg p-2.5">
+            <div className="min-w-0">
+              <div className="text-xs font-bold text-ink">{f.label}</div>
+              <div className="text-xs text-ink-subtle">{f.hint} · {describeDuration(f.min)}–{describeDuration(f.max)}</div>
+            </div>
+            <DurationInput
+              field={f}
+              label={f.label}
+              seconds={times[f.key]}
+              onChange={(secs) => onChange({ ...times, [f.key]: secs })}
+            />
+          </div>
+        ))}
+      </div>
+      {mode === 'qa' && <p className="text-xs text-ink-subtle">Answer time applies to each question in the set.</p>}
+    </div>
+  );
+}
 
 /** Under the Q&A text box: how many questions the students will get. */
 function QuestionCountHint({ text }) {
@@ -32,6 +94,8 @@ export function MaterialsTab({
   setMaterialTitle,
   materialContent,
   setMaterialContent,
+  materialTimers,
+  setMaterialTimers,
   handleCreateMaterial,
   customMaterials,
   handleDeleteMaterialGroup,
@@ -43,6 +107,7 @@ export function MaterialsTab({
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
   const [editClassIds, setEditClassIds] = useState([]);
+  const [editTimers, setEditTimers] = useState(null);
 
   const groupedMaterials = useMemo(() => {
     const groups = {};
@@ -56,10 +121,12 @@ export function MaterialsTab({
           mode: m.mode,
           title: m.title,
           content: m.content,
+          timer_settings: m.timer_settings || null,
           materials: [m]
         };
       } else {
-        const key = `${m.mode}|${m.title}|${m.content}`;
+        // materials with different times are different materials
+        const key = `${m.mode}|${m.title}|${m.content}|${JSON.stringify(m.timer_settings || null)}`;
         if (!groups[key]) {
           groups[key] = {
             isGlobal: false,
@@ -67,6 +134,7 @@ export function MaterialsTab({
             mode: m.mode,
             title: m.title,
             content: m.content,
+            timer_settings: m.timer_settings || null,
             classes: [],
             materials: []
           };
@@ -108,6 +176,7 @@ export function MaterialsTab({
   const startEditMaterialGroup = (group) => {
     setEditTitle(group.title);
     setEditContent(group.content);
+    setEditTimers(group.timer_settings || null);
     setEditingGroupId(group.id);
     if (!group.isGlobal) {
       setEditClassIds(group.materials.map(m => m.class_id));
@@ -125,7 +194,8 @@ export function MaterialsTab({
       group.materials,
       {
         title: editTitle,
-        content: editContent
+        content: editContent,
+        ...(MATERIAL_TIMER_MODES.includes(group.mode) ? { timer_settings: compactModeTimers(group.mode, editTimers) } : {}),
       },
       group.isGlobal ? null : editClassIds
     );
@@ -222,6 +292,7 @@ export function MaterialsTab({
               value={materialMode}
               onChange={e => {
                 setMaterialMode(e.target.value);
+                setMaterialTimers?.(null);
                 setActionError('');
                 setActionSuccess('');
               }}
@@ -281,6 +352,8 @@ export function MaterialsTab({
               </p>
             )}
           </div>
+
+          <MaterialTimerFields mode={materialMode} value={materialTimers} onChange={setMaterialTimers} />
 
           <button
             type="submit"
@@ -383,6 +456,7 @@ export function MaterialsTab({
                     />
                     {group.mode === 'read_aloud' && <ReadingLengthHint text={editContent} />}
                     {group.mode === 'qa' && <QuestionCountHint text={editContent} />}
+                    <MaterialTimerFields mode={group.mode} value={editTimers} onChange={setEditTimers} />
                     
                     {!group.isGlobal && (
                       <div className="space-y-1">
@@ -444,6 +518,12 @@ export function MaterialsTab({
                         )}
                       </h4>
                       <p className="text-xs text-ink-muted line-clamp-3 leading-relaxed whitespace-pre-wrap">{group.content}</p>
+                      {MATERIAL_TIMER_MODES.includes(group.mode) && (
+                        <p className="flex items-center gap-1.5 text-xs text-ink-subtle pt-0.5">
+                          <Clock className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                          <span>{summarizeModeTimers(group.mode, group.timer_settings)}{group.timer_settings ? '' : ' (standard)'}</span>
+                        </p>
+                      )}
                     </div>
 
                     <div className="flex flex-col space-y-2 shrink-0">

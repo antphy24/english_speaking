@@ -1,6 +1,9 @@
-// Speaking/preparation times for Q&A, Debate and Mattering. Each class can override them
-// (teacher dashboard > Classes > "Practice timers"); stored in classes.timer_settings
-// as seconds, e.g. { qa: { think: 15, answer: 60 }, debate: { prep: 900, speech: 435 }, mattering: {...} }.
+// Speaking/preparation times, in seconds.
+//  * Q&A and Mattering: set per MATERIAL by the teacher (Materials tab), stored in
+//    custom_materials.timer_settings, e.g. { think: 15, answer: 60 } for a Q&A set.
+//    Built-in materials and materials without times use the defaults below.
+//  * Debate: set per CLASS (Classes > "Debate timers"), stored in classes.timer_settings
+//    as { debate: { prep: 900, speech: 435 } }.
 
 export const TIMER_FIELDS = {
   qa: [
@@ -43,4 +46,35 @@ export function describeDuration(seconds) {
   if (s === 0) return `${m} min`;
   if (m === 0) return `${s} sec`;
   return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+// Modes whose times belong to each material / to the whole class.
+export const MATERIAL_TIMER_MODES = ['qa', 'mattering'];
+export const CLASS_TIMER_MODES = ['debate'];
+
+/** One mode's times (possibly missing or partial) -> complete, safe values in seconds. */
+export function resolveModeTimers(mode, raw) {
+  const out = {};
+  for (const f of TIMER_FIELDS[mode] || []) {
+    const v = Number(raw?.[f.key]);
+    out[f.key] = Number.isFinite(v) ? clamp(Math.round(v), f.min, f.max) : f.default;
+  }
+  return out;
+}
+
+/** Times that equal the defaults are stored as null, so the material simply follows the defaults. */
+export function compactModeTimers(mode, values) {
+  const resolved = resolveModeTimers(mode, values);
+  const isDefault = (TIMER_FIELDS[mode] || []).every((f) => resolved[f.key] === f.default);
+  return isDefault ? null : resolved;
+}
+
+/** Short text for lists, e.g. "15 sec think · 1 min answer". */
+export function summarizeModeTimers(mode, raw) {
+  const t = resolveModeTimers(mode, raw);
+  if (mode === 'qa') return `${describeDuration(t.think)} think · ${describeDuration(t.answer)} per answer`;
+  if (mode === 'mattering') {
+    return `${describeDuration(t.breakdown)} breakdown · ${describeDuration(t.argument)} argument · ${describeDuration(t.rebuttal)} rebuttal`;
+  }
+  return '';
 }

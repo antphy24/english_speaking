@@ -2,6 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabaseTeacher as supabase } from '../utils/supabaseClient';
 import { useConfirm } from '../components/UI/ConfirmModal';
+import { MATERIAL_TIMER_MODES, compactModeTimers } from '../utils/timerSettings';
+
+/** Friendlier message when the per-material timer column has not been added to the database yet. */
+const timerColumnHint = (err) => (/timer_settings/.test(err?.message || '')
+  ? 'Material times need a database update: run supabase/migrations/20261102_material_timers.sql in the Supabase SQL editor, then try again.'
+  : '');
 
 // The dashboard shows up to this many recent records; the Excel export always has everything.
 const MAX_DASHBOARD_ASSESSMENTS = 5000;
@@ -68,6 +74,7 @@ export function useTeacherData(dateFilter = '30days') {
   const [materialMode, setMaterialMode] = useState('read_aloud');
   const [materialTitle, setMaterialTitle] = useState('');
   const [materialContent, setMaterialContent] = useState('');
+  const [materialTimers, setMaterialTimers] = useState(null); // Q&A / Mattering times for this material (null = defaults)
 
   // Feedback states
   const [actionError, setActionError] = useState('');
@@ -616,6 +623,10 @@ export function useTeacherData(dateFilter = '30days') {
     setActionSuccess('');
 
     const isGlobal = teacher?.is_admin && materialCreationMode === 'global';
+    // Q&A and Mattering materials carry their own times (null = the standard times).
+    const timerFields = MATERIAL_TIMER_MODES.includes(materialMode)
+      ? { timer_settings: compactModeTimers(materialMode, materialTimers) }
+      : {};
 
     try {
       let insertData = [];
@@ -625,7 +636,8 @@ export function useTeacherData(dateFilter = '30days') {
           grade_level: globalGradeLevel,
           mode: materialMode,
           title: titleVal,
-          content: materialContent.trim()
+          content: materialContent.trim(),
+          ...timerFields,
         });
       } else {
         insertData = selectedClassesMaterial.map(classId => ({
@@ -633,7 +645,8 @@ export function useTeacherData(dateFilter = '30days') {
           grade_level: classesList.find(c => c.id === classId)?.grade_level || 'General',
           mode: materialMode,
           title: titleVal,
-          content: materialContent.trim()
+          content: materialContent.trim(),
+          ...timerFields,
         }));
       }
 
@@ -651,10 +664,11 @@ export function useTeacherData(dateFilter = '30days') {
       }
       setMaterialTitle('');
       setMaterialContent('');
+      setMaterialTimers(null);
       setCustomMaterials(prev => [...data, ...prev]);
     } catch (err) {
       console.error('Failed to create material:', err);
-      setActionError(err.message || 'Failed to create material.');
+      setActionError(timerColumnHint(err) || err.message || 'Failed to create material.');
     }
   };
 
@@ -707,7 +721,8 @@ export function useTeacherData(dateFilter = '30days') {
             grade_level: classesList.find(c => c.id === classId)?.grade_level || 'General',
             mode: groupMaterials[0].mode,
             title: updates.title,
-            content: updates.content
+            content: updates.content,
+            ...('timer_settings' in updates ? { timer_settings: updates.timer_settings } : {}),
           }));
           
           const { data: inserted, error: insertErr } = await supabase
@@ -746,7 +761,7 @@ export function useTeacherData(dateFilter = '30days') {
       setMaterialContent('');
     } catch (err) {
       console.error('Update material failed:', err);
-      setActionError(err.message || 'Failed to update material.');
+      setActionError(timerColumnHint(err) || err.message || 'Failed to update material.');
     }
   };
 
@@ -934,6 +949,8 @@ export function useTeacherData(dateFilter = '30days') {
     setMaterialTitle,
     materialContent,
     setMaterialContent,
+    materialTimers,
+    setMaterialTimers,
     editingMaterial,
     setEditingMaterial,
     
