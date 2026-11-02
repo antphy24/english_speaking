@@ -82,6 +82,19 @@ function MaterialTimerFields({ mode, value, onChange }) {
   );
 }
 
+/** Under the Q&A text box: how many questions the students will get. */
+function QuestionCountHint({ text }) {
+  const n = countQuestionLines(text);
+  const over = n > QA_MAX_QUESTIONS;
+  return (
+    <p className={`text-xs leading-relaxed ${over ? 'text-warning' : 'text-ink-subtle'}`}>
+      Write one question per line - students answer them one after another in a single session.{' '}
+      <strong className={over ? 'text-warning' : 'text-ink'}>{Math.min(n, QA_MAX_QUESTIONS)} question{Math.min(n, QA_MAX_QUESTIONS) === 1 ? '' : 's'}</strong>
+      {over ? ` (only the first ${QA_MAX_QUESTIONS} are used)` : ` (up to ${QA_MAX_QUESTIONS})`}.
+    </p>
+  );
+}
+
 export function MaterialsTab({
   teacher,
   classesList,
