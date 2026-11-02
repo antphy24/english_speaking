@@ -7,7 +7,15 @@ import {
   TIMER_FIELDS, MATERIAL_TIMER_MODES, resolveModeTimers, compactModeTimers, summarizeModeTimers, describeDuration,
 } from '../../utils/timerSettings';
 
-/** Minutes : seconds box for one time; clamps to the allowed range when the teacher leaves it. */
+/** 5 -> "5s", 120 -> "2m", 90 -> "1m 30s" (for the small allowed-range text). */
+const shortDuration = (secs) => {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  if (!m) return `${s}s`;
+  return s ? `${m}m ${s}s` : `${m}m`;
+};
+
+/** Compact "mm:ss" box for one time; clamps to the allowed range when the teacher leaves it. */
 function DurationInput({ field, seconds, onChange, label }) {
   const [text, setText] = useState(null); // {m, s} while typing
   const shown = text || { m: String(Math.floor(seconds / 60)), s: String(seconds % 60).padStart(2, '0') };
@@ -20,12 +28,17 @@ function DurationInput({ field, seconds, onChange, label }) {
     setText(next);
     commit(next);
   };
-  const box = 'w-11 px-1.5 py-1.5 bg-surface border border-line-strong rounded-md text-ink text-sm text-center focus:border-brand outline-none';
+  const box = 'w-7 bg-transparent text-center text-sm font-semibold text-ink tabular-nums outline-none';
   return (
-    <div className="flex items-center gap-1 tabular-nums shrink-0">
-      <input inputMode="numeric" aria-label={`${label} minutes`} value={shown.m} onChange={(e) => set('m', e.target.value)} onBlur={() => setText(null)} className={box} />
-      <span className="text-ink-subtle">:</span>
-      <input inputMode="numeric" aria-label={`${label} seconds`} value={shown.s} onChange={(e) => set('s', e.target.value)} onBlur={() => setText(null)} className={box} />
+    <div
+      className="inline-flex items-center h-9 px-2 bg-surface border border-line-strong rounded-lg focus-within:border-brand focus-within:ring-4 focus-within:ring-brand-ring shrink-0"
+      title={`Allowed ${shortDuration(field.min)} – ${shortDuration(field.max)}`}
+    >
+      <input inputMode="numeric" aria-label={`${label} minutes`} value={shown.m}
+        onChange={(e) => set('m', e.target.value)} onFocus={(e) => e.target.select()} onBlur={() => setText(null)} className={box} />
+      <span className="text-ink-subtle text-sm" aria-hidden="true">:</span>
+      <input inputMode="numeric" aria-label={`${label} seconds`} value={shown.s}
+        onChange={(e) => set('s', e.target.value)} onFocus={(e) => e.target.select()} onBlur={() => setText(null)} className={box} />
     </div>
   );
 }
@@ -36,46 +49,36 @@ function MaterialTimerFields({ mode, value, onChange }) {
   const times = resolveModeTimers(mode, value);
   const isDefault = compactModeTimers(mode, value) === null;
   return (
-    <div className="space-y-2 text-left">
+    <div className="space-y-1.5 text-left">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-bold text-ink-muted flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" />Times for this material</span>
+        <span className="text-xs font-bold text-ink-muted flex items-center gap-1.5">
+          <Clock className="w-3.5 h-3.5" aria-hidden="true" />Timing
+          <span className={`font-semibold px-1.5 py-0.5 rounded ${isDefault ? 'bg-surface-muted text-ink-subtle' : 'bg-brand-tint text-brand-ink'}`}>
+            {isDefault ? 'Standard' : 'Custom'}
+          </span>
+        </span>
         {!isDefault && (
           <button type="button" onClick={() => onChange(null)} className="text-xs font-semibold text-brand-ink hover:underline underline-offset-4">
-            Use standard times
+            Reset
           </button>
         )}
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      <div className="border border-line rounded-xl bg-surface divide-y divide-line">
         {TIMER_FIELDS[mode].map((f) => (
-          <div key={f.key} className="flex items-center justify-between gap-2 bg-surface border border-line rounded-lg p-2.5">
-            <div className="min-w-0">
-              <div className="text-xs font-bold text-ink">{f.label}</div>
-              <div className="text-xs text-ink-subtle">{f.hint} · {describeDuration(f.min)}–{describeDuration(f.max)}</div>
+          <div key={f.key} className="flex items-center gap-3 px-3 py-2">
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-ink leading-tight">{f.label}</div>
+              <div className="text-xs text-ink-subtle truncate">{f.hint}</div>
             </div>
-            <DurationInput
-              field={f}
-              label={f.label}
-              seconds={times[f.key]}
-              onChange={(secs) => onChange({ ...times, [f.key]: secs })}
-            />
+            <span className="hidden sm:inline text-[11px] text-ink-subtle tabular-nums shrink-0">
+              {shortDuration(f.min)}–{shortDuration(f.max)}
+            </span>
+            <DurationInput field={f} label={f.label} seconds={times[f.key]}
+              onChange={(secs) => onChange({ ...times, [f.key]: secs })} />
           </div>
         ))}
       </div>
-      {mode === 'qa' && <p className="text-xs text-ink-subtle">Answer time applies to each question in the set.</p>}
     </div>
-  );
-}
-
-/** Under the Q&A text box: how many questions the students will get. */
-function QuestionCountHint({ text }) {
-  const n = countQuestionLines(text);
-  const over = n > QA_MAX_QUESTIONS;
-  return (
-    <p className={`text-xs leading-relaxed ${over ? 'text-warning' : 'text-ink-subtle'}`}>
-      Write one question per line - students answer them one after another in a single session.{' '}
-      <strong className={over ? 'text-warning' : 'text-ink'}>{Math.min(n, QA_MAX_QUESTIONS)} question{Math.min(n, QA_MAX_QUESTIONS) === 1 ? '' : 's'}</strong>
-      {over ? ` (only the first ${QA_MAX_QUESTIONS} are used)` : ` (up to ${QA_MAX_QUESTIONS})`}.
-    </p>
   );
 }
 

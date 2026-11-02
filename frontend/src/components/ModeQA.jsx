@@ -15,7 +15,7 @@ import {
 } from '../utils/api';
 import { speakEnglish, stopSpeaking, speechSupported } from '../utils/speech';
 import { buildQaSets } from '../utils/qaSets';
-import { DEFAULT_TIMERS, describeDuration } from '../utils/timerSettings';
+import { resolveModeTimers, describeDuration } from '../utils/timerSettings';
 
 /*
  * Q&A practice, run like the research speaking test: the student answers a whole
@@ -106,11 +106,14 @@ const combinedTranscript = (answers) => answers
   .map((a, i) => `Q${i + 1}. ${a.question}\nAnswer: ${a.transcript || '(no speech)'}`)
   .join('\n\n');
 
-export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, customQuestions = [], timers = DEFAULT_TIMERS.qa }) {
+export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, customQuestions = [] }) {
   const sets = buildQaSets(customQuestions);
   const [selectedSet, setSelectedSet] = useState(sets[0]);
   const readingSize = useReadingSize();
   const mic = useLiveMic();
+
+  // Thinking / answer time of the chosen set, as the teacher set them on the material.
+  const timers = resolveModeTimers('qa', selectedSet?.timers);
 
   // Keep the selection valid when the teacher's materials load or change.
   useEffect(() => {

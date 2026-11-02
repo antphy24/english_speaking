@@ -745,6 +745,36 @@ def _qa_answer_block(i, a):
     return "\n".join(lines)
 
 
+def _apply_qa_caps(result: dict, answers) -> None:
+    """
+    Hard limits the AI cannot argue its way past (it tends to be generous):
+    based on how much the student actually said, not on the AI's judgement.
+    """
+    counts = [len(_words(a.get("transcript") or "")) for a in answers]
+    n = len(counts) or 1
+    avg = sum(counts) / n
+    missing = sum(1 for c in counts if c < 5)   # nothing usable said
+    repeats = sum(int(a.get("repeats") or 0) for a in answers)
+    caps = {"pronunciation": 4}                  # transcript only: 5 cannot be justified without the audio
+    if avg < 15:
+        caps.update(fluency=2, vocabulary=2, grammar=2)
+    elif avg < 35:
+        caps.update(fluency=3, vocabulary=3)
+    elif avg < 60:
+        caps.update(fluency=4, vocabulary=4)
+    if missing:
+        caps["comprehension"] = 2 if missing * 2 >= n else 3
+    elif repeats * 2 > n:                        # needed most questions repeated
+        caps["comprehension"] = 4
+    adjusted = []
+    for aspect, cap in caps.items():
+        if int(result.get(aspect, 0)) > cap:
+            result[aspect] = cap
+            adjusted.append(aspect)
+    if adjusted:
+        result["capped"] = adjusted              # kept for teachers; the student sees the final scores
+
+
 def evaluate_qa(answers, *, deadline=None, on_wait=None) -> dict:
     """
     Grade a Q&A practice session (one or more questions answered out loud) with the
@@ -763,28 +793,38 @@ def evaluate_qa(answers, *, deadline=None, on_wait=None) -> dict:
         f"{len(answers)} question(s) out loud, one recording per question. Apply the rubric exactly as written, "
         "the same way for every student.\n\n"
         f"{RUBRIC}\n\n"
-        "Rules:\n"
-        "- You get an automatic speech-recognition transcript, not the audio. Judge Fluency from the "
-        "measurements, sentence flow, broken or unfinished sentences and fillers. Judge Pronunciation from "
-        "what the recogniser got wrong: nonsense words or wrong words that sound like the word the student "
-        "obviously meant point to unclear pronunciation. A clean, sensible transcript usually means 4; give 5 "
-        "only when longer answers are completely clean, and do not go below 3 for Pronunciation without such "
-        "evidence.\n"
-        "- Speech in Indonesian does not count as English vocabulary; frequent Indonesian lowers Vocabulary "
-        "(see descriptor 2).\n"
+        "Rules (be STRICT - this grade must not be generous):\n"
+        "- Start every aspect at 3 and move up only when the descriptor above is clearly met across ALL answers. "
+        "When unsure between two scores, give the LOWER one. Do not reward effort, confidence or politeness.\n"
+        "- 5 is rare: near-flawless, natural English of a strong advanced speaker. A typical Indonesian high "
+        "school student should mostly get 2-3; 4 needs consistently good answers with only small slips.\n"
+        "- Length matters: answers of only one or two short sentences, or under about 30 words, cannot get more "
+        "than 3 for Fluency or Vocabulary, however correct they are.\n"
+        "- Grammar: count the errors. Repeated basic errors (verb tense, subject-verb agreement, plural -s, "
+        "articles, missing 'be' or missing subject) mean 3 at most; errors in most sentences mean 2 at most.\n"
+        "- Vocabulary: simple, repeated, everyday words only means 3 at most. Any Indonesian words lower "
+        "Vocabulary; Indonesian in more than one answer means 2 at most.\n"
+        "- Fluency: fillers (um, uh, eh), restarts, unfinished sentences and a slow speech rate (under about "
+        "90 words per minute) lower the score; frequent ones mean 2 at most.\n"
+        "- You get an automatic speech-recognition transcript, not the audio. Judge Pronunciation from what the "
+        "recogniser got wrong: nonsense words or wrong words that sound like the word the student obviously "
+        "meant point to unclear pronunciation. With a transcript only, Pronunciation is at most 4; a few "
+        "recognition errors mean 3, many mean 2.\n"
+        "- Comprehension/Interaction: every answer must directly address its question. An answer that is "
+        "off-topic, only partly answers, or is missing lowers the score; asking to hear the question again "
+        "is evidence too.\n"
         "- Silence, '(no speech recognised)' or answers far too short to judge an aspect pull that aspect down.\n"
-        "- Comprehension/Interaction: did each answer actually address its question? Use how often the student "
-        "asked to hear the question again as evidence.\n"
         "- Score the whole session (all answers together), one whole number 1-5 per aspect.\n"
         "- <aspect>_evidence: 1-2 short sentences in simple English, written to the student as 'you', quoting "
-        "or describing what they said.\n"
+        "the actual mistakes or words that decided the score.\n"
         "- feedback: 3-5 sentences in simple English to the student: what went well, the most important thing "
-        "to improve, and one concrete tip for next time.\n\n"
+        "to improve (quote one of their mistakes and give the corrected version), and one concrete tip.\n\n"
         f"THE SESSION:{blocks}\n\n"
         "Return JSON: {" + ", ".join(f'"{a}": int, "{a}_evidence": string' for a in ASPECTS)
         + ', "feedback": string}'
     )
     result = _grade_with_schema(prompt, QAEvaluation, deadline=deadline, on_wait=on_wait, max_tokens=2000)
+    _apply_qa_caps(result, answers)
     total = sum(int(result[a]) for a in ASPECTS)
     result.update(rubric="brown", total=total, nilai=round(total / 25 * 100, 2), questions=len(answers))
     return result

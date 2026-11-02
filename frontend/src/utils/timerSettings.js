@@ -7,8 +7,8 @@
 
 export const TIMER_FIELDS = {
   qa: [
-    { key: 'think', label: 'Thinking time', hint: 'Before each answer starts recording', default: 15, min: 5, max: 120 },
-    { key: 'answer', label: 'Answer time', hint: 'Longest answer per question', default: 60, min: 15, max: 300 },
+    { key: 'think', label: 'Thinking time', hint: 'Before recording starts', default: 15, min: 5, max: 120 },
+    { key: 'answer', label: 'Answer time', hint: 'For each question', default: 60, min: 15, max: 300 },
   ],
   debate: [
     { key: 'prep', label: 'Case building', hint: 'Preparation before the speech', default: 900, min: 60, max: 3600 },
@@ -16,9 +16,9 @@ export const TIMER_FIELDS = {
   ],
   mattering: [
     { key: 'breakdown', label: 'Breakdown', hint: 'Written notes', default: 300, min: 60, max: 1800 },
-    { key: 'argument', label: 'Argument', hint: 'Spoken argument', default: 120, min: 30, max: 600 },
+    { key: 'argument', label: 'Argument', hint: 'Spoken', default: 120, min: 30, max: 600 },
     { key: 'rebuttal_prep', label: 'Rebuttal prep', hint: 'Reading the other side', default: 60, min: 0, max: 300 },
-    { key: 'rebuttal', label: 'Rebuttal', hint: 'Spoken rebuttal', default: 60, min: 30, max: 300 },
+    { key: 'rebuttal', label: 'Rebuttal', hint: 'Spoken', default: 60, min: 30, max: 300 },
   ],
 };
 
