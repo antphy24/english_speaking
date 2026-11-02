@@ -1,8 +1,12 @@
-// Speaking/preparation times for Debate and Mattering. Each class can override them
-// (teacher dashboard > Classes > "Debate & Mattering timers"); stored in
-// classes.timer_settings as seconds, e.g. { debate: { prep: 900, speech: 435 }, mattering: {...} }.
+// Speaking/preparation times for Q&A, Debate and Mattering. Each class can override them
+// (teacher dashboard > Classes > "Practice timers"); stored in classes.timer_settings
+// as seconds, e.g. { qa: { think: 15, answer: 60 }, debate: { prep: 900, speech: 435 }, mattering: {...} }.
 
 export const TIMER_FIELDS = {
+  qa: [
+    { key: 'think', label: 'Thinking time', hint: 'Before each answer starts recording', default: 15, min: 5, max: 120 },
+    { key: 'answer', label: 'Answer time', hint: 'Longest answer per question', default: 60, min: 15, max: 300 },
+  ],
   debate: [
     { key: 'prep', label: 'Case building', hint: 'Preparation before the speech', default: 900, min: 60, max: 3600 },
     { key: 'speech', label: 'Speech', hint: 'Speaking time', default: 435, min: 60, max: 900 },

@@ -25,7 +25,7 @@ from rq.job import Job
 
 # Import utilities
 from utils.ai import get_chat_reply, get_mattering_opposition, AIBusyError, AITransientError
-from utils import pipeline, storage
+from utils import ai, pipeline, storage
 from research_api import build_router as build_research_router, sweeper_loop
 
 load_dotenv()
@@ -595,7 +595,7 @@ async def grade(request: Request, grade_data: GradeRequest, user: dict = Depends
         elif grade_data.mode == "qa":
             if not grade_data.question or not grade_data.transcript:
                 raise HTTPException(status_code=400, detail="qa requires 'question' and 'transcript'")
-            job = await asyncio.to_thread(grade_queue.enqueue, "utils.ai.evaluate_qa", grade_data.question, grade_data.transcript, result_ttl=3600, job_timeout=3600, retry=retry_policy)
+            job = await asyncio.to_thread(grade_queue.enqueue, "utils.ai.evaluate_qa", [{"question": grade_data.question, "transcript": grade_data.transcript}], result_ttl=3600, job_timeout=3600, retry=retry_policy)
             
         elif grade_data.mode == "conversation":
             if not grade_data.messages or len(grade_data.messages) == 0:
@@ -693,8 +693,8 @@ def _remember_idempotency(user_id: str, client_id: Optional[str], sub_id: str):
 def _validate_params(mode: str, params: dict):
     if mode == "read_aloud" and not params.get("source_text"):
         raise HTTPException(status_code=400, detail="read_aloud requires 'source_text'")
-    if mode == "qa" and not params.get("question"):
-        raise HTTPException(status_code=400, detail="qa requires 'question'")
+    if mode == "qa" and not (params.get("question") or params.get("answers")):
+        raise HTTPException(status_code=400, detail="qa requires 'question' or 'answers'")
     if mode == "debate" and not (params.get("motion") and params.get("role")):
         raise HTTPException(status_code=400, detail="debate requires 'motion' and 'role'")
     if mode == "mattering" and not (params.get("motion") and params.get("role")):
@@ -781,9 +781,31 @@ class TextSubmitRequest(BaseModel):
     notes: Optional[str] = None            # mattering: the student's written issue breakdown
     opposition: Optional[str] = None       # mattering: the opposing argument they had to answer
     rebuttal: Optional[str] = None         # mattering: transcript of their rebuttal
-    audio_subs: Optional[Dict[str, str]] = None  # mattering: {slot: id of the turn that recorded it}
+    audio_subs: Optional[Dict[str, str]] = None  # mattering / qa: {slot: id of the turn that recorded it}
+    answers: Optional[List[dict]] = None   # qa: [{question, transcript, duration_s, speak_seconds, repeats, max_repeats}]
     session_seconds: Optional[float] = None
     auto_save: bool = True
+
+
+def _clean_qa_answers(answers):
+    """Q&A session answers as sent by the browser -> a small, safe list."""
+    def num(v, low, high, default=None):
+        try:
+            return max(low, min(high, float(v)))
+        except (TypeError, ValueError):
+            return default
+    out = []
+    for a in (answers or [])[:ai.QA_MAX_QUESTIONS]:
+        if not isinstance(a, dict) or not str(a.get("question") or "").strip():
+            continue
+        item = {"question": str(a["question"]).strip()[:600],
+                "transcript": str(a.get("transcript") or "").strip()[:6000]}
+        for key, low, high in (("duration_s", 0, 900), ("speak_seconds", 0, 900), ("repeats", 0, 5), ("max_repeats", 0, 5)):
+            v = num(a.get(key), low, high)
+            if v is not None:
+                item[key] = round(v, 1) if key == "duration_s" else int(v)
+        out.append(item)
+    return out
 
 
 @app.post("/submit-text")
@@ -804,6 +826,7 @@ async def submit_text(request: Request, body: TextSubmitRequest, user: dict = De
         "notes": (body.notes or "")[:4000], "opposition": (body.opposition or "")[:3000],
         "rebuttal": (body.rebuttal or "")[:8000],
         "audio_subs": {k: str(v)[:64] for k, v in (body.audio_subs or {}).items() if k in storage.TURN_SLOTS},
+        "answers": _clean_qa_answers(body.answers) if body.mode == "qa" else None,
     }.items() if v}
     _validate_params(body.mode, params)
 

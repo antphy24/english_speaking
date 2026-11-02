@@ -31,8 +31,10 @@ import os
 import re
 import secrets
 import statistics
+import threading
 import time
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from zoneinfo import ZoneInfo
@@ -75,10 +77,47 @@ def now_iso():
 # Supabase (REST + Storage) with the service role
 # =============================================================================
 
+class _SharedClient(httpx.Client):
+    """A kept-alive client shared by the whole process. Opening a new HTTPS connection
+    to Supabase for every query cost ~0.3-0.6 s each; reusing one makes queries ~10x
+    faster. `with _client()` and `.close()` therefore leave it open."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def close(self):
+        pass
+
+
+_shared_clients = {}
+_shared_lock = threading.Lock()
+
+
 def _client(timeout=30):
-    force_ipv4 = os.getenv("FORCE_IPV4", "true").lower() == "true"
-    transport = httpx.HTTPTransport(local_address="0.0.0.0", retries=2) if force_ipv4 else None
-    return httpx.Client(timeout=timeout, transport=transport)
+    with _shared_lock:
+        client = _shared_clients.get(timeout)
+        if client is None:
+            force_ipv4 = os.getenv("FORCE_IPV4", "true").lower() == "true"
+            transport = httpx.HTTPTransport(
+                local_address="0.0.0.0", retries=2,
+                limits=httpx.Limits(max_connections=40, max_keepalive_connections=20, keepalive_expiry=60),
+            ) if force_ipv4 else None
+            client = _SharedClient(timeout=timeout, transport=transport,
+                                   limits=httpx.Limits(max_connections=40, max_keepalive_connections=20,
+                                                       keepalive_expiry=60))
+            _shared_clients[timeout] = client
+        return client
+
+
+def parallel(*calls):
+    """Run independent blocking calls (e.g. database reads) at the same time.
+    Each argument is (function, arg1, arg2, ...). Returns the results in order."""
+    with ThreadPoolExecutor(max_workers=min(8, len(calls))) as pool:
+        futures = [pool.submit(c[0], *c[1:]) for c in calls]
+        return [f.result() for f in futures]
 
 
 def _headers(extra=None):
@@ -942,8 +981,13 @@ def capacity(test_content: Optional[dict] = None):
     n_items = len(all_items(test_content)) if test_content else 8
     observed = None
     try:
-        rows = db_select("research_responses", {"select": "attempt_id,duration_seconds", "order": "created_at.desc",
-                                                "limit": 400})
+        rows, pending_rows, waiting_rows = parallel(
+            (db_select, "research_responses", {"select": "attempt_id,duration_seconds,size_bytes"}),
+            (db_select, "research_responses", {"select": "id", "transcribe_status": "eq.pending"}),
+            (db_select, "research_attempts", {"select": "id", "status": "in.(submitted,scoring)"}),
+        )
+        backlog_tr, backlog_score = len(pending_rows), len(waiting_rows)
+        storage_bytes = sum(int(x.get("size_bytes") or 0) for x in rows)
         per_attempt = {}
         for row in rows:
             d = float(row.get("duration_seconds") or 0)
@@ -951,7 +995,7 @@ def capacity(test_content: Optional[dict] = None):
         if len(per_attempt) >= 5:
             observed = statistics.mean(per_attempt.values())
     except Exception:
-        pass
+        backlog_tr = backlog_score = storage_bytes = None
     # Groq bills at least 10 s per recording.
     est_audio_per_student = observed or max(n_items * 10, max_answer_s * 0.8)
 
@@ -978,15 +1022,6 @@ def capacity(test_content: Optional[dict] = None):
     blocked = _gemini_blocked_until() > now
     g_day = rpd // SCORING_RUNS
     g_left = 0 if blocked else max(0, rpd - used) // SCORING_RUNS
-
-    # --- backlog ---
-    try:
-        backlog_tr = len(db_select("research_responses", {"select": "id", "transcribe_status": "eq.pending"}))
-        backlog_score = len(db_select("research_attempts", {"select": "id", "status": "in.(submitted,scoring)"}))
-        storage_bytes = sum(int(x.get("size_bytes") or 0)
-                            for x in db_select("research_responses", {"select": "size_bytes"}))
-    except Exception:
-        backlog_tr = backlog_score = storage_bytes = None
 
     transcribe_students_day = int(w_day // est_audio_per_student)
     recommended = max(1, min(transcribe_students_day, g_day))

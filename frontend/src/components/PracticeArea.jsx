@@ -34,7 +34,7 @@ const NAV_ITEMS = [
 
 const PAGE_INFO = {
   read_aloud: { title: 'Read Aloud', description: 'Choose a paragraph, read it aloud, and get your accuracy score with feedback.' },
-  qa: { title: 'Q&A', description: 'Answer a question out loud. You are scored on fluency, vocabulary, grammar and pronunciation.' },
+  qa: { title: 'Q&A', description: 'Answer a set of questions out loud, one after another. Scored on pronunciation, fluency, vocabulary, grammar and comprehension (1-5 each).' },
   conversation: { title: 'Conversation', description: 'Talk with an AI partner, then get a score for the whole conversation.' },
   debate: { title: 'Debate', description: 'Prepare a case, deliver your speech, and get feedback like a debate adjudicator would give.' },
   mattering: { title: 'Mattering', description: 'Break an issue down, deliver one argument, then rebut the other side. Scored on the debate speaker scale.' },
@@ -50,7 +50,7 @@ export function PracticeArea() {
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [activeTab, setActiveTab] = useState('read_aloud'); // 'read_aloud' | 'qa' | 'conversation' | 'debate' | 'mattering' | 'leaderboard'
   const [customMaterials, setCustomMaterials] = useState([]);
-  const [timers, setTimers] = useState(DEFAULT_TIMERS); // Debate / Mattering times set by the teacher for this class
+  const [timers, setTimers] = useState(DEFAULT_TIMERS); // Q&A / Debate / Mattering times set by the teacher for this class
 
   // Verification state for scores saving
   const [isSaving, setIsSaving] = useState(false);
@@ -134,11 +134,11 @@ export function PracticeArea() {
     checkAuth();
   }, [navigate]);
 
-  // The teacher can change the Debate / Mattering times for the class at any time, so read
+  // The teacher can change the Q&A / Debate / Mattering times for the class at any time, so read
   // them again whenever one of those tabs is opened. Any problem (for example the database
   // not updated yet) simply keeps the default times.
   useEffect(() => {
-    if (!student?.class_id || (activeTab !== 'debate' && activeTab !== 'mattering')) return undefined;
+    if (!student?.class_id || !['qa', 'debate', 'mattering'].includes(activeTab)) return undefined;
     let cancelled = false;
     (async () => {
       try {
@@ -213,6 +213,8 @@ export function PracticeArea() {
         rawScore = scoreData.speaker_score; // debate speaker scale, 69-81 (75 = average)
       } else if (mode === 'debate') {
         rawScore = scoreData.finalScore; // pre-calculated 100-point scale in frontend component
+      } else if (mode === 'qa' && scoreData.rubric === 'brown') {
+        rawScore = scoreData.nilai; // research rubric: total / 25 x 100
       } else {
         const subScores = mode === 'qa'
           ? [scoreData.fluency, scoreData.lexical_resource, scoreData.grammatical_range, scoreData.pronunciation]
@@ -314,6 +316,7 @@ export function PracticeArea() {
               saveStatus={saveStatus}
               customQuestions={qaMaterials}
               getSessionSeconds={getSessionSeconds}
+              timers={timers.qa}
             />
           )}
           {activeTab === 'conversation' && (

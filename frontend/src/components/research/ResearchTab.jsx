@@ -13,6 +13,40 @@ import AttemptViewer from './AttemptViewer';
 const input = 'w-full min-h-[40px] bg-surface border border-line-strong rounded-[10px] px-3 py-2 text-sm text-ink placeholder:text-ink-subtle outline-none focus:border-brand focus:ring-4 focus:ring-brand-ring';
 const btn = 'inline-flex items-center justify-center gap-1.5 min-h-[36px] px-3 rounded-lg bg-surface border border-line-strong text-sm font-semibold text-ink hover:bg-surface-muted disabled:opacity-40 disabled:cursor-not-allowed';
 
+// ------------------------------------------------------------------------------------------------
+// Data kept between visits to the tab, so coming back shows the last data at once and only
+// refreshes in the background. Requests that are already running are shared, not repeated.
+// ------------------------------------------------------------------------------------------------
+const cache = { studies: null, details: {}, progress: {}, progressAt: {} };
+const inflight = {};
+const LAST_STUDY_KEY = 'hrefspeak.research.lastStudy';
+
+function shared(key, request) {
+  if (!inflight[key]) inflight[key] = request().finally(() => { delete inflight[key]; });
+  return inflight[key];
+}
+
+function fetchProgress(testId) {
+  return shared(`progress:${testId}`, () => researchRequest(supabaseTeacher, `/tests/${testId}/progress`))
+    .then((p) => { cache.progress[testId] = p; cache.progressAt[testId] = Date.now(); return p; });
+}
+
+function fetchDetail(studyId) {
+  return shared(`detail:${studyId}`, () => researchRequest(supabaseTeacher, `/studies/${studyId}`))
+    .then((d) => { cache.details[studyId] = d; return d; });
+}
+
+function readLastStudy() {
+  try { return window.localStorage.getItem(LAST_STUDY_KEY); } catch { return null; }
+}
+
+function writeLastStudy(id) {
+  try {
+    if (id) window.localStorage.setItem(LAST_STUDY_KEY, id);
+    else window.localStorage.removeItem(LAST_STUDY_KEY);
+  } catch { /* private mode: just don't remember */ }
+}
+
 const STATUS = {
   not_started: ['Not started', 'bg-surface-muted text-ink-muted'],
   declined: ['Did not consent', 'bg-danger-tint text-danger'],
@@ -81,23 +115,28 @@ function StudentPicker({ cls, students, selected, onSave, onClose }) {
 // ------------------------------------------------------------------------------------------------
 function ProgressPanel({ test, detail, setError, setSuccess }) {
   const confirm = useConfirm();
-  const [progress, setProgress] = useState(null);
+  const [progress, setProgress] = useState(() => cache.progress[test.id] || null);
   const [picker, setPicker] = useState(null);
   const [viewer, setViewer] = useState(null);
   const [busy, setBusy] = useState('');
 
   const load = useCallback(async () => {
     try {
-      setProgress(await researchRequest(supabaseTeacher, `/tests/${test.id}/progress`));
+      setProgress(await fetchProgress(test.id));
     } catch (e) {
       setError(e.message);
     }
   }, [test.id, setError]);
 
   useEffect(() => {
-    load();
-    const t = setInterval(load, 20000);
-    return () => clearInterval(t);
+    // Skip the first load when the table was fetched a moment ago (it was started with the study).
+    if (Date.now() - (cache.progressAt[test.id] || 0) > 5000) load();
+    else setProgress(cache.progress[test.id]);
+    // Refresh every 20 s, but only while this browser tab is visible.
+    const t = setInterval(() => { if (document.visibilityState === 'visible') load(); }, 20000);
+    const onVisible = () => { if (document.visibilityState === 'visible') load(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVisible); };
   }, [load]);
 
   const assignments = progress?.assignments || [];
@@ -364,9 +403,9 @@ function ScorersPanel({ detail, reload, setError, setSuccess }) {
 // ------------------------------------------------------------------------------------------------
 export function ResearchTab({ setActionError, setActionSuccess }) {
   const confirm = useConfirm();
-  const [studies, setStudies] = useState(null);
-  const [studyId, setStudyId] = useState(null);
-  const [detail, setDetail] = useState(null);
+  const [studies, setStudies] = useState(cache.studies);
+  const [studyId, setStudyIdState] = useState(() => readLastStudy());
+  const [detail, setDetail] = useState(() => (studyId ? cache.details[studyId] || null : null));
   const [section, setSection] = useState('progress');
   const [testKind, setTestKind] = useState('pre');
   const [newTitle, setNewTitle] = useState('Efektivitas Program English Hour dalam Meningkatkan Kemampuan Speaking Siswa di Sekolah Islam Athirah Bone');
@@ -376,26 +415,55 @@ export function ResearchTab({ setActionError, setActionSuccess }) {
   const setError = useCallback((m) => { setActionSuccess?.(''); setActionError?.(m); }, [setActionError, setActionSuccess]);
   const setSuccess = useCallback((m) => { setActionError?.(''); setActionSuccess?.(m); }, [setActionError, setActionSuccess]);
 
+  const setStudyId = useCallback((id) => {
+    writeLastStudy(id);
+    setStudyIdState(id);
+  }, []);
+
   const loadStudies = useCallback(async () => {
     try {
-      setStudies(await researchRequest(supabaseTeacher, '/studies'));
+      const list = await shared('studies', () => researchRequest(supabaseTeacher, '/studies'));
+      cache.studies = list;
+      setStudies(list);
+      return list;
     } catch (e) {
       setError(e.message);
-      setStudies([]);
+      setStudies((s) => s || []);
+      return null;
     }
   }, [setError]);
 
   const loadDetail = useCallback(async () => {
     if (!studyId) return;
     try {
-      setDetail(await researchRequest(supabaseTeacher, `/studies/${studyId}`));
+      setDetail(await fetchDetail(studyId));
     } catch (e) {
+      if (e.status === 404) { setStudyId(null); return; } // the remembered study was deleted
       setError(e.message);
     }
-  }, [studyId, setError]);
+  }, [studyId, setError, setStudyId]);
 
   useEffect(() => { loadStudies(); }, [loadStudies]);
-  useEffect(() => { setDetail(null); loadDetail(); }, [loadDetail]);
+  useEffect(() => {
+    if (!studyId) { setDetail(null); return; }
+    setDetail(cache.details[studyId] || null);
+    // Start the progress table at the same time as the study details (test ids are in the study list).
+    const prefetch = (list) => {
+      const pre = (list || []).find((x) => x.id === studyId)?.tests?.find((t) => t.kind === 'pre');
+      if (pre) {
+        fetchProgress(pre.id).catch(() => {});
+        try { window.localStorage.setItem(`${LAST_STUDY_KEY}.pre.${studyId}`, pre.id); } catch { /* ignore */ }
+      }
+    };
+    if (cache.studies) prefetch(cache.studies);
+    else {
+      let rememberedPre = null;
+      try { rememberedPre = window.localStorage.getItem(`${LAST_STUDY_KEY}.pre.${studyId}`); } catch { /* ignore */ }
+      if (rememberedPre) fetchProgress(rememberedPre).catch(() => {});
+      else inflight.studies?.then(prefetch).catch(() => {});
+    }
+    loadDetail();
+  }, [studyId, loadDetail]);
 
   const create = async (e) => {
     e.preventDefault();
@@ -451,8 +519,9 @@ export function ResearchTab({ setActionError, setActionSuccess }) {
           <p>A study has a pretest and a posttest. Students answer each question in a separate recording, see no scores, and the AI (Gemini, listening to the audio) scores Brown's rubric: 5 aspects × 1-5, Nilai = Total ÷ 25 × 100.</p>
         </div>
 
+        {!studies && <p className="text-sm text-ink-muted">Loading studies...</p>}
         {(studies || []).map((s) => (
-          <button key={s.id} onClick={() => { setStudyId(s.id); setSection('progress'); }}
+          <button key={s.id} onClick={() => { setSection('progress'); setStudyId(s.id); }}
                   className="w-full text-left bg-surface border border-line hover:border-brand/30 rounded-2xl p-4 transition">
             <div className="text-sm font-bold text-ink">{s.title}</div>
             <div className="text-xs text-ink-subtle mt-0.5">Unit {s.unit}</div>

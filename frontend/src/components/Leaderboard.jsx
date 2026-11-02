@@ -170,6 +170,16 @@ export function Leaderboard({ student }) {
         </div>
       );
     }
+    if (mode === 'qa' && feedback?.rubric === 'brown') {
+      return (
+        <div className="flex flex-col">
+          <span className="text-ink font-semibold text-sm tabular-nums">{Math.round(score)}/100 Score</span>
+          <span className="text-xs text-ink-muted tabular-nums">
+            Total {feedback.total}/25{feedback.questions > 1 ? ` · ${feedback.questions} questions` : ''}
+          </span>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col">
         <span className="text-ink font-semibold text-sm tabular-nums">{Math.round(score)}/100 Score</span>

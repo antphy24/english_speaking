@@ -43,6 +43,44 @@ const TITLES = {
   conversation: 'Conversation result',
 };
 
+// Research rubric (Brown, 2004) used by Q&A: five aspects, 1-5 each.
+export const BROWN_ASPECTS = [
+  { key: 'pronunciation', label: 'Pronunciation' },
+  { key: 'fluency', label: 'Fluency' },
+  { key: 'vocabulary', label: 'Vocabulary' },
+  { key: 'grammar', label: 'Grammar' },
+  { key: 'comprehension', label: 'Comprehension' },
+];
+
+export const isBrownScore = (mode, score) => mode === 'qa' && score?.rubric === 'brown';
+
+/** Rubric aspects (1-5) with the evidence the grader gave for each. */
+function RubricScores({ score }) {
+  return (
+    <div className="space-y-3.5">
+      {BROWN_ASPECTS.map(({ key, label }) => {
+        const val = Number(score[key]) || 0;
+        const band = scoreBand(val * 20);
+        const evidence = score[`${key}_evidence`];
+        return (
+          <div key={key} className="space-y-1.5">
+            <div className="flex justify-between gap-3 text-sm">
+              <span className="text-ink-muted font-medium">{label}</span>
+              <span className="text-ink font-semibold tabular-nums">{val}<span className="text-ink-subtle font-normal"> / 5</span></span>
+            </div>
+            <div className="grid grid-cols-5 gap-1" aria-hidden="true">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <span key={n} className={`h-2 rounded-full ${n <= val ? band.bar : 'bg-surface-muted'}`} />
+              ))}
+            </div>
+            {evidence && <p className="text-[13px] text-ink-subtle leading-relaxed">{evidence}</p>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function SubScores({ items }) {
   return (
     <div className="space-y-3.5">
@@ -73,7 +111,11 @@ export function ScoreCard({ mode, score, onRestart, isSaving, saveStatus, onSave
   let main;
   let mainLabel;
   let parts = null;
-  if (mode === 'read_aloud') {
+  const brown = isBrownScore(mode, score);
+  if (brown) {
+    main = Math.round(Number(score.nilai) || 0);
+    mainLabel = 'Overall score';
+  } else if (mode === 'read_aloud') {
     main = score.accuracy_score;
     mainLabel = 'Accuracy';
   } else {
@@ -123,7 +165,12 @@ export function ScoreCard({ mode, score, onRestart, isSaving, saveStatus, onSave
               {mode === 'read_aloud' && score.word_error_rate != null && (
                 <div className="text-[13px] text-ink-subtle mt-1">Word error rate {(score.word_error_rate * 100).toFixed(1)}%</div>
               )}
-              {mode !== 'read_aloud' && <div className="text-[13px] text-ink-subtle mt-1">Scale 0 - 100</div>}
+              {brown && (
+                <div className="text-[13px] text-ink-subtle mt-1">
+                  Total {score.total} / 25{score.questions > 1 ? ` · ${score.questions} questions` : ''}
+                </div>
+              )}
+              {mode !== 'read_aloud' && !brown && <div className="text-[13px] text-ink-subtle mt-1">Scale 0 - 100</div>}
             </div>
           </div>
 
@@ -142,7 +189,7 @@ export function ScoreCard({ mode, score, onRestart, isSaving, saveStatus, onSave
             </div>
           ) : (
             <div className="md:col-span-7 p-4 md:p-5 border border-line rounded-2xl">
-              <SubScores items={parts} />
+              {brown ? <RubricScores score={score} /> : <SubScores items={parts} />}
             </div>
           )}
         </div>

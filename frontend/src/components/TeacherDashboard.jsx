@@ -161,7 +161,12 @@ export function TeacherDashboard() {
         {data.actionError && <Alert tone="error" onClose={() => data.setActionError('')}>{data.actionError}</Alert>}
         {data.actionSuccess && <Alert tone="success" onClose={() => data.setActionSuccess('')}>{data.actionSuccess}</Alert>}
 
-        {data.loadingData && data.classesList.length === 0 ? (
+        {/* The Research tab loads its own data, so it never waits for the practice dashboard. */}
+        {activeTab === 'research' ? (
+          <div className="animate-fadeIn">
+            <ResearchTab setActionError={data.setActionError} setActionSuccess={data.setActionSuccess} />
+          </div>
+        ) : data.loadingData && data.classesList.length === 0 ? (
           <div className="py-20 flex justify-center">
             <Spinner message="Loading your classes..." />
           </div>
@@ -257,10 +262,6 @@ export function TeacherDashboard() {
                 setCurrentPage={data.setCurrentPage}
                 itemsPerPage={data.itemsPerPage}
               />
-            )}
-
-            {activeTab === 'research' && (
-              <ResearchTab setActionError={data.setActionError} setActionSuccess={data.setActionSuccess} />
             )}
 
             {activeTab === 'activity' && (

@@ -3,11 +3,11 @@ import { Clock, RotateCcw, Save, ChevronDown } from 'lucide-react';
 import { TIMER_FIELDS, resolveTimers, describeDuration } from '../../utils/timerSettings';
 import { MODE_LABELS } from '../../utils/modes';
 
-const MODE_TITLES = { debate: MODE_LABELS.debate, mattering: MODE_LABELS.mattering };
+const MODE_TITLES = { qa: MODE_LABELS.qa, debate: MODE_LABELS.debate, mattering: MODE_LABELS.mattering };
 
 const split = (seconds) => ({ m: String(Math.floor(seconds / 60)), s: String(seconds % 60).padStart(2, '0') });
 
-/** Per-class timers for Debate and Mattering, shown in the Classes tab. */
+/** Per-class timers for Q&A, Debate and Mattering, shown in the Classes tab. */
 export function TimerSettings({ selectedClass, handleUpdateClass }) {
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState({});
@@ -56,7 +56,7 @@ export function TimerSettings({ selectedClass, handleUpdateClass }) {
   };
 
   const isDefault = !selectedClass?.timer_settings;
-  const summary = `Debate ${describeDuration(saved.debate.prep)} prep · ${describeDuration(saved.debate.speech)} speech — Mattering ${describeDuration(saved.mattering.breakdown)} / ${describeDuration(saved.mattering.argument)} / ${describeDuration(saved.mattering.rebuttal)}`;
+  const summary = `Q&A ${describeDuration(saved.qa.think)} think · ${describeDuration(saved.qa.answer)} per answer — Debate ${describeDuration(saved.debate.prep)} prep · ${describeDuration(saved.debate.speech)} speech — Mattering ${describeDuration(saved.mattering.breakdown)} / ${describeDuration(saved.mattering.argument)} / ${describeDuration(saved.mattering.rebuttal)}`;
 
   return (
     <div className="border border-line rounded-xl bg-surface-muted">
@@ -70,7 +70,7 @@ export function TimerSettings({ selectedClass, handleUpdateClass }) {
           <Clock className="w-4 h-4 text-brand-ink mt-0.5 shrink-0" />
           <div className="min-w-0">
             <div className="text-sm font-bold text-ink">
-              Debate &amp; Mattering timers
+              Practice timers
               <span className={`ml-2 text-xs font-semibold px-1.5 py-0.5 rounded ${isDefault ? 'bg-surface-muted text-ink-muted' : 'bg-brand-tint text-brand-ink'}`}>
                 {isDefault ? 'Default' : 'Custom'}
               </span>
@@ -84,7 +84,7 @@ export function TimerSettings({ selectedClass, handleUpdateClass }) {
       {open && (
         <div className="px-4 pb-4 space-y-4 border-t border-line pt-4">
           <p className="text-xs text-ink-muted leading-relaxed">
-            Applies to every student in <strong className="text-ink">{selectedClass.class_name}</strong>. Students get the new times the next time they open the Debate or Mattering tab.
+            Applies to every student in <strong className="text-ink">{selectedClass.class_name}</strong>. Students get the new times the next time they open the Q&amp;A, Debate or Mattering tab.
           </p>
 
           {Object.entries(TIMER_FIELDS).map(([mode, fields]) => (

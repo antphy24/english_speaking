@@ -133,10 +133,11 @@ def _attempt_for_teacher(attempt_id, teacher_id):
     return a
 
 
-def _with_image_urls(content, keep_notes=True):
+def _with_image_urls(content, keep_notes=True, urls=None):
     content = dict(content or {})
-    paths = [p.get("image_path") for p in content.get("parts", []) if p.get("image_path")]
-    urls = rs.signed_urls(paths, 6 * 3600) if paths else {}
+    if urls is None:
+        paths = [p.get("image_path") for p in content.get("parts", []) if p.get("image_path")]
+        urls = rs.signed_urls(paths, 6 * 3600) if paths else {}
     parts = []
     for p in content.get("parts", []):
         p = dict(p)
@@ -153,10 +154,11 @@ def list_studies(teacher_id):
                                                 "order": "created_at.desc"})
     if not studies:
         return []
-    tests = rs.db_select("research_tests", {"study_id": rs.in_list(s["id"] for s in studies),
-                                            "select": "id,study_id,kind,title"})
-    attempts = rs.db_select("research_attempts", {"study_id": rs.in_list(s["id"] for s in studies),
-                                                  "select": "test_id,status"})
+    ids = rs.in_list(s["id"] for s in studies)
+    tests, attempts = rs.parallel(
+        (rs.db_select, "research_tests", {"study_id": ids, "select": "id,study_id,kind,title"}),
+        (rs.db_select, "research_attempts", {"study_id": ids, "select": "test_id,status"}),
+    )
     counts = {}
     for a in attempts:
         c = counts.setdefault(a["test_id"], {"submitted": 0, "scored": 0})
@@ -181,18 +183,30 @@ def create_study(teacher_id, title, unit):
     return study
 
 
-def study_detail(study_id, teacher_id):
-    study = _study_for_teacher(study_id, teacher_id)
-    tests = rs.db_select("research_tests", {"study_id": f"eq.{study_id}", "select": "*"})
-    tests.sort(key=lambda t: t["kind"], reverse=True)  # pre first
-    for t in tests:
-        t["content"] = _with_image_urls(t["content"])
-    assignments = rs.db_select("research_assignments", {"test_id": rs.in_list(t["id"] for t in tests), "select": "*"})
-    scorers = rs.db_select("research_scorers", {"study_id": f"eq.{study_id}", "select": "*", "order": "created_at.asc"})
+def _teacher_classes_and_students(teacher_id):
     classes = rs.db_select("classes", {"teacher_id": f"eq.{teacher_id}", "select": "id,class_name",
                                        "order": "class_name.asc"})
     students = rs.db_select("students", {"class_id": rs.in_list(c["id"] for c in classes),
                                          "select": "id,full_name,class_id", "order": "full_name.asc"}) if classes else []
+    return classes, students
+
+
+def study_detail(study_id, teacher_id):
+    # Everything below is read at the same time (one round trip instead of seven).
+    study, tests, scorers, (classes, students) = rs.parallel(
+        (_study_for_teacher, study_id, teacher_id),
+        (rs.db_select, "research_tests", {"study_id": f"eq.{study_id}", "select": "*"}),
+        (rs.db_select, "research_scorers", {"study_id": f"eq.{study_id}", "select": "*", "order": "created_at.asc"}),
+        (_teacher_classes_and_students, teacher_id),
+    )
+    tests.sort(key=lambda t: t["kind"], reverse=True)  # pre first
+    image_paths = [p.get("image_path") for t in tests for p in (t["content"] or {}).get("parts", []) if p.get("image_path")]
+    urls, assignments = rs.parallel(
+        (rs.signed_urls, image_paths, 6 * 3600),
+        (rs.db_select, "research_assignments", {"test_id": rs.in_list(t["id"] for t in tests), "select": "*"}),
+    )
+    for t in tests:
+        t["content"] = _with_image_urls(t["content"], urls=urls)
     return {"study": study, "tests": tests, "assignments": assignments, "scorers": scorers,
             "classes": classes, "students": students, "scoring_runs": rs.SCORING_RUNS, "ai_model": rs.GEMINI_MODEL}
 
@@ -252,25 +266,29 @@ def save_assignment(test_id, teacher_id, body: AssignmentBody):
 
 
 def test_progress(test_id, teacher_id):
-    test = _test_for_teacher(test_id, teacher_id)
-    assignments = rs.db_select("research_assignments", {"test_id": f"eq.{test_id}", "select": "*"})
+    test, assignments, attempts = rs.parallel(
+        (_test_for_teacher, test_id, teacher_id),
+        (rs.db_select, "research_assignments", {"test_id": f"eq.{test_id}", "select": "*"}),
+        (rs.db_select, "research_attempts", {
+            "test_id": f"eq.{test_id}",
+            "select": "id,student_id,class_id,anon_code,status,consent_given,started_at,submitted_at,ai_scores,"
+                      "ai_error,ai_next_try_at,ai_scored_at"}),
+    )
     class_ids = [a["class_id"] for a in assignments]
-    students = rs.db_select("students", {"class_id": rs.in_list(class_ids), "select": "id,full_name,class_id",
-                                         "order": "full_name.asc"}) if class_ids else []
-    attempts = rs.db_select("research_attempts", {
-        "test_id": f"eq.{test_id}",
-        "select": "id,student_id,class_id,anon_code,status,consent_given,started_at,submitted_at,ai_scores,ai_error,"
-                  "ai_next_try_at,ai_scored_at"})
-    responses = rs.db_select("research_responses", {
-        "attempt_id": rs.in_list(a["id"] for a in attempts),
-        "select": "attempt_id,transcribe_status"}) if attempts else []
+    aids = rs.in_list(a["id"] for a in attempts)
+    calls = [(rs.db_select, "students", {"class_id": rs.in_list(class_ids), "select": "id,full_name,class_id",
+                                          "order": "full_name.asc"}) if class_ids else (list,)]
+    if attempts:
+        calls += [(rs.db_select, "research_responses", {"attempt_id": aids, "select": "attempt_id,transcribe_status"}),
+                  (rs.db_select, "research_human_scores", {"attempt_id": aids, "select": "attempt_id"})]
+    else:
+        calls += [(list,), (list,)]
+    students, responses, humans = rs.parallel(*calls)
     tr = {}
     for x in responses:
         d = tr.setdefault(x["attempt_id"], {"answers": 0, "transcribed": 0})
         d["answers"] += 1
         d["transcribed"] += 1 if x["transcribe_status"] != "pending" else 0
-    humans = rs.db_select("research_human_scores", {"attempt_id": rs.in_list(a["id"] for a in attempts),
-                                                    "select": "attempt_id"}) if attempts else []
     hcount = {}
     for h in humans:
         hcount[h["attempt_id"]] = hcount.get(h["attempt_id"], 0) + 1
@@ -282,8 +300,10 @@ def test_progress(test_id, teacher_id):
 
 def attempt_detail(attempt, *, for_scorer=None):
     """Recordings, transcripts and (when allowed) scores of one attempt."""
-    test = rs.db_one("research_tests", {"id": f"eq.{attempt['test_id']}", "select": "kind,title,content"})
-    responses = rs.db_select("research_responses", {"attempt_id": f"eq.{attempt['id']}", "select": "*"})
+    test, responses = rs.parallel(
+        (rs.db_one, "research_tests", {"id": f"eq.{attempt['test_id']}", "select": "kind,title,content"}),
+        (rs.db_select, "research_responses", {"attempt_id": f"eq.{attempt['id']}", "select": "*"}),
+    )
     urls = rs.signed_urls([x["audio_path"] for x in responses])
     content = _with_image_urls(test["content"], keep_notes=False)
     by_item = {x["item_id"]: x for x in responses}
@@ -773,16 +793,19 @@ def build_router(verify_authenticated, verify_teacher, redis_conn):
         content = None
         if test_id:
             content = (await run(_test_for_teacher, _uuid(test_id), teacher["id"]))["content"]
-        cap = await run(rs.capacity, content)
-        cached = redis_conn.get(f"research:gemini_check:{rs.GEMINI_MODEL}")
-        if cached:
-            import json as _json
-            cap["scoring"]["check"] = _json.loads(cached)
-        else:
+        import json as _json
+        cache_key = f"research:gemini_check:{rs.GEMINI_MODEL}"
+
+        async def gemini_check():
+            cached = redis_conn.get(cache_key)
+            if cached:
+                return _json.loads(cached)
             check = await asyncio.to_thread(rs.check_gemini_model)
-            import json as _json
-            redis_conn.setex(f"research:gemini_check:{rs.GEMINI_MODEL}", 600 if check["ok"] else 60, _json.dumps(check))
-            cap["scoring"]["check"] = check
+            redis_conn.setex(cache_key, 1800 if check["ok"] else 60, _json.dumps(check))
+            return check
+
+        cap, check = await asyncio.gather(run(rs.capacity, content), gemini_check())  # side by side
+        cap["scoring"]["check"] = check
         return cap
 
     @router.post("/studies/{study_id}/scorers")

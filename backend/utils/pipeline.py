@@ -15,6 +15,7 @@ import tempfile
 import time
 import traceback
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 
 from rq import Queue
 
@@ -263,7 +264,7 @@ def job_grade(sub_id):
             result = ai.evaluate_read_aloud(p.get("source_text", ""), transcript,
                                             deadline=time.time() + wait, on_wait=kwargs["on_wait"])
         elif mode == "qa":
-            result = ai.evaluate_qa(p.get("question", ""), transcript, **kwargs)
+            result = ai.evaluate_qa(qa_answers(sub), **kwargs)
         elif mode == "debate":
             result = ai.evaluate_debate(p.get("motion", ""), p.get("role", ""), transcript, **kwargs)
         elif mode == "conversation":
@@ -299,10 +300,21 @@ def job_grade(sub_id):
     update(sub_id, status="completed", message="Done")
 
 
+def qa_answers(sub):
+    """The questions and answers of a Q&A submission (a session, or one old-style recording)."""
+    p = sub.get("params") or {}
+    if p.get("answers"):
+        return p["answers"]
+    return [{"question": p.get("question", ""), "transcript": sub.get("transcript") or "",
+             "duration_s": sub.get("duration")}]
+
+
 # --- saving the score to Supabase -------------------------------------------------
 
 def compute_score(mode, result):
     try:
+        if mode == "qa" and result.get("rubric") == "brown":
+            return round(float(result["nilai"]))  # research rubric: total / 25 x 100
         if mode == "read_aloud":
             return round(float(result["accuracy_score"]))
         if mode == "mattering":
@@ -332,6 +344,9 @@ def transcript_text(sub):
             parts.append(f"Opposing argument (AI): {p['opposition']}")
             parts.append(f"Rebuttal: {p.get('rebuttal') or '(skipped)'}")
         return "\n\n".join(parts)
+    if sub["mode"] == "qa" and (sub.get("params") or {}).get("answers"):
+        return "\n\n".join(f"Q{i + 1}. {a.get('question', '')}\nAnswer: {a.get('transcript') or '(no speech)'}"
+                           for i, a in enumerate(sub["params"]["answers"]))
     return sub.get("transcript") or None
 
 
@@ -350,6 +365,10 @@ def build_feedback(sub):
         feedback.update(transcript=sub.get("transcript"), motion=p.get("motion"), role=p.get("role"),
                         notes=p.get("notes"), opposition=p.get("opposition"),
                         rebuttal_transcript=p.get("rebuttal"))
+    if mode == "qa":
+        # each question with what the student said, for the review screen
+        feedback["answers"] = [{"question": a.get("question", ""), "transcript": a.get("transcript", ""),
+                                "duration_s": a.get("duration_s")} for a in qa_answers(sub)]
     if not feedback["material_title"]:
         feedback.pop("material_title")
     return feedback
@@ -364,22 +383,32 @@ def keep_audio(sub):
         return sub["audio"]
     kept = {}
     refs = (sub.get("params") or {}).get("audio_subs") or {}
+    jobs = []
     for slot in storage.MODE_SLOTS.get(sub["mode"], []):
         source = None
         if slot == sub["mode"] and sub.get("audio_stored"):
             source = sub["id"]
         elif refs.get(slot):
-            # mattering: each speech was transcribed as its own submission
+            # mattering / Q&A session: each speech was transcribed as its own submission
             turn = load(str(refs[slot]))
             if turn and turn.get("user_id") == sub["user_id"] and turn.get("audio_stored") \
                     and turn.get("audio_slot") == slot:
                 source = turn["id"]
+        jobs.append((slot, source))
+
+    def promote(job):
+        slot, source = job
         try:
-            path = storage.promote(sub["user_id"], slot, source)
-            if path:
-                kept[slot] = path
+            return slot, storage.promote(sub["user_id"], slot, source)
         except Exception as e:  # noqa: BLE001
             print(f"[pipeline] could not keep the {slot} recording for {sub['id']}: {str(e)[:200]}")
+            return slot, None
+
+    # A Q&A session has up to 11 slots: handle them side by side so saving stays quick.
+    with ThreadPoolExecutor(max_workers=min(6, max(1, len(jobs)))) as pool:
+        for slot, path in pool.map(promote, jobs):
+            if path:
+                kept[slot] = path
     update(sub["id"], audio=kept)
     return kept
 

@@ -370,11 +370,22 @@ class ReadAloudEvaluation(BaseModel):
     feedback_source: str = "ai"   # "ai" or "standard" (template, used when the AI queue is busy)
 
 
+# Q&A uses the research rubric (Brown, 2004): five aspects scored 1-5, the same
+# descriptors as the research pretest/posttest (utils.research.RUBRIC).
+Score5 = Annotated[int, BeforeValidator(lambda v: _clamp(v, 1, 5))]
+
+
 class QAEvaluation(BaseModel):
-    fluency: Score100
-    lexical_resource: Score100
-    grammatical_range: Score100
-    pronunciation: Score100
+    pronunciation: Score5
+    fluency: Score5
+    vocabulary: Score5
+    grammar: Score5
+    comprehension: Score5
+    pronunciation_evidence: Text = ""
+    fluency_evidence: Text = ""
+    vocabulary_evidence: Text = ""
+    grammar_evidence: Text = ""
+    comprehension_evidence: Text = ""
     feedback: Text
 
 
@@ -708,16 +719,75 @@ def evaluate_read_aloud(source_text: str, student_transcript: str, *, deadline=N
 
 # --- Q&A / Conversation / Debate ----------------------------------------------------------
 
-def evaluate_qa(question: str, student_transcript: str, *, deadline=None, on_wait=None) -> dict:
+QA_MAX_QUESTIONS = 10  # keep in step with utils.storage.QA_MAX_QUESTIONS and the frontend
+
+
+def _qa_answer_block(i, a):
+    question = str(a.get("question") or "").strip()[:600]
+    transcript = str(a.get("transcript") or "").strip()[:6000]
+    words = len(_words(transcript))
+    lines = [f"\nQuestion {i}: \"{question}\""]
+    facts = []
+    try:
+        duration = float(a.get("duration_s") or 0)
+    except (TypeError, ValueError):
+        duration = 0
+    if duration > 0:
+        allowed = a.get("speak_seconds")
+        facts.append(f"answer length {round(duration)} s" + (f" of {allowed} s allowed" if allowed else ""))
+        if words:
+            facts.append(f"speech rate about {round(words / (duration / 60))} words per minute")
+    facts.append(f"{words} words")
+    if a.get("max_repeats") is not None:
+        facts.append(f"asked to hear the question again {int(a.get('repeats') or 0)} of {int(a['max_repeats'])} time(s) allowed")
+    lines.append("Measurements: " + ", ".join(facts) + ".")
+    lines.append(f"Transcript of the answer: \"{transcript or '(no speech recognised - the student said nothing usable)'}\"")
+    return "\n".join(lines)
+
+
+def evaluate_qa(answers, *, deadline=None, on_wait=None) -> dict:
+    """
+    Grade a Q&A practice session (one or more questions answered out loud) with the
+    research rubric: 5 aspects x 1-5, total out of 25, nilai = total / 25 x 100.
+    `answers`: [{question, transcript, duration_s?, speak_seconds?, repeats?, max_repeats?}].
+    """
+    from utils.research import RUBRIC, ASPECTS  # same descriptors as the research test
+
+    answers = [a for a in (answers or []) if isinstance(a, dict)][:QA_MAX_QUESTIONS]
+    if not answers:
+        raise ValueError("No answers to grade")
+    blocks = "\n".join(_qa_answer_block(i + 1, a) for i, a in enumerate(answers))
     prompt = (
-        "Act as an IELTS Speaking examiner.\n"
-        f"Question: \"{question}\"\n"
-        f"Candidate's answer (speech transcript): \"{student_transcript}\"\n"
-        "Score each criterion from 0 to 100 and give feedback with strengths, weaknesses and how to score higher.\n"
-        'Return JSON: {"fluency": int, "lexical_resource": int, "grammatical_range": int, '
-        '"pronunciation": int, "feedback": string}'
+        "You are a strict, consistent English speaking examiner for Indonesian senior high school students "
+        "(they learn English as a foreign language). This is a PRACTICE session: the student answered "
+        f"{len(answers)} question(s) out loud, one recording per question. Apply the rubric exactly as written, "
+        "the same way for every student.\n\n"
+        f"{RUBRIC}\n\n"
+        "Rules:\n"
+        "- You get an automatic speech-recognition transcript, not the audio. Judge Fluency from the "
+        "measurements, sentence flow, broken or unfinished sentences and fillers. Judge Pronunciation from "
+        "what the recogniser got wrong: nonsense words or wrong words that sound like the word the student "
+        "obviously meant point to unclear pronunciation. A clean, sensible transcript usually means 4; give 5 "
+        "only when longer answers are completely clean, and do not go below 3 for Pronunciation without such "
+        "evidence.\n"
+        "- Speech in Indonesian does not count as English vocabulary; frequent Indonesian lowers Vocabulary "
+        "(see descriptor 2).\n"
+        "- Silence, '(no speech recognised)' or answers far too short to judge an aspect pull that aspect down.\n"
+        "- Comprehension/Interaction: did each answer actually address its question? Use how often the student "
+        "asked to hear the question again as evidence.\n"
+        "- Score the whole session (all answers together), one whole number 1-5 per aspect.\n"
+        "- <aspect>_evidence: 1-2 short sentences in simple English, written to the student as 'you', quoting "
+        "or describing what they said.\n"
+        "- feedback: 3-5 sentences in simple English to the student: what went well, the most important thing "
+        "to improve, and one concrete tip for next time.\n\n"
+        f"THE SESSION:{blocks}\n\n"
+        "Return JSON: {" + ", ".join(f'"{a}": int, "{a}_evidence": string' for a in ASPECTS)
+        + ', "feedback": string}'
     )
-    return _grade_with_schema(prompt, QAEvaluation, deadline=deadline, on_wait=on_wait)
+    result = _grade_with_schema(prompt, QAEvaluation, deadline=deadline, on_wait=on_wait, max_tokens=2000)
+    total = sum(int(result[a]) for a in ASPECTS)
+    result.update(rubric="brown", total=total, nilai=round(total / 25 * 100, 2), questions=len(answers))
+    return result
 
 
 def evaluate_conversation(messages: List[dict], *, deadline=None, on_wait=None) -> dict:

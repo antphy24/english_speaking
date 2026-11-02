@@ -3,8 +3,13 @@ import { X, Headphones, FileText, MessageSquareText, Loader2, AlertTriangle } fr
 import { getAssessmentReview } from '../../utils/api';
 import SpeakableWords from './SpeakableWords';
 import { MODE_LABELS } from '../../utils/modes';
+import { QA_MAX_QUESTIONS } from '../../utils/qaSets';
+import { BROWN_ASPECTS, isBrownScore } from './ScoreCard';
 
 const MODE_TITLES = MODE_LABELS;
+
+// Q&A sessions keep one recording per question (qa_1 ... qa_10).
+const QA_SLOTS = Array.from({ length: QA_MAX_QUESTIONS }, (_, i) => `qa_${i + 1}`);
 
 const AUDIO_LABELS = {
   read_aloud: 'Recording',
@@ -12,8 +17,9 @@ const AUDIO_LABELS = {
   debate: 'Speech',
   mattering: 'Argument',
   mattering_rebuttal: 'Rebuttal',
+  ...Object.fromEntries(QA_SLOTS.map((slot, i) => [slot, `Question ${i + 1}`])),
 };
-const AUDIO_ORDER = ['read_aloud', 'qa', 'debate', 'mattering', 'mattering_rebuttal'];
+const AUDIO_ORDER = ['read_aloud', 'qa', ...QA_SLOTS, 'debate', 'mattering', 'mattering_rebuttal'];
 
 const has = (v) => v !== undefined && v !== null && v !== '';
 
@@ -35,6 +41,12 @@ function scoreSummary(mode, score, fb) {
   if (mode === 'mattering') {
     return { main: `${Math.round(score)}`, caption: `speaker score · scale 69-81${fb.band ? ` · ${fb.band}` : ''}`, parts: [] };
   }
+  if (isBrownScore(mode, fb)) {
+    return {
+      main: `${Math.round(score)}`, caption: `out of 100 · total ${fb.total ?? '-'} / 25`,
+      parts: BROWN_ASPECTS.filter(({ key }) => has(fb[key])).map(({ key, label }) => [label, `${fb[key]}/5`]),
+    };
+  }
   const parts = mode === 'qa'
     ? [['Fluency', fb.fluency], ['Vocabulary', fb.lexical_resource], ['Grammar', fb.grammatical_range], ['Pronunciation', fb.pronunciation]]
     : [['Fluency & coherence', fb.fluency_and_coherence], ['Vocabulary', fb.lexical_resource], ['Grammar', fb.grammatical_range],
@@ -54,6 +66,8 @@ function feedbackBlocks(mode, fb) {
               ['Read up on', fb.knowledge_gaps]];
   } else if (mode === 'read_aloud') {
     blocks = [['Feedback', fb.feedback], ['Skipped words', words(fb.skipped_words)], ['Unclear words', words(fb.mispronounced_words)]];
+  } else if (isBrownScore(mode, fb)) {
+    blocks = [['Overall', fb.feedback], ...BROWN_ASPECTS.map(({ key, label }) => [label, fb[`${key}_evidence`]])];
   } else {
     blocks = [['Feedback', fb.feedback]];
   }

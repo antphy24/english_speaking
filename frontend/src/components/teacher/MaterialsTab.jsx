@@ -2,6 +2,20 @@ import React, { useState, useMemo } from 'react';
 import { Trash2, Edit2, X, Check } from 'lucide-react';
 import ReadingLengthHint from '../UI/ReadingLengthHint';
 import { MODE_LABELS, MODE_ORDER } from '../../utils/modes';
+import { QA_MAX_QUESTIONS, countQuestionLines } from '../../utils/qaSets';
+
+/** Under the Q&A text box: how many questions the students will get. */
+function QuestionCountHint({ text }) {
+  const n = countQuestionLines(text);
+  const over = n > QA_MAX_QUESTIONS;
+  return (
+    <p className={`text-xs leading-relaxed ${over ? 'text-warning' : 'text-ink-subtle'}`}>
+      Write one question per line - students answer them one after another in a single session.{' '}
+      <strong className={over ? 'text-warning' : 'text-ink'}>{Math.min(n, QA_MAX_QUESTIONS)} question{Math.min(n, QA_MAX_QUESTIONS) === 1 ? '' : 's'}</strong>
+      {over ? ` (only the first ${QA_MAX_QUESTIONS} are used)` : ` (up to ${QA_MAX_QUESTIONS})`}.
+    </p>
+  );
+}
 
 export function MaterialsTab({
   teacher,
@@ -226,7 +240,7 @@ export function MaterialsTab({
                 required
                 value={materialTitle}
                 onChange={e => setMaterialTitle(e.target.value)}
-                placeholder={materialMode === 'read_aloud' ? "e.g. Tech Essay (Hard)" : materialMode === 'debate' ? "e.g. AI in Education" : materialMode === 'mattering' ? "e.g. Phones in School" : "e.g. Hobbies Topic"}
+                placeholder={materialMode === 'read_aloud' ? "e.g. Tech Essay (Hard)" : materialMode === 'debate' ? "e.g. AI in Education" : materialMode === 'mattering' ? "e.g. Phones in School" : "e.g. Daily Life (Set 1)"}
                 className="w-full px-4 py-2.5 bg-surface border border-line-strong rounded-[10px] text-ink placeholder:text-ink-subtle focus:outline-none focus:border-brand transition text-sm"
               />
             </div>
@@ -236,7 +250,7 @@ export function MaterialsTab({
           <div className="space-y-1 text-left">
             <label className="text-xs font-bold text-ink-muted block">
               {materialMode === 'read_aloud' && 'Paragraph Text (to read aloud)'}
-              {materialMode === 'qa' && 'Question prompt'}
+              {materialMode === 'qa' && 'Questions (one per line)'}
               {materialMode === 'conversation' && 'AI Tutor Greeting & Context'}
               {materialMode === 'debate' && 'Debate Motion Statement'}
               {materialMode === 'mattering' && 'Motion (first line) + Background (optional)'}
@@ -250,7 +264,7 @@ export function MaterialsTab({
                 materialMode === 'read_aloud' 
                   ? "Paste the text you want the student to read aloud..." 
                   : materialMode === 'qa'
-                  ? "Describe a memorable journey you went on. You should say where, when, and explain why it made a strong impression..."
+                  ? "What do you usually do after school? Why?\nDescribe a place in your town that visitors should see.\nShould students have homework every day? Give your reasons."
                   : materialMode === 'debate'
                   ? "This House would ban the use of AI in educational assessments."
                   : materialMode === 'mattering'
@@ -260,6 +274,7 @@ export function MaterialsTab({
               className="w-full px-4 py-3 bg-surface border border-line-strong rounded-[10px] text-ink placeholder:text-ink-subtle focus:outline-none focus:border-brand transition text-sm font-medium leading-relaxed"
             />
             {materialMode === 'read_aloud' && <ReadingLengthHint text={materialContent} />}
+            {materialMode === 'qa' && <QuestionCountHint text={materialContent} />}
             {materialMode === 'mattering' && (
               <p className="text-xs text-ink-subtle leading-relaxed">
                 Put the motion on the first line. Anything on the lines below is shown to students as background reading before they start.
@@ -367,6 +382,7 @@ export function MaterialsTab({
                       className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg text-ink text-sm focus:border-brand outline-none"
                     />
                     {group.mode === 'read_aloud' && <ReadingLengthHint text={editContent} />}
+                    {group.mode === 'qa' && <QuestionCountHint text={editContent} />}
                     
                     {!group.isGlobal && (
                       <div className="space-y-1">
@@ -419,7 +435,14 @@ export function MaterialsTab({
                           </div>
                         )}
                       </div>
-                      <h4 className="font-bold text-ink text-sm truncate">{group.title}</h4>
+                      <h4 className="font-bold text-ink text-sm truncate">
+                        {group.title}
+                        {group.mode === 'qa' && (
+                          <span className="ml-2 text-xs font-normal text-ink-subtle">
+                            {Math.min(countQuestionLines(group.content), QA_MAX_QUESTIONS)} question{Math.min(countQuestionLines(group.content), QA_MAX_QUESTIONS) === 1 ? '' : 's'}
+                          </span>
+                        )}
+                      </h4>
                       <p className="text-xs text-ink-muted line-clamp-3 leading-relaxed whitespace-pre-wrap">{group.content}</p>
                     </div>
 

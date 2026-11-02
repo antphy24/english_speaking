@@ -123,7 +123,7 @@ def fetch_material_dates(classes):
 # Keep in step with the lists at the top of the frontend Mode*.jsx files.
 BUILTIN_MATERIALS = {
     "read_aloud": ["Vocal Warmup (Easy)", "Climate Change (Medium)", "Digital Technology (Hard)"],
-    "qa": ["Problem Solving", "Memorable Journey", "Healthy Hobby"],
+    "qa": ["About You", "School Life", "Opinions"],
     "conversation": ["General Chat", "Job Interview Practice", "Travel & Tourism"],
     "debate": [
         "This House would ban the use of AI in educational assessments.",
@@ -275,6 +275,8 @@ def build_workbook(classes, students, assessments, *, mode=None, material=None, 
         "Date", "Student", "School ID", "Class", "Mode", "Material", "Score (0-100)",
         "Accuracy %", "Word error rate %", "Skipped words", "Unclear words",
         "Fluency", "Lexical resource", "Grammar", "Pronunciation", "Interactive communication",
+        "Q&A Pronunciation (1-5)", "Q&A Fluency (1-5)", "Q&A Vocabulary (1-5)", "Q&A Grammar (1-5)",
+        "Q&A Comprehension (1-5)", "Q&A Total (5-25)",
         "Matter (1-10)", "Manner (1-10)", "Method (1-10)",
         "Feedback", "Feedback source", "Transcribed by", "Session time (min)", "What the student said (transcript)",
     ])
@@ -283,6 +285,8 @@ def build_workbook(classes, students, assessments, *, mode=None, material=None, 
         wer = _num(fb.get("word_error_rate"))
         duration = _num(a.get("duration_seconds"))
         feedback_text = fb.get("feedback") or fb.get("overall_feedback")
+        brown = a["mode"] == "qa" and fb.get("rubric") == "brown"   # research rubric, 1-5 per aspect
+        old_scale = {} if brown else fb   # 0-100 sub-scores of the other modes (and old Q&A)
         if a["mode"] == "debate":
             parts = [fb.get("overall_feedback"),
                      fb.get("matter_feedback") and f"Matter: {fb['matter_feedback']}",
@@ -302,9 +306,11 @@ def build_workbook(classes, students, assessments, *, mode=None, material=None, 
             MODE_LABELS.get(a["mode"], a["mode"]), _text(material_of(fb)), _num(a.get("score")),
             _num(fb.get("accuracy_score")), round(wer * 100, 1) if wer is not None else None,
             _text(fb.get("skipped_words")), _text(fb.get("mispronounced_words")),
-            _num(fb.get("fluency", fb.get("fluency_and_coherence"))), _num(fb.get("lexical_resource")),
-            _num(fb.get("grammatical_range")), _num(fb.get("pronunciation")),
-            _num(fb.get("interactive_communication")),
+            _num(old_scale.get("fluency", old_scale.get("fluency_and_coherence"))), _num(old_scale.get("lexical_resource")),
+            _num(old_scale.get("grammatical_range")), _num(old_scale.get("pronunciation")),
+            _num(old_scale.get("interactive_communication")),
+            *([_num(fb.get(k)) for k in ("pronunciation", "fluency", "vocabulary", "grammar", "comprehension", "total")]
+              if brown else [None] * 6),
             _num(fb.get("matter_score")), _num(fb.get("manner_score")), _num(fb.get("method_score")),
             _text(feedback_text), {"ai": "AI", "standard": "Standard"}.get(fb.get("feedback_source"), "AI"),
             "Backup (server)" if str(fb.get("transcriber", "")).startswith("server:") else "Groq",
@@ -313,7 +319,8 @@ def build_workbook(classes, students, assessments, *, mode=None, material=None, 
         ])
     for row in ws2.iter_rows(min_row=2, min_col=1, max_col=1):
         row[0].number_format = "yyyy-mm-dd hh:mm"
-    _style_sheet(ws2, [17, 26, 13, 14, 13, 28, 12, 11, 12, 28, 28, 9, 10, 9, 13, 13, 10, 10, 10, 70, 11, 13, 12, 70])
+    _style_sheet(ws2, [17, 26, 13, 14, 13, 28, 12, 11, 12, 28, 28, 9, 10, 9, 13, 13,
+                       13, 12, 13, 12, 14, 12, 10, 10, 10, 70, 11, 13, 12, 70])
 
     # Sheet 3: what this file contains
     ws3 = wb.create_sheet("About")
@@ -330,8 +337,11 @@ def build_workbook(classes, students, assessments, *, mode=None, material=None, 
         ("Attempts exported", len(rows)),
         ("Students in summary", len(summary_students)),
         ("", ""),
-        ("Scores", "All scores are out of 100. Read Aloud = % of words read correctly. Q&A and Conversation = "
+        ("Scores", "All scores are out of 100. Read Aloud = % of words read correctly. Conversation = "
                    "average of the sub-scores. Debate = Matter 40% + Manner 40% + Method 20%."),
+        ("Q&A scores", "Q&A uses the research rubric (Brown, 2004): Pronunciation, Fluency, Vocabulary, Grammar and "
+                       "Comprehension, each 1-5, for the whole session. Score = total / 25 x 100. "
+                       "Older Q&A attempts (before the change) used 0-100 sub-scores."),
         ("Mattering scores", "Mattering uses the debate speaker scale instead: every score is between 69 and 81, "
                              "and 75 means an average speech. Do not average it with the other modes."),
         ("Feedback source", "AI = written by the AI; Standard = automatic paragraph used when many students "

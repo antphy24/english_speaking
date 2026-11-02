@@ -22,14 +22,19 @@ TIMEOUT = float(os.getenv("RECORDINGS_TIMEOUT_SECONDS", "20"))
 
 # Which recordings belong to a saved score of each mode.
 # (AI Conversation is many short turns, so it keeps the transcript only.)
+# Q&A sessions record one answer per question (up to QA_MAX_QUESTIONS), slots qa_1, qa_2, ...
+# ("qa" itself is the single recording of the old one-question Q&A).
+QA_MAX_QUESTIONS = 10
+QA_SLOTS = [f"qa_{i}" for i in range(1, QA_MAX_QUESTIONS + 1)]
 MODE_SLOTS = {
     "read_aloud": ["read_aloud"],
-    "qa": ["qa"],
+    "qa": ["qa", *QA_SLOTS],
     "debate": ["debate"],
     "mattering": ["mattering", "mattering_rebuttal"],
 }
-# Slots filled by "transcribe" turns (the mattering drill records two speeches).
-TURN_SLOTS = {"mattering", "mattering_rebuttal"}
+# Slots filled by "transcribe" turns (the mattering drill records two speeches,
+# a Q&A session one answer per question).
+TURN_SLOTS = {"mattering", "mattering_rebuttal", *QA_SLOTS}
 
 CONTENT_TYPES = {
     ".webm": "audio/webm", ".mp4": "audio/mp4", ".m4a": "audio/mp4", ".ogg": "audio/ogg",
