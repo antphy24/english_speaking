@@ -62,7 +62,7 @@ export function buildQaSets(materials = []) {
       id: m.id,
       title: m.title || `Question set ${idx + 1}`,
       questions: parseQuestions(m.content),
-      timers: m.timer_settings || null, // set by the teacher on this material (null = standard times)
+      timers: m.timer_settings || null, // times + show_text, set by the teacher on this material (null = standard)
     }))
     .filter((s) => s.questions.length > 0);
   return [...custom, ...BUILTIN_QA_SETS];

@@ -16,6 +16,7 @@ import { ResearchTab } from './research/ResearchTab';
 import SubmissionReview from './UI/SubmissionReview';
 import { supabaseTeacher } from '../utils/supabaseClient';
 import { modeLabel } from '../utils/modes';
+import { integrityLabel, isBrownScore } from './UI/ScoreCard';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
@@ -51,6 +52,21 @@ const formatScoreDetails = (mode, scoreData) => {
         {scoreData.matter_score !== undefined && (
           <span className="text-xs text-ink-subtle">
             Matter {scoreData.matter_score} · Manner {scoreData.manner_score} · Method {scoreData.method_score}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  if (isBrownScore(mode, scoreData)) {
+    const flag = integrityLabel(scoreData.integrity);
+    return (
+      <div className="flex flex-col">
+        <span className="font-bold text-ink text-xs">{Math.round(Number(scoreData.nilai) || 0)}/100 · {scoreData.total ?? '-'}/25</span>
+        <span className="text-xs text-ink-subtle">{modeLabel(mode)}{scoreData.questions > 1 ? ` · ${scoreData.questions} questions` : ''}</span>
+        {flag && (
+          <span className="mt-1 inline-flex w-fit items-center px-1.5 py-0.5 rounded bg-warning-tint text-warning text-[11px] font-semibold" title="Open the attempt to see why">
+            {flag}
           </span>
         )}
       </div>

@@ -782,7 +782,8 @@ class TextSubmitRequest(BaseModel):
     opposition: Optional[str] = None       # mattering: the opposing argument they had to answer
     rebuttal: Optional[str] = None         # mattering: transcript of their rebuttal
     audio_subs: Optional[Dict[str, str]] = None  # mattering / qa: {slot: id of the turn that recorded it}
-    answers: Optional[List[dict]] = None   # qa: [{question, transcript, duration_s, speak_seconds, repeats, max_repeats}]
+    answers: Optional[List[dict]] = None   # qa: [{question, transcript, duration_s, speak_seconds, repeats, max_repeats,
+    #                                              think_seconds, prep_seconds, question_shown, left_app, left_seconds, copy_attempts}]
     session_seconds: Optional[float] = None
     auto_save: bool = True
 
@@ -800,10 +801,14 @@ def _clean_qa_answers(answers):
             continue
         item = {"question": str(a["question"]).strip()[:600],
                 "transcript": str(a.get("transcript") or "").strip()[:6000]}
-        for key, low, high in (("duration_s", 0, 900), ("speak_seconds", 0, 900), ("repeats", 0, 5), ("max_repeats", 0, 5)):
+        for key, low, high in (("duration_s", 0, 900), ("speak_seconds", 0, 900), ("repeats", 0, 5), ("max_repeats", 0, 5),
+                               ("think_seconds", 0, 900), ("prep_seconds", 0, 3600), ("left_app", 0, 99),
+                               ("left_seconds", 0, 3600), ("copy_attempts", 0, 99)):
             v = num(a.get(key), low, high)
             if v is not None:
-                item[key] = round(v, 1) if key == "duration_s" else int(v)
+                item[key] = round(v, 1) if key in ("duration_s", "prep_seconds") else int(v)
+        if isinstance(a.get("question_shown"), bool):
+            item["question_shown"] = a["question_shown"]
         out.append(item)
     return out
 

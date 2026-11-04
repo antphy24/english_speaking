@@ -375,6 +375,20 @@ class ReadAloudEvaluation(BaseModel):
 Score5 = Annotated[int, BeforeValidator(lambda v: _clamp(v, 1, 5))]
 
 
+def _question_numbers(v):
+    """[2, "3", "Q4"] or "2, 4" -> [2, 3, 4]; anything else -> []."""
+    items = v if isinstance(v, list) else re.split(r"[,\s]+", v) if isinstance(v, str) else []
+    out = []
+    for item in items:
+        m = re.search(r"\d+", str(item))
+        if m and int(m.group()) not in out:
+            out.append(int(m.group()))
+    return out
+
+
+QuestionNumbers = Annotated[List[int], BeforeValidator(_question_numbers)]
+
+
 class QAEvaluation(BaseModel):
     pronunciation: Score5
     fluency: Score5
@@ -387,6 +401,8 @@ class QAEvaluation(BaseModel):
     grammar_evidence: Text = ""
     comprehension_evidence: Text = ""
     feedback: Text
+    ai_suspected_questions: QuestionNumbers = []
+    ai_suspected_reason: Text = ""
 
 
 class ConversationEvaluation(BaseModel):
@@ -738,8 +754,20 @@ def _qa_answer_block(i, a):
         if words:
             facts.append(f"speech rate about {round(words / (duration / 60))} words per minute")
     facts.append(f"{words} words")
+    style = len(_WRITTEN_STYLE.findall(transcript))
+    if style:
+        facts.append(f"{style} written-style phrase(s)")
     if a.get("max_repeats") is not None:
         facts.append(f"asked to hear the question again {int(a.get('repeats') or 0)} of {int(a['max_repeats'])} time(s) allowed")
+    if a.get("question_shown") is not None:
+        facts.append("the question was shown as text" if a["question_shown"] else "the question was only heard, not shown")
+    if a.get("prep_seconds") is not None:
+        facts.append(f"started answering {round(float(a['prep_seconds']))} s after the question began"
+                     + (f" (thinking time {int(a['think_seconds'])} s)" if a.get("think_seconds") else ""))
+    if int(a.get("left_app") or 0):
+        facts.append(f"LEFT THE APP {int(a['left_app'])} time(s), {int(a.get('left_seconds') or 0)} s in total, during this question")
+    if int(a.get("copy_attempts") or 0):
+        facts.append(f"tried to copy the question {int(a['copy_attempts'])} time(s)")
     lines.append("Measurements: " + ", ".join(facts) + ".")
     lines.append(f"Transcript of the answer: \"{transcript or '(no speech recognised - the student said nothing usable)'}\"")
     return "\n".join(lines)
@@ -773,6 +801,62 @@ def _apply_qa_caps(result: dict, answers) -> None:
             adjusted.append(aspect)
     if adjusted:
         result["capped"] = adjusted              # kept for teachers; the student sees the final scores
+
+
+# Phrases typical of AI-written / essay answers, rare in spontaneous student speech. Only a hint
+# for the grader: students are also taught some of these, so they never flag an answer alone.
+_WRITTEN_STYLE = re.compile(
+    r"\b(furthermore|moreover|additionally|in conclusion|overall|ultimately|in summary|to sum up|"
+    r"plays? a (crucial|vital|significant|pivotal) role|it is (important|essential|worth noting)|"
+    r"not only\b.{1,60}\bbut also|on the other hand|in today'?s (world|society)|a sense of|"
+    r"fosters?|enhances?|cultivates?|numerous|various aspects|well-rounded|holistic)\b",
+    re.IGNORECASE,
+)
+_QA_SUSPECT_MIN_WORDS = 30   # a short answer after leaving the app is not treated as copied
+
+
+def _apply_qa_integrity(result: dict, answers) -> None:
+    """
+    Flag answers that look AI-written (typed into a chatbot and read aloud), and cap the score.
+    Flagged = the grader said so, OR the student left the app / tried to copy during the question
+    and then gave a full answer. Caps: any flagged answer -> fluency, vocabulary, grammar and
+    comprehension at most 3; half or more flagged -> at most 2. Pronunciation is not capped.
+    """
+    n = len(answers)
+    ai_list = [q for q in (result.pop("ai_suspected_questions", None) or []) if 1 <= q <= n]
+    reason = str(result.pop("ai_suspected_reason", "") or "").strip()
+    left, copies, local = [], [], []
+    for i, a in enumerate(answers, start=1):
+        words = len(_words(a.get("transcript") or ""))
+        times = int(a.get("left_app") or 0)
+        tries = int(a.get("copy_attempts") or 0)
+        if times:
+            left.append({"question": i, "times": times, "seconds": int(a.get("left_seconds") or 0)})
+        if tries:
+            copies.append({"question": i, "times": tries})
+        if (times or tries) and words >= _QA_SUSPECT_MIN_WORDS:
+            local.append(i)
+    suspected = sorted(set(ai_list) | set(local))
+    if not (suspected or left or copies):
+        return
+    integrity = {"suspected": suspected, "left_app": left, "copy_attempts": copies}
+    reasons = []
+    if reason and ai_list:
+        reasons.append(reason)
+    if local:
+        reasons.append("Left the app or tried to copy the question, then gave a full answer: "
+                       + ", ".join(f"Q{q}" for q in local) + ".")
+    if reasons:
+        integrity["reason"] = " ".join(reasons)
+    if suspected:
+        cap = 2 if len(suspected) * 2 >= n else 3
+        capped = []
+        for aspect in ("fluency", "vocabulary", "grammar", "comprehension"):
+            if int(result.get(aspect, 0)) > cap:
+                result[aspect] = cap
+                capped.append(aspect)
+        integrity.update(cap=cap, capped=capped)
+    result["integrity"] = integrity
 
 
 def evaluate_qa(answers, *, deadline=None, on_wait=None) -> dict:
@@ -818,13 +902,24 @@ def evaluate_qa(answers, *, deadline=None, on_wait=None) -> dict:
         "- <aspect>_evidence: 1-2 short sentences in simple English, written to the student as 'you', quoting "
         "the actual mistakes or words that decided the score.\n"
         "- feedback: 3-5 sentences in simple English to the student: what went well, the most important thing "
-        "to improve (quote one of their mistakes and give the corrected version), and one concrete tip.\n\n"
+        "to improve (quote one of their mistakes and give the corrected version), and one concrete tip.\n"
+        "- AI-written answers: some students type the question into an AI chatbot and read its answer aloud. "
+        "List in ai_suspected_questions the numbers of the answers that look like that. Signs: written, "
+        "essay-like style (e.g. 'Furthermore', 'In conclusion', 'plays a crucial role', 'not only ... but also'), "
+        "neatly organised points, generic content with no personal detail, vocabulary and grammar far above "
+        "the student's other answers, a long answer with almost no fillers, restarts or small slips, the "
+        "student leaving the app during the question, or a long polished answer that started right at the end "
+        "of the thinking time. Only list an answer when SEVERAL signs point the same way: a student who "
+        "speaks naturally, with personal examples and normal slips, is not suspected, even if their English "
+        "is good. Do not lower the five scores yourself for this; the system handles it. "
+        "ai_suspected_reason: one or two sentences for the TEACHER naming the signs you saw ('' if none).\n\n"
         f"THE SESSION:{blocks}\n\n"
         "Return JSON: {" + ", ".join(f'"{a}": int, "{a}_evidence": string' for a in ASPECTS)
-        + ', "feedback": string}'
+        + ', "feedback": string, "ai_suspected_questions": [int], "ai_suspected_reason": string}'
     )
     result = _grade_with_schema(prompt, QAEvaluation, deadline=deadline, on_wait=on_wait, max_tokens=2000)
     _apply_qa_caps(result, answers)
+    _apply_qa_integrity(result, answers)
     total = sum(int(result[a]) for a in ASPECTS)
     result.update(rubric="brown", total=total, nilai=round(total / 25 * 100, 2), questions=len(answers))
     return result

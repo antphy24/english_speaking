@@ -1,6 +1,6 @@
 import React from 'react';
 import SpeakableWords from './SpeakableWords';
-import { CheckCircle2, RotateCcw, Lightbulb } from 'lucide-react';
+import { CheckCircle2, RotateCcw, Lightbulb, ShieldAlert } from 'lucide-react';
 import { Button } from './Button';
 
 // One place that turns a 0-100 score into words and a colour
@@ -53,6 +53,54 @@ export const BROWN_ASPECTS = [
 ];
 
 export const isBrownScore = (mode, score) => mode === 'qa' && score?.rubric === 'brown';
+
+const qList = (items) => items.map((q) => `Q${typeof q === 'object' ? q.question : q}`).join(', ');
+
+/** Short teacher-facing label for a Q&A result's integrity flag, or '' when there is none. */
+export function integrityLabel(integrity) {
+  if (!integrity) return '';
+  if (integrity.suspected?.length) return `Possible AI answer: ${qList(integrity.suspected)}`;
+  if (integrity.left_app?.length) return `Left the app: ${qList(integrity.left_app)}`;
+  if (integrity.copy_attempts?.length) return `Tried to copy: ${qList(integrity.copy_attempts)}`;
+  return '';
+}
+
+/**
+ * Q&A answers that looked AI-written / the student leaving the app during a question.
+ * Students get a short, neutral note; teachers (forTeacher) also get the details and reason.
+ */
+export function IntegrityNotice({ integrity, forTeacher = false }) {
+  if (!integrity) return null;
+  const suspected = integrity.suspected || [];
+  const left = integrity.left_app || [];
+  const copies = integrity.copy_attempts || [];
+  if (!suspected.length && !left.length && !copies.length) return null;
+  const lines = [];
+  if (suspected.length) {
+    lines.push(forTeacher
+      ? `Possibly AI-written or read from a prepared text: ${qList(suspected)}. Score capped at ${integrity.cap}/5 for fluency, vocabulary, grammar and comprehension.`
+      : `Some answers (${qList(suspected)}) sounded like a prepared or AI-written text, so your score was limited to ${integrity.cap}/5 for fluency, vocabulary, grammar and comprehension. Answer in your own words to get your full score.`);
+  }
+  if (left.length) {
+    lines.push(forTeacher
+      ? `Left the app during ${left.map((l) => `Q${l.question} (${l.times}x, ${l.seconds} s)`).join(', ')}.`
+      : `You left the app during ${qList(left)}. Your teacher can see this.`);
+  }
+  if (copies.length && forTeacher) lines.push(`Tried to copy the question in ${qList(copies)}.`);
+  if (forTeacher && integrity.reason) lines.push(`Why: ${integrity.reason}`);
+  return (
+    <div className="flex gap-3 p-4 md:p-5 rounded-2xl bg-warning-tint" role="note">
+      <ShieldAlert className="w-5 h-5 text-warning shrink-0 mt-0.5" aria-hidden="true" />
+      <div className="min-w-0 space-y-1">
+        <h4 className="text-[15px] font-semibold text-ink">{forTeacher ? 'Check this attempt' : 'About your score'}</h4>
+        {lines.map((l) => <p key={l} className="text-[15px] text-ink leading-relaxed">{l}</p>)}
+        {forTeacher && suspected.length > 0 && (
+          <p className="text-[13px] text-ink-subtle">This is an automatic guess - listen to the recordings before acting on it.</p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /** Rubric aspects (1-5) with the evidence the grader gave for each. */
 function RubricScores({ score }) {
@@ -212,6 +260,8 @@ export function ScoreCard({ mode, score, onRestart, isSaving, saveStatus, onSave
             <p className="md:col-span-2 text-[13px] text-ink-subtle">Tap a word to hear how it is said.</p>
           </div>
         )}
+
+        {mode === 'qa' && <IntegrityNotice integrity={score.integrity} />}
 
         {/* Feedback */}
         {score.feedback && (

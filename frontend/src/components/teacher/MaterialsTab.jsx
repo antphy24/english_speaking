@@ -1,11 +1,15 @@
 import React, { useState, useMemo } from 'react';
-import { Trash2, Edit2, X, Check, Clock } from 'lucide-react';
+import { Trash2, Edit2, X, Check, Clock, Ear, AlertTriangle } from 'lucide-react';
 import ReadingLengthHint from '../UI/ReadingLengthHint';
 import { MODE_LABELS, MODE_ORDER } from '../../utils/modes';
 import { QA_MAX_QUESTIONS, countQuestionLines } from '../../utils/qaSets';
 import {
-  TIMER_FIELDS, MATERIAL_TIMER_MODES, resolveModeTimers, compactModeTimers, summarizeModeTimers, describeDuration,
+  TIMER_FIELDS, OPTION_FIELDS, MATERIAL_TIMER_MODES, resolveModeTimers, resolveModeOptions, compactModeTimers,
+  summarizeModeTimers, describeDuration,
 } from '../../utils/timerSettings';
+
+// Above this, a Q&A thinking time leaves enough room to ask an AI chatbot for the answer.
+const QA_THINK_WARN_SECONDS = 15;
 
 /** 5 -> "5s", 120 -> "2m", 90 -> "1m 30s" (for the small allowed-range text). */
 const shortDuration = (secs) => {
@@ -47,12 +51,14 @@ function DurationInput({ field, seconds, onChange, label }) {
 function MaterialTimerFields({ mode, value, onChange }) {
   if (!MATERIAL_TIMER_MODES.includes(mode)) return null;
   const times = resolveModeTimers(mode, value);
+  const options = resolveModeOptions(mode, value);
   const isDefault = compactModeTimers(mode, value) === null;
+  const change = (patch) => onChange({ ...times, ...options, ...patch });
   return (
     <div className="space-y-1.5 text-left">
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-bold text-ink-muted flex items-center gap-1.5">
-          <Clock className="w-3.5 h-3.5" aria-hidden="true" />Timing
+          <Clock className="w-3.5 h-3.5" aria-hidden="true" />{OPTION_FIELDS[mode] ? 'Timing and display' : 'Timing'}
           <span className={`font-semibold px-1.5 py-0.5 rounded ${isDefault ? 'bg-surface-muted text-ink-subtle' : 'bg-brand-tint text-brand-ink'}`}>
             {isDefault ? 'Standard' : 'Custom'}
           </span>
@@ -74,10 +80,30 @@ function MaterialTimerFields({ mode, value, onChange }) {
               {shortDuration(f.min)}–{shortDuration(f.max)}
             </span>
             <DurationInput field={f} label={f.label} seconds={times[f.key]}
-              onChange={(secs) => onChange({ ...times, [f.key]: secs })} />
+              onChange={(secs) => change({ [f.key]: secs })} />
           </div>
         ))}
+        {(OPTION_FIELDS[mode] || []).map((f) => (
+          <label key={f.key} className="flex items-center gap-3 px-3 py-2 cursor-pointer">
+            <Ear className="w-4 h-4 text-ink-subtle shrink-0" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-ink leading-tight">{f.label}</div>
+              <div className="text-xs text-ink-subtle">{f.hint}</div>
+            </div>
+            <input type="checkbox" checked={options[f.key]} onChange={(e) => change({ [f.key]: e.target.checked })}
+              className="w-4 h-4 text-brand-ink bg-surface border-line-strong rounded shrink-0" />
+          </label>
+        ))}
       </div>
+      {mode === 'qa' && times.think > QA_THINK_WARN_SECONDS && (
+        <p className="flex items-start gap-1.5 text-xs text-warning leading-relaxed">
+          <AlertTriangle className="w-3.5 h-3.5 mt-px shrink-0" aria-hidden="true" />
+          <span>
+            {describeDuration(times.think)} of thinking time is enough to ask an AI chatbot for the answer.
+            5-10 seconds is enough to plan a spoken answer.
+          </span>
+        </p>
+      )}
     </div>
   );
 }

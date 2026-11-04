@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Mic, MicOff, RefreshCw, Volume2, Repeat, Square, Loader2, ListChecks, X } from 'lucide-react';
+import { Mic, MicOff, RefreshCw, Volume2, Repeat, Square, Loader2, ListChecks, X, Ear, AlertTriangle } from 'lucide-react';
 import ScoreCard from './UI/ScoreCard';
 import { Button } from './UI/Button';
 import { PickerList } from './UI/PickerList';
@@ -15,7 +15,7 @@ import {
 } from '../utils/api';
 import { speakEnglish, stopSpeaking, speechSupported } from '../utils/speech';
 import { buildQaSets } from '../utils/qaSets';
-import { resolveModeTimers, describeDuration } from '../utils/timerSettings';
+import { resolveModeTimers, resolveModeOptions, describeDuration } from '../utils/timerSettings';
 
 /*
  * Q&A practice, run like the research speaking test: the student answers a whole
@@ -24,12 +24,22 @@ import { resolveModeTimers, describeDuration } from '../utils/timerSettings';
  * upload and transcribe in the background while the next question runs; at the end
  * the whole session is graded once with the research rubric (Brown, 2004:
  * pronunciation, fluency, vocabulary, grammar, comprehension - 1-5 each).
+ *
+ * Against copying questions into an AI chatbot:
+ *  - by default the question is only heard, not shown (the teacher can show it per material);
+ *  - shown questions cannot be selected or copied;
+ *  - leaving the app during a question (other tab/app/window) is warned about and recorded
+ *    per answer, together with copy attempts and the time taken before answering. The grader
+ *    uses these to flag answers that look AI-written (teachers see the flag; the score is capped).
  */
 
 const MAX_REPEATS = 1;          // "Hear the question again" per question, as in the research test
 const MIN_ANSWER_SECONDS = 3;   // "I'm finished" unlocks after this
 const TURN_ATTEMPTS = 4;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const MIN_AWAY_MS = 1500;       // shorter blurs (address bar, notification) are not counted
+
+const blockCopy = (e) => e.preventDefault();
 
 const isApple = () => /iPhone|iPad|iPod/i.test(navigator.userAgent || '') ||
   (/Macintosh/i.test(navigator.userAgent || '') && navigator.maxTouchPoints > 1);
@@ -114,6 +124,8 @@ export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, c
 
   // Thinking / answer time of the chosen set, as the teacher set them on the material.
   const timers = resolveModeTimers('qa', selectedSet?.timers);
+  // Listening only unless the teacher chose to show the question. Without speech the text must show.
+  const showText = resolveModeOptions('qa', selectedSet?.timers).show_text || !speechSupported();
 
   // Keep the selection valid when the teacher's materials load or change.
   useEffect(() => {
@@ -133,6 +145,7 @@ export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, c
   const [answers, setAnswers] = useState([]);       // [{question, transcript, ...}] shown with the result
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState('');
+  const [awayWarning, setAwayWarning] = useState(false); // "you left the app" notice on the current question
 
   const grader = useSubmission(apiBase, 'qa');
   const sessionRef = useRef(null);   // { set, timers, turns: [], controller }
@@ -143,6 +156,10 @@ export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, c
   const repeatsRef = useRef(0);
   const savedOnServerRef = useRef(false);
   const resultMetaRef = useRef({});
+  const indexRef = useRef(0);
+  const questionStartRef = useRef(0);   // when the question was first read (for prep_seconds)
+  const integrityRef = useRef({});      // per question index: { leftApp, leftMs, copyAttempts }
+  const awaySinceRef = useRef(0);
 
   const clearTimer = () => { clearInterval(timerRef.current); timerRef.current = null; };
 
@@ -232,7 +249,10 @@ export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, c
       return;
     }
     sessionRef.current?.controller.abort();
-    sessionRef.current = { set: selectedSet, timers, turns: [], controller: new AbortController() };
+    sessionRef.current = { set: selectedSet, timers, showText, turns: [], controller: new AbortController() };
+    integrityRef.current = {};
+    awaySinceRef.current = 0;
+    setAwayWarning(false);
     setTurnsReady(0);
     setIndex(0);
     setStage('session');
@@ -256,7 +276,7 @@ export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, c
 
   const readQuestion = (question, isRepeat = false) => {
     const token = ++readTokenRef.current;
-    if (!isRepeat) { repeatsRef.current = 0; setRepeats(0); }
+    if (!isRepeat) { repeatsRef.current = 0; setRepeats(0); questionStartRef.current = Date.now(); }
     setPhase('reading');
     const afterReading = () => {
       if (token !== readTokenRef.current || !sessionRef.current) return;
@@ -273,10 +293,68 @@ export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, c
   };
 
   const currentQuestion = stage === 'session' ? sessionRef.current?.set.questions[index] : null;
+  indexRef.current = index;
 
   useEffect(() => {
-    if (stage === 'session' && currentQuestion) readQuestion(currentQuestion);
+    if (stage === 'session' && currentQuestion) {
+      setAwayWarning(false);
+      readQuestion(currentQuestion);
+    }
   }, [stage, index]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ------------------------------------------------------------------ leaving the app
+  const integrityFor = (i) => {
+    const all = integrityRef.current;
+    if (!all[i]) all[i] = { leftApp: 0, leftMs: 0, copyAttempts: 0 };
+    return all[i];
+  };
+
+  useEffect(() => {
+    if (stage !== 'session') return undefined;
+    const away = () => document.hidden || !document.hasFocus();
+    const onChange = () => {
+      if (!sessionRef.current) return;
+      if (away()) {
+        if (!awaySinceRef.current) awaySinceRef.current = Date.now();
+        return;
+      }
+      if (!awaySinceRef.current) return;
+      const ms = Date.now() - awaySinceRef.current;
+      awaySinceRef.current = 0;
+      if (ms < MIN_AWAY_MS) return;
+      const rec = integrityFor(indexRef.current);
+      rec.leftApp += 1;
+      rec.leftMs += ms;
+      setAwayWarning(true);
+    };
+    const onCopy = (e) => {
+      e.preventDefault();
+      integrityFor(indexRef.current).copyAttempts += 1;
+    };
+    document.addEventListener('visibilitychange', onChange);
+    window.addEventListener('blur', onChange);
+    window.addEventListener('focus', onChange);
+    document.addEventListener('copy', onCopy);
+    document.addEventListener('cut', onCopy);
+    return () => {
+      document.removeEventListener('visibilitychange', onChange);
+      window.removeEventListener('blur', onChange);
+      window.removeEventListener('focus', onChange);
+      document.removeEventListener('copy', onCopy);
+      document.removeEventListener('cut', onCopy);
+    };
+  }, [stage]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Close an away period that is still open (the answer ended while the student was elsewhere). */
+  const closeAway = (i) => {
+    if (!awaySinceRef.current) return;
+    const ms = Date.now() - awaySinceRef.current;
+    awaySinceRef.current = Date.now(); // the rest counts for the next question
+    if (ms < MIN_AWAY_MS) return;
+    const rec = integrityFor(i);
+    rec.leftApp += 1;
+    rec.leftMs += ms;
+  };
 
   const repeatQuestion = () => {
     if (!currentQuestion || repeatsRef.current >= MAX_REPEATS || phase !== 'waiting') return;
@@ -308,13 +386,14 @@ export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, c
       rec = new MediaRecorder(stream);
     }
     const questionIndex = index;
+    const prepSeconds = Math.round((Date.now() - questionStartRef.current) / 100) / 10;
     chunksRef.current = [];
     rec.ondataavailable = (e) => { if (e.data?.size) chunksRef.current.push(e.data); };
     rec.onstop = () => {
       const type = (rec.mimeType || mimeType || 'audio/webm').split(';')[0];
       const blob = new Blob(chunksRef.current, { type });
       const duration = Math.round(((Date.now() - startedAtRef.current) / 1000) * 10) / 10;
-      finishAnswer(questionIndex, blob, duration);
+      finishAnswer(questionIndex, blob, duration, prepSeconds);
     };
     recorderRef.current = rec;
     rec.start(1000);
@@ -330,9 +409,11 @@ export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, c
     if (rec && rec.state !== 'inactive') rec.stop();
   };
 
-  const finishAnswer = (questionIndex, blob, duration) => {
+  const finishAnswer = (questionIndex, blob, duration, prepSeconds) => {
     const session = sessionRef.current;
     if (!session) return;
+    closeAway(questionIndex);
+    const integrity = integrityFor(questionIndex);
     const turn = {
       index: questionIndex,
       slot: `qa_${questionIndex + 1}`,
@@ -340,6 +421,10 @@ export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, c
       blob,
       duration,
       repeats: repeatsRef.current,
+      prepSeconds,
+      leftApp: integrity.leftApp,
+      leftSeconds: Math.round(integrity.leftMs / 1000),
+      copyAttempts: integrity.copyAttempts,
       transcript: '',
       status: 'new',
     };
@@ -387,6 +472,12 @@ export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, c
       speak_seconds: session.timers.answer,
       repeats: t.repeats,
       max_repeats: MAX_REPEATS,
+      think_seconds: session.timers.think,
+      prep_seconds: t.prepSeconds,
+      question_shown: !!session.showText,
+      left_app: t.leftApp,
+      left_seconds: t.leftSeconds,
+      copy_attempts: t.copyAttempts,
     }));
     const audioSubs = Object.fromEntries(session.turns.filter((t) => t.subId && t.status === 'done').map((t) => [t.slot, t.subId]));
     resultMetaRef.current = { material_title: session.set.title, answers: sessionAnswers };
@@ -516,11 +607,14 @@ export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, c
             </p>
           </div>
           <ul className="text-sm text-ink-muted list-disc pl-5 space-y-1.5">
-            <li>Each question is read aloud and shown on the screen.</li>
+            {showText
+              ? <li>Each question is read aloud and shown on the screen.</li>
+              : <li><b className="text-ink">Listen carefully:</b> each question is only read aloud - it is not shown on the screen.</li>}
             <li>You get {describeDuration(timers.think)} to think, then recording starts by itself (or tap "Start answering now").</li>
             <li>You may hear each question again once before you answer.</li>
             <li>Each answer can be up to {describeDuration(timers.answer)}. Tap "I'm finished" when you are done.</li>
             <li>You cannot go back to a question after answering it. Your score comes after the last question.</li>
+            <li><b className="text-ink">Stay in this app until the last question.</b> Switching to another tab, window or app is recorded and shown to your teacher, and answers that look AI-written get a lower score.</li>
           </ul>
           <p className="text-sm text-ink-subtle">
             Scored with the research rubric: pronunciation, fluency, vocabulary, grammar and comprehension (1-5 each).
@@ -545,11 +639,34 @@ export function ModeQA({ studentName, apiBase, onSaveScore, getSessionSeconds, c
           aria-valuemin={0} aria-valuemax={total} aria-valuenow={index}>
           <div className="h-full bg-brand rounded-full transition-[width]" style={{ width: `${(index / total) * 100}%` }} />
         </div>
-        <div className="bg-surface border border-line rounded-2xl shadow-card p-5 md:p-7 space-y-5">
-          <div className="flex items-start justify-between gap-3">
-            <p className="font-semibold text-ink leading-snug text-lg md:text-xl" style={readingStyle}>{currentQuestion}</p>
-            <TextSizeControl {...readingSizeControl} />
+        {awayWarning && (
+          <div className="flex items-start gap-3 p-4 rounded-2xl bg-warning-tint border border-warning/30" role="alert">
+            <AlertTriangle className="w-5 h-5 text-warning shrink-0 mt-0.5" aria-hidden="true" />
+            <p className="text-[15px] text-ink">
+              You left the app during this question. This has been recorded for your teacher. Stay here and answer in your own words.
+            </p>
           </div>
+        )}
+        <div className="bg-surface border border-line rounded-2xl shadow-card p-5 md:p-7 space-y-5">
+          {sessionRef.current.showText ? (
+            <div className="flex items-start justify-between gap-3">
+              <p className="font-semibold text-ink leading-snug text-lg md:text-xl select-none [-webkit-touch-callout:none]"
+                style={readingStyle} onCopy={blockCopy} onCut={blockCopy} onContextMenu={blockCopy} onDragStart={blockCopy}>
+                {currentQuestion}
+              </p>
+              <TextSizeControl {...readingSizeControl} />
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <span className="w-11 h-11 rounded-full bg-brand-tint flex items-center justify-center shrink-0">
+                <Ear className="w-5 h-5 text-brand-ink" aria-hidden="true" />
+              </span>
+              <div>
+                <p className="font-semibold text-ink text-lg leading-snug">Question {index + 1}</p>
+                <p className="text-[13px] text-ink-subtle">Listening only - the question is not shown.</p>
+              </div>
+            </div>
+          )}
 
           {phase === 'reading' && (
             <p className="text-[15px] text-ink-muted flex items-center gap-2" aria-live="polite">

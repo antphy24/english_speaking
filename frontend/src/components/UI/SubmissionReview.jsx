@@ -4,7 +4,7 @@ import { getAssessmentReview } from '../../utils/api';
 import SpeakableWords from './SpeakableWords';
 import { MODE_LABELS } from '../../utils/modes';
 import { QA_MAX_QUESTIONS } from '../../utils/qaSets';
-import { BROWN_ASPECTS, isBrownScore } from './ScoreCard';
+import { BROWN_ASPECTS, isBrownScore, IntegrityNotice } from './ScoreCard';
 
 const MODE_TITLES = MODE_LABELS;
 
@@ -193,6 +193,8 @@ export function SubmissionReview({ assessment, apiBase, authClient, onClose, hea
                 </div>
               )}
             </div>
+
+            {mode === 'qa' && <IntegrityNotice integrity={fb.integrity} forTeacher={!!studentName} />}
 
             {/* Recording */}
             <Section icon={Headphones} title="Recording">

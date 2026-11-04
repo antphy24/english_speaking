@@ -7,7 +7,7 @@
 
 export const TIMER_FIELDS = {
   qa: [
-    { key: 'think', label: 'Thinking time', hint: 'Before recording starts', default: 15, min: 5, max: 120 },
+    { key: 'think', label: 'Thinking time', hint: 'Before recording starts (5-10 s suggested)', default: 15, min: 5, max: 120 },
     { key: 'answer', label: 'Answer time', hint: 'For each question', default: 60, min: 15, max: 300 },
   ],
   debate: [
@@ -62,17 +62,39 @@ export function resolveModeTimers(mode, raw) {
   return out;
 }
 
-/** Times that equal the defaults are stored as null, so the material simply follows the defaults. */
+// On/off options that travel in the same per-material settings object (no extra column).
+//  * Q&A show_text: show the question as text. Off (listening only) by default, so the
+//    question cannot simply be copied into an AI chatbot.
+export const OPTION_FIELDS = {
+  qa: [
+    { key: 'show_text', label: 'Show the question as text', hint: 'Off = students only hear it (harder to copy into AI)', default: false },
+  ],
+};
+
+/** One mode's on/off options (possibly missing) -> complete values. */
+export function resolveModeOptions(mode, raw) {
+  const out = {};
+  for (const f of OPTION_FIELDS[mode] || []) {
+    out[f.key] = typeof raw?.[f.key] === 'boolean' ? raw[f.key] : f.default;
+  }
+  return out;
+}
+
+/** Times and options that equal the defaults are stored as null, so the material simply follows the defaults. */
 export function compactModeTimers(mode, values) {
-  const resolved = resolveModeTimers(mode, values);
-  const isDefault = (TIMER_FIELDS[mode] || []).every((f) => resolved[f.key] === f.default);
+  const resolved = { ...resolveModeTimers(mode, values), ...resolveModeOptions(mode, values) };
+  const isDefault = (TIMER_FIELDS[mode] || []).every((f) => resolved[f.key] === f.default)
+    && (OPTION_FIELDS[mode] || []).every((f) => resolved[f.key] === f.default);
   return isDefault ? null : resolved;
 }
 
 /** Short text for lists, e.g. "15 sec think · 1 min answer". */
 export function summarizeModeTimers(mode, raw) {
   const t = resolveModeTimers(mode, raw);
-  if (mode === 'qa') return `${describeDuration(t.think)} think · ${describeDuration(t.answer)} per answer`;
+  if (mode === 'qa') {
+    const o = resolveModeOptions(mode, raw);
+    return `${describeDuration(t.think)} think · ${describeDuration(t.answer)} per answer · ${o.show_text ? 'question shown as text' : 'listening only'}`;
+  }
   if (mode === 'mattering') {
     return `${describeDuration(t.breakdown)} breakdown · ${describeDuration(t.argument)} argument · ${describeDuration(t.rebuttal)} rebuttal`;
   }
